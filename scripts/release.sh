@@ -556,12 +556,17 @@ md5sum "$APK" /tmp/verify.apk
 # live on GitHub" — no mirror hop anymore, the release IS on the public
 # releases repo): the /releases/latest endpoint the in-app update checker
 # reads must return THIS version, with the APK asset downloadable
-# ANONYMOUSLY and byte-identical.
+# ANONYMOUSLY and byte-identical. The API metadata call authenticates
+# (the anonymous per-IP rate limit is NOT a release-health signal); only
+# the asset download itself is anonymous — that is the check that matters.
 echo "verifying the live release..."
-python3 - "$VER" "$API" << 'PYEOF'
+TOK_ARG="$TOK" python3 - "$VER" "$API" << 'PYEOF'
 import json, sys, urllib.request
-ver, api = sys.argv[1], sys.argv[2]
-r = json.load(urllib.request.urlopen(api + "/releases/latest"))
+ver, api, tok = sys.argv[1], sys.argv[2], __import__("os").environ["TOK_ARG"]
+req = urllib.request.Request(api + "/releases/latest",
+                             headers={"Authorization": "Bearer " + tok,
+                                      "Accept": "application/vnd.github+json"})
+r = json.load(urllib.request.urlopen(req))
 assert r["tag_name"] == "v" + ver, f"latest is {r['tag_name']}, expected v{ver}"
 apk = next((a for a in r["assets"] if a["name"].endswith(".apk")), None)
 assert apk, "no .apk asset on the live release"
