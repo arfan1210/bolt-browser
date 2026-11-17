@@ -44,7 +44,11 @@ Grab the latest signed APK from the
 and install it (enable "install unknown apps" for your file manager when
 Android asks). Updates install in place — Android only allows this because
 every release is signed with the same key; only install APKs from that
-releases page.
+releases page. Since v1.4.10 every release (APK + changelog) is published
+on BOTH repos' releases pages — this one and
+[bolt-browser](https://github.com/arfan1210/bolt-browser/releases) — but
+the releases repo above stays the canonical download endpoint (it is what
+the in-app update checker reads).
 
 ## Build from source
 
@@ -177,16 +181,61 @@ session of this relay, 2026-11-17):
    `GRADLE_USER_HOME=$BASE/.gradle-home` itself — a fresh `~/.gradle`
    would re-resolve every dependency and trip the metadata warnings.
 
+**v1.4.10 pipeline law v2 — the dual-publish** (the fourth session of
+this relay, 2026-11-18):
+
+1. *The report.* "The pipeline currently only uploads the compiled APK to
+   the release repo. The source repo only receives a Git tag, but no
+   GitHub Release with the APK attached." True: bolt-browser's releases
+   page was empty — a bare tag auto-generates only "Source code" zips.
+   The APK + changelog body now publish to BOTH repos simultaneously.
+2. *The law.* `release.sh` carries THE DUAL-PUBLISH LAW: `publish_release()`
+   runs against both `$SRC_API` (bolt-browser) and `$API`
+   (bolt-browser-releases). Order matters: SOURCE first, RELEASES last —
+   the releases repo is the endpoint the in-app update checker reads, so
+   it goes live only after the source side is already up; a mid-flight
+   failure leaves the checker-visible endpoint untouched. Each repo gets
+   its own download-back verify, and step 10 anonymously downloads BOTH
+   repos' assets.
+3. *The repair mode.* `release.sh --republish <ver>` backfills an
+   ALREADY-LIVE version onto both repos: no build, no gates, no
+   tag/main movement; the staged APK (`download/Bolt-v<ver>.apk`) must be
+   md5-identical to the live releases asset (the pin download rides the
+   authenticated asset API — see the CDN note below). Used today to
+   backfill v1.4.10 onto bolt-browser: release id 448965075, marked
+   Latest, full changelog body, APK sha256
+   cb9b83c859af675a6024fd545f9b16d346df29a8ea5bfcc2c030d9daea5a3ffe.
+   The releases-repo asset already matched by its `digest` field — no
+   re-upload, no service interruption (the digest check keeps the
+   checker-visible endpoint continuously served).
+4. *Two CDN learnings.* The anonymous asset CDN 403s transiently on rate
+   limits — retry, don't fail (step 10 retries 3x). The anonymous REST
+   API limit (60/h, shared per IP) is exhausted in this sandbox almost
+   immediately: metadata checks AUTHENTICATE, only the ASSET DOWNLOAD
+   itself is the anonymous release-health check.
+5. *Gate.* `test_v1410.py` grew section C2 (dated re-point): SRC_API
+   pinned, both `publish_release` calls pinned, the SOURCE-first order
+   pinned, the republish mode pinned, the dual anonymous verification
+   pinned. Suite after the change: 65/65 green.
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
 `scripts/setup_toolchain.sh`; a working copy lives at
 `/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64` in the maintainer's
 sandbox), the Android SDK 34 (`sdk/`), and Gradle 8.9 (`gradle-8.9/`) —
-all OUTSIDE the repo. If Gradle fails with "Could not read workspace
-metadata", delete `.gradle-home/caches/8.9/transforms` and re-resolve.
-`local.properties` in the working clone carries `sdk.dir` + the signing
-credentials; it is gitignored and must never be committed.
+all OUTSIDE the repo. The 2026-11-18 recycle wiped jdk21/, sdk/ and
+gradle-8.9/: the JDK alone is restorable in ~1 min via the workspace's
+`scripts/restore_jdk.sh` (the `jdk_graft()` from setup_toolchain.sh —
+enough to run the full gate suite); a full BUILD additionally needs
+setup_toolchain.sh steps 2-3 (Gradle 8.9 + Android SDK 34, ~10 min). If
+Gradle fails with "Could not read workspace metadata", delete
+`.gradle-home/caches/8.9/transforms` and re-resolve. `local.properties`
+in the working clone carries `sdk.dir` + the signing credentials; it is
+gitignored, must never be committed, and DOES NOT SURVIVE a sandbox
+recycle — a fresh clone has none: re-create it (setup_toolchain.sh writes
+the skeleton; the keystore + its rotated-password backup live in the
+maintainer's workspace `download/` folder, never in any repo).
 
 **Known-good numbers** (v1.4.10, release build): APK 2,747,009 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
@@ -199,6 +248,9 @@ probes; filter rule census unchanged from v1.4.9 (103,087 network rules,
   (they age; the in-app updater exists, but the APK baseline drifts);
   consider the same pattern-diet treatment for the cosmetic selector
   storage if its memory ever shows up in profiles.
+- v1.4.11 will be the first FULL release to exercise the dual-publish
+  end-to-end (gates → build → both repos) — the v1.4.10 backfill only
+  proved the republish path.
 - The `byHost` maps are cleared+rebuilt in place during a filter-list
   reload while match threads may be mid-read (pre-existing since the
   first release; the automaton is already swapped atomically as one

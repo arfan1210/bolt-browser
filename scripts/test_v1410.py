@@ -32,6 +32,16 @@ release to GitHub." TWO corpses in one:
    version that does not compare GREATER than the releases repo's current
    /releases/latest — the exact corpse of this report can then never
    recur silently.
+
+   2026-11-18 ADDENDUM — THE DUAL-PUBLISH LAW. The report: "The pipeline
+   currently only uploads the compiled APK to the release repo. The
+   source repo only receives a Git tag, but no GitHub Release with the
+   APK attached." release.sh now creates the release (APK asset +
+   changelog body) on BOTH repos — SOURCE first, the releases repo (the
+   update-checker endpoint) LAST — and carries a --republish repair mode
+   that backfills an already-live version onto both repos without a
+   build (the staged APK is md5-pinned to the live asset). Pinned in
+   section C2 below; the v1.4.10 backfill was applied with it.
 """
 import os, re, sys
 
@@ -93,6 +103,23 @@ need("application/vnd.android.package-archive" in rel,
      "the APK asset uploads with the android package-archive content type")
 need("github.com/arfan1210/bolt-browser.git" in rel,
      "the tag push targets the source repo (bolt-browser)")
+
+print("C2 — THE DUAL-PUBLISH LAW (2026-11-18: the source repo's releases")
+print("     page must carry the APK + changelog too, not just the tag)")
+need('SRC_API="https://api.github.com/repos/arfan1210/bolt-browser"' in rel,
+     "release.sh defines the SOURCE repo's release API (SRC_API)")
+need(rel.count('publish_release "$SRC_API"') == 1,
+     "the release + APK publish runs against the SOURCE repo")
+need(rel.count('publish_release "$API"') == 1,
+     "the release + APK publish runs against the RELEASES repo")
+need(rel.index('publish_release "$SRC_API"') < rel.index('publish_release "$API"'),
+     "SOURCE publishes FIRST; the releases repo (the checker endpoint) goes live LAST")
+need("--republish" in rel and "byte-identical" in rel,
+     "the --republish repair mode exists and is md5-pinned to the live asset")
+need(re.search(r"REPUBLISH=0", rel) is not None,
+     "the --republish flag gates the build/gates/tag-push path")
+need('check(src_api, "SOURCE"' in rel and 'check(api, "RELEASES"' in rel,
+     "the live verification anonymously downloads BOTH repos' APK assets")
 
 print("D — the live-version guard (this report's corpse, prevented)")
 need("releases/latest" in rel,

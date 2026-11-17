@@ -1,28 +1,39 @@
 #!/bin/bash
 # Bolt Browser — full release flow (build → verify → publish), v1.4.10
-# pipeline (2026-11-17): the old private repo is DEAD. The
-# flow now lives entirely on the two public repos:
+# pipeline (2026-11-17): the old private repo is DEAD. The flow now lives
+# entirely on the two public repos:
 #   SOURCE   github.com/arfan1210/bolt-browser          <- tag v<ver> + main
 #   RELEASES github.com/arfan1210/bolt-browser-releases <- release + APK +
 #                                                         changelog body
-# The releases repo is ALSO what the in-app update checker reads
-# (AboutActivity RELEASES_API) — publisher and checker cannot drift apart.
+# THE DUAL-PUBLISH LAW (2026-11-18): the GitHub release — APK asset +
+# changelog body — is published on BOTH repos. A tag alone left the source
+# repo's releases page empty (the v1.4.10 "missing APK on the source repo"
+# report). The releases repo is ALSO what the in-app update checker reads
+# (AboutActivity RELEASES_API) — publisher and checker cannot drift apart;
+# it is published LAST so a mid-flight failure never touches the
+# checker-visible endpoint.
 #
 # Run AFTER bumping versionCode/versionName in app/build.gradle and updating
 # the About changelog + CHANGELOG.md. Everything below is automated; stop on
 # any failure.
 #
 # Usage:  bash scripts/release.sh <ver> [notes-file]
+#         bash scripts/release.sh --republish <ver> [notes-file]
 #   ver        e.g. 1.4.10
 #   notes-file optional markdown body for the release (default: CHANGELOG.md
 #              section for that version is extracted)
+#   --republish  repair mode for an ALREADY-LIVE version: no build, no
+#              gates, no tag/main movement — re-publishes the STAGED APK
+#              (download/Bolt-v<ver>.apk, md5-pinned to the live
+#              releases-repo asset) on BOTH repos. Used 2026-11-18 to
+#              backfill v1.4.10 onto the source repo's releases page.
 #
-# Assets uploaded:
-#   Bolt-v<ver>.apk   the installable APK (the releases repo's convention
-#                     since the first public release — APK only, the source
-#                     lives on the tag in the source repo)
+# Assets uploaded (BOTH repos):
+#   Bolt-v<ver>.apk   the installable APK
 set -e
-VER="${1:?usage: release.sh <ver> [notes-file]}"
+REPUBLISH=0
+if [ "${1:-}" = "--republish" ]; then REPUBLISH=1; shift; fi
+VER="${1:?usage: release.sh [--republish] <ver> [notes-file]}"
 NOTES="${2:-}"
 BASE=/home/z/my-project
 REPO_DIR=$BASE/bolt-browser
@@ -36,6 +47,13 @@ CERT_EXPECT="bcd57eb42ca770a340f78ad64b56999d6238f88ab194cc8c787ee46082938ae4"
 
 cd $REPO_DIR
 TAG="v$VER"
+
+# =======================================================================
+# FULL RELEASE MODE: preconditions, the live-version guard, every gate,
+# the build and the cert check. (--republish skips ALL of this — see its
+# branch below the build.)
+# =======================================================================
+if [ $REPUBLISH -eq 0 ]; then
 
 # ---- 0. preconditions ----
 [ -z "$(git status --porcelain)" ] || { echo "ERROR: uncommitted changes"; exit 1; }
@@ -474,7 +492,39 @@ $BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR assembleRelease
 APK=$REPO_DIR/app/build/outputs/apk/release/app-release.apk
 ls -la "$APK"
 
-# ---- 2b. THE APK SIZE LAW (v1.3.73, user-set) -------------------------
+# ---- 3. signing check (same key as every release) ----
+CERT=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK" 2>/dev/null | grep -o 'SHA-256 digest: [a-f0-9]*' | cut -d' ' -f3)
+[ "$CERT" = "$CERT_EXPECT" ] || { echo "ERROR: cert mismatch: $CERT"; exit 1; }
+echo "cert OK: $CERT"
+
+else
+# ---- 0r/2r. REPUBLISH MODE preconditions --------------------------------
+# No build, no gates, no tag/main movement: this mode re-publishes the
+# ALREADY-LIVE artifact on both repos (used 2026-11-18 to backfill the
+# source repo's missing v1.4.10 release). The tag must already be on the
+# source remote and the staged APK must be BYTE-IDENTICAL to the live
+# releases-repo asset — a republish redistributes the verified artifact,
+# it never ships new bytes (new bytes need a new version: the guard).
+if ! git ls-remote --tags https://github.com/arfan1210/bolt-browser.git "refs/tags/$TAG" | grep -q "refs/tags/$TAG"; then
+  echo "ERROR: $TAG is not on the source remote — a republish needs an existing release tag"
+  exit 1
+fi
+APK="${BOLT_APK:-$BASE/download/Bolt-$TAG.apk}"
+[ -f "$APK" ] || { echo "ERROR: $APK missing — a republish reuses the staged artifact; run a full release instead"; exit 1; }
+# the pin download rides the AUTHENTICATED asset API (the anonymous CDN
+# 403s on transient rate limits — that is a release-health signal, not a
+# pin failure; anonymity is proven in step 10 below)
+AID_PIN=$(curl -s -H "$AUTH" -H "$ACC" "$API/releases/tags/$TAG" | python3 -c "import json,sys;print(next((a['id'] for a in json.load(sys.stdin)['assets'] if a['name']=='Bolt-$TAG.apk'), ''))" 2>/dev/null || true)
+if [ -z "$AID_PIN" ] || ! curl -sfL -H "$AUTH" -H "Accept: application/octet-stream" "$API/releases/assets/$AID_PIN" -o /tmp/live-pin.apk; then
+  echo "ERROR: no live $TAG APK on the releases repo — a republish only repairs LIVE versions"
+  exit 1
+fi
+[ "$(md5sum "$APK" | cut -d' ' -f1)" = "$(md5sum /tmp/live-pin.apk | cut -d' ' -f1)" ] || { echo "ERROR: staged APK differs from the live releases asset (md5)"; exit 1; }
+echo "republish $VER: staged APK is byte-identical to the live releases asset (md5 pinned)"
+echo "               (the live-version guard is skipped by design — no NEW version is published)"
+fi
+
+# ---- 2b. THE APK SIZE LAW (v1.3.73, user-set; BOTH modes) ---------------
 # The base APK must stay super light: "I cannot afford over 5-6mb for the
 # base apk" — the v1.3.72 ML Kit bundle hit 23,426,101 B and broke the
 # product's whole premise. 6,000,000 B is the hard ceiling (a little
@@ -488,23 +538,24 @@ if [ "$SIZE" -gt 6000000 ]; then
 fi
 echo "APK size OK: $SIZE B (budget 6,000,000 B)"
 
-# ---- 3. signing check (same key as every release) ----
-CERT=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK" 2>/dev/null | grep -o 'SHA-256 digest: [a-f0-9]*' | cut -d' ' -f3)
-[ "$CERT" = "$CERT_EXPECT" ] || { echo "ERROR: cert mismatch: $CERT"; exit 1; }
-echo "cert OK: $CERT"
-
-# ---- 4. commit, tag, push (SOURCE repo: bolt-browser) ----
+# ---- 4. commit, tag, push (SOURCE repo: bolt-browser; FULL mode only —
+# a republish never moves main and never re-creates the tag) ----
 # The push URL carries the token explicitly — the remote stays clean
 # https with no credentials persisted in .git/config.
+if [ $REPUBLISH -eq 0 ]; then
 git push -q "$PUSHURL" main
 git tag -f "$TAG"
 git push -qf "$PUSHURL" "$TAG"
+fi
 
 # ---- 5. local assets ----
 STAGE=$BASE/download; mkdir -p $STAGE
+if [ $REPUBLISH -eq 0 ]; then
 cp "$APK" "$STAGE/Bolt-$TAG.apk"
 rm -f "$STAGE/Bolt-$TAG.zip"
 (cd $STAGE && zip -q -9 "Bolt-$TAG.zip" "Bolt-$TAG.apk")
+fi
+# (republish: the APK already IS the staged artifact, md5-pinned above)
 
 # ---- 6. release body ----
 if [ -n "$NOTES" ]; then
@@ -520,65 +571,118 @@ PYEOF
 )
 fi
 
-# ---- 7. create release (or reuse) ----
-curl -s -H "$AUTH" -H "$ACC" "$API/releases/tags/$TAG" > /tmp/rel.json
-if ! python3 -c "import json,sys;sys.exit(0 if 'id' in json.load(open('/tmp/rel.json')) else 1)" 2>/dev/null; then
-  curl -s -X POST -H "$AUTH" -H "$ACC" "$API/releases" \
-    -d "{\"tag_name\":\"$TAG\",\"name\":\"Bolt $VER\",\"body\":$BODY}" > /tmp/rel.json
-  python3 -c "import json;d=json.load(open('/tmp/rel.json'));assert 'id' in d, d.get('message')"
-else
-  echo "release $TAG exists — refreshing notes + replacing assets"
-  RELID2=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")
-  curl -s -X PATCH -H "$AUTH" -H "$ACC" "$API/releases/$RELID2" -d "{\"name\":\"Bolt $VER\",\"body\":$BODY}" > /tmp/rel.json
-fi
-echo "release id: $(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")"
-RELID=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")
-UPURL=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['upload_url'].replace('{?name,label}',''))")
+# ---- 7. create release (or reuse) + upload the APK — on BOTH repos ----
+# THE DUAL-PUBLISH LAW (2026-11-18): the report was "the source repo only
+# receives a Git tag, no GitHub Release with the APK attached" — the APK
+# and the changelog body must appear on the releases page of BOTH repos.
+# Publish order: SOURCE first, RELEASES LAST — the releases repo is the
+# endpoint the in-app update checker reads (AboutActivity RELEASES_API),
+# so it only goes live after the source side is already up; a mid-flight
+# failure leaves the checker-visible endpoint untouched.
+publish_release() {
+  RAPI="$1"; LABEL="$2"
+  curl -s -H "$AUTH" -H "$ACC" "$RAPI/releases/tags/$TAG" > /tmp/rel.json
+  if ! python3 -c "import json,sys;sys.exit(0 if 'id' in json.load(open('/tmp/rel.json')) else 1)" 2>/dev/null; then
+    curl -s -X POST -H "$AUTH" -H "$ACC" "$RAPI/releases" \
+      -d "{\"tag_name\":\"$TAG\",\"name\":\"Bolt $VER\",\"body\":$BODY}" > /tmp/rel.json
+    python3 -c "import json;d=json.load(open('/tmp/rel.json'));assert 'id' in d, d.get('message')"
+  else
+    echo "$LABEL: release $TAG exists — refreshing notes"
+    RELID2=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")
+    curl -s -X PATCH -H "$AUTH" -H "$ACC" "$RAPI/releases/$RELID2" -d "{\"name\":\"Bolt $VER\",\"body\":$BODY}" > /tmp/rel.json
+  fi
+  RELID=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")
+  UPURL=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['upload_url'].replace('{?name,label}',''))")
+  echo "$LABEL: release id $RELID"
 
-# ---- 8. upload the APK asset (replace any existing) ----
-for A in "Bolt-$TAG.apk"; do
-  for AID in $(curl -s -H "$AUTH" -H "$ACC" "$API/releases/$RELID/assets" | python3 -c "import json,sys;print(' '.join(str(a['id']) for a in json.load(sys.stdin) if a['name']=='$A'))"); do
-    curl -s -X DELETE -H "$AUTH" "$API/releases/assets/$AID" || true
-  done
-  CT="application/vnd.android.package-archive"
-  curl -s -X POST -H "$AUTH" -H "Content-Type: $CT" --data-binary "@$STAGE/$A" "$UPURL?name=$A" \
-    | python3 -c "import json,sys;d=json.load(sys.stdin);print(' uploaded:',d.get('name'),d.get('size'),'bytes')"
-done
+  # ---- 8. upload the APK asset (skip the delete+reupload cycle when the
+  # live asset is already byte-identical — keeps the endpoint continuously
+  # served; otherwise replace any existing) ----
+  A="Bolt-$TAG.apk"
+  LOCAL_SHA=$(sha256sum "$STAGE/$A" | cut -d' ' -f1)
+  STATE=$(curl -s -H "$AUTH" -H "$ACC" "$RAPI/releases/$RELID/assets" | python3 -c "
+import json, sys
+for a in json.load(sys.stdin):
+    if a['name'] == '$A':
+        d = (a.get('digest') or '').split(':')[-1]
+        print('MATCH' if d == '$LOCAL_SHA' else ('DIFF' if d else 'NODIGEST'))
+        break
+else:
+    print('NONE')")
+  if [ "$STATE" = "MATCH" ]; then
+    echo "  $A already live on $LABEL with the identical sha256 — no re-upload"
+  else
+    for AID in $(curl -s -H "$AUTH" -H "$ACC" "$RAPI/releases/$RELID/assets" | python3 -c "import json,sys;print(' '.join(str(a['id']) for a in json.load(sys.stdin) if a['name']=='$A'))"); do
+      curl -s -X DELETE -H "$AUTH" "$RAPI/releases/assets/$AID" || true
+    done
+    CT="application/vnd.android.package-archive"
+    curl -s -X POST -H "$AUTH" -H "Content-Type: $CT" --data-binary "@$STAGE/$A" "$UPURL?name=$A" \
+      | python3 -c "import json,sys;d=json.load(sys.stdin);print(' uploaded:',d.get('name'),d.get('size'),'bytes')"
+  fi
 
-# ---- 9. verify ritual: download back, md5 + cert must match ----
-sleep 2
-AID=$(curl -s -H "$AUTH" -H "$ACC" "$API/releases/tags/$TAG" | python3 -c "import json,sys;print(next(a['id'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.apk')))")
-curl -sL -H "$AUTH" -H "Accept: application/octet-stream" "$API/releases/assets/$AID" -o /tmp/verify.apk
-md5sum "$APK" /tmp/verify.apk
-[ "$(md5sum "$APK" | cut -d' ' -f1)" = "$(md5sum /tmp/verify.apk | cut -d' ' -f1)" ] || { echo "ERROR: uploaded APK differs"; exit 1; }
+  # ---- 9. per-repo verify ritual: download back, md5 must match ----
+  sleep 2
+  AID=$(curl -s -H "$AUTH" -H "$ACC" "$RAPI/releases/$RELID/assets" | python3 -c "import json,sys;print(next(a['id'] for a in json.load(sys.stdin) if a['name'].endswith('.apk')))")
+  curl -sL -H "$AUTH" -H "Accept: application/octet-stream" "$RAPI/releases/assets/$AID" -o /tmp/verify.apk
+  [ "$(md5sum "$APK" | cut -d' ' -f1)" = "$(md5sum /tmp/verify.apk | cut -d' ' -f1)" ] || { echo "ERROR: $LABEL uploaded APK differs"; exit 1; }
+  echo "$LABEL: download-back verify OK (md5 match)"
+}
 
-# ---- 10. LIVE verification (the v1.4.10 report: "verify the release is
-# live on GitHub" — no mirror hop anymore, the release IS on the public
-# releases repo): the /releases/latest endpoint the in-app update checker
-# reads must return THIS version, with the APK asset downloadable
-# ANONYMOUSLY and byte-identical. The API metadata call authenticates
-# (the anonymous per-IP rate limit is NOT a release-health signal); only
-# the asset download itself is anonymous — that is the check that matters.
-echo "verifying the live release..."
-TOK_ARG="$TOK" python3 - "$VER" "$API" << 'PYEOF'
-import json, sys, urllib.request
-ver, api, tok = sys.argv[1], sys.argv[2], __import__("os").environ["TOK_ARG"]
-req = urllib.request.Request(api + "/releases/latest",
-                             headers={"Authorization": "Bearer " + tok,
-                                      "Accept": "application/vnd.github+json"})
-r = json.load(urllib.request.urlopen(req))
-assert r["tag_name"] == "v" + ver, f"latest is {r['tag_name']}, expected v{ver}"
-apk = next((a for a in r["assets"] if a["name"].endswith(".apk")), None)
-assert apk, "no .apk asset on the live release"
-data = urllib.request.urlopen(apk["browser_download_url"]).read()   # anonymous
+publish_release "$SRC_API" "SOURCE   (bolt-browser)"
+publish_release "$API"    "RELEASES (bolt-browser-releases)"
+
+# ---- 10. LIVE verification, on BOTH repos (the v1.4.10 report: "verify
+# the release is live on GitHub"; the 2026-11-18 report: "the APK appears
+# on the bolt-browser releases page"). In full mode the /releases/latest
+# endpoint the in-app update checker reads must return THIS version; the
+# tag's release on the SOURCE repo must exist in every mode; and each
+# repo's APK asset must download ANONYMOUSLY and be byte-identical. The
+# API metadata calls authenticate (the anonymous per-IP rate limit is NOT
+# a release-health signal); only the asset downloads are anonymous —
+# that is the check that matters.
+echo "verifying the live releases (both repos)..."
+if [ $REPUBLISH -eq 0 ]; then LATEST_ARG=1; else LATEST_ARG=0; fi
+TOK_ARG="$TOK" python3 - "$VER" "$API" "$SRC_API" "$LATEST_ARG" << 'PYEOF'
+import json, os, sys, hashlib, urllib.request
+ver, api, src_api, latest_arg, tok = (sys.argv[1], sys.argv[2], sys.argv[3],
+                                      sys.argv[4], os.environ["TOK_ARG"])
 local = open(f"/home/z/my-project/download/Bolt-v{ver}.apk", "rb").read()
-assert len(data) == len(local), f"size mismatch: live {len(data)} vs local {len(local)}"
-import hashlib
-assert hashlib.md5(data).hexdigest() == hashlib.md5(local).hexdigest(), "md5 mismatch"
-print(f"LIVE OK: {r['html_url']}")
-print(f"  asset {apk['name']} {apk['size']} B, anonymous download verified, md5 match")
+
+def fetch_anon(url, tries=3):
+    # the anonymous asset CDN occasionally 403s on rate limits — retry;
+    # a PERSISTENT failure is a real release-health failure and raises
+    import time
+    for i in range(tries):
+        try:
+            return urllib.request.urlopen(url).read()   # anonymous
+        except Exception:
+            if i == tries - 1:
+                raise
+            time.sleep(3)
+
+def check(base, label, by_latest):
+    path = "/releases/latest" if by_latest else f"/releases/tags/v{ver}"
+    req = urllib.request.Request(base + path,
+                                 headers={"Authorization": "Bearer " + tok,
+                                          "Accept": "application/vnd.github+json"})
+    r = json.load(urllib.request.urlopen(req))
+    assert r["tag_name"] == "v" + ver, f"{label}: found {r['tag_name']}, expected v{ver}"
+    apk = next((a for a in r["assets"] if a["name"].endswith(".apk")), None)
+    assert apk, f"{label}: no .apk asset on the release"
+    data = fetch_anon(apk["browser_download_url"])
+    assert len(data) == len(local), f"{label}: size mismatch {len(data)} vs {len(local)}"
+    assert hashlib.md5(data).hexdigest() == hashlib.md5(local).hexdigest(), f"{label}: md5 mismatch"
+    print(f"LIVE OK [{label}]: {r['html_url']}")
+    print(f"  asset {apk['name']} {apk['size']} B, anonymous download verified, md5 match")
+
+# RELEASES: in full mode /releases/latest (what the in-app update checker
+# reads) must return THIS version; in republish mode the live latest may
+# legitimately have moved on — the tag's release is the repair target.
+check(api, "RELEASES", by_latest=(latest_arg == "1"))
+# SOURCE: the tag's release must carry the APK (the dual-publish law)
+check(src_api, "SOURCE", by_latest=False)
 PYEOF
 
 echo
-echo "SOURCE  : https://github.com/arfan1210/bolt-browser/tree/$TAG"
+echo "SOURCE  : https://github.com/arfan1210/bolt-browser/releases/tag/$TAG"
 echo "RELEASE : https://github.com/arfan1210/bolt-browser-releases/releases/tag/$TAG"
