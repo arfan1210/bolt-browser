@@ -1,6 +1,7 @@
 package com.bolt.browser.ui;
 
 import android.animation.ValueAnimator;
+import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -2825,15 +2826,39 @@ public class TabsActivity extends AppCompatActivity {
 
     /** v1.3.31 — open the switcher where the action is: the ACTIVE tab
      *  ("show tabs from the bottom" — with the default manual sort the active
-     *  tab is usually the newest, at the bottom of the grid). Falls back to
-     *  the newest end of the list when the active tab is inside a group. */
+     *  tab is usually the newest, at the bottom of the grid). v1.4.12: a
+     *  member tab resolves to its GROUP row (see the walk below); the
+     *  end-of-list fallback now only covers a vanished/unknown active. */
     protected void scrollToActive() {
         rv.post(() -> {
             try {
+                // v1.4.12 — the group-member case: the ACTIVE tab may live
+                // INSIDE a folder, and a member never renders as its own
+                // grid item — its row IS the group row. The old walk only
+                // matched loose tab items, so every group-member start
+                // fell through to the scroll-to-end fallback and the
+                // user's current context was off-screen. The walk now
+                // resolves the group row for a member (by groupId) and
+                // still matches loose tabs directly (search-filtered lists
+                // are flat, so the direct match keeps covering them).
+                Tab active = null;
+                if (tm.active >= 0 && tm.active < tm.tabs.size()) {
+                    active = tm.tabs.get(tm.active);   // single atomic read
+                }
                 int target = -1;
-                for (int i = 0; i < adapter.getItemCount(); i++) {
-                    Tab t = adapter.tabAt(i);
-                    if (t != null && tm.tabs.indexOf(t) == tm.active) { target = i; break; }
+                if (active != null) {
+                    for (int i = 0; i < adapter.getItemCount(); i++) {
+                        if (adapter.isGroup(i)) {
+                            if (active.groupId != 0) {
+                                JSONObject g = adapter.groupAt(i);
+                                if (g != null && g.optLong("id") == active.groupId) {
+                                    target = i; break;
+                                }
+                            }
+                        } else if (adapter.tabAt(i) == active) {
+                            target = i; break;
+                        }
+                    }
                 }
                 if (target < 0) {
                     // v1.3.47: sort options removed — the active tab is
@@ -3188,84 +3213,26 @@ public class TabsActivity extends AppCompatActivity {
                     gh.dot.setBackgroundColor(Fx.GROUP_COLORS[
                             Math.max(0, Math.min(Fx.GROUP_COLORS.length - 1, g.optInt("color", 0)))]);
                 }
-                // ---- collapsible group (v1.3.9): header tap folds/unfolds the
-                // mini-card strip; state persists in groups.json. Drag-to-group
-                // still works on a collapsed row (it remains a drop target).
-                final boolean collapsed = g.optBoolean("collapsed", false);
-                if (gh.cardsWrap != null) gh.cardsWrap.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+                // v1.4.12 — THE FOLDER SHEET replaces the inline strip. The
+                // old expansion (v1.3.9) unrolled the group's minis into a
+                // horizontal strip inside the grid row; past two tabs the
+                // strip squished them unreadable. The header now opens a
+                // VERTICALLY SCROLLABLE bottom sheet (openGroupSheet) — one
+                // full-width row per tab, thumbnail + title + the ⋯ member
+                // menu. The collapsed flag is no longer toggled from here
+                // (the chevron always reads ∨ = "tap opens the folder") and
+                // the inline strip never renders again; drag-to-group still
+                // works — the row remains a drop target exactly as before.
+                if (gh.cardsWrap != null) gh.cardsWrap.setVisibility(View.GONE);
                 if (gh.chevron != null) {
-                    gh.chevron.setRotation(collapsed ? 0f : 90f); // › collapsed, ∨ expanded
+                    gh.chevron.setRotation(90f); // ∨ — the folder opens the sheet
                     gh.chevron.setAlpha(0.6f);
                 }
                 if (gh.header != null) {
                     gh.header.setOnClickListener(v -> {
-                        boolean now = !g.optBoolean("collapsed", false);
-                        try { g.put("collapsed", now); } catch (Throwable ignored) {}
-                        prefs.setGroupCollapsed(gid, now);
-                        // rebind just this row via the holder's CURRENT position
-                        // (drag reorders can invalidate the bind-time one).
-                        // v1.3.51: guard the notify — a header tap can land
-                        // MID-GLIDE (a fling the user never waited out), and
-                        // notify-during-scroll throws the same
-                        // IllegalStateException as notify-during-layout (the
-                        // v1.3.46-era crash in the field diagnostics; the
-                        // v1.3.47 deferIfBusy rule, applied to the one
-                        // remaining unguarded notify).
-                        int p = gh.getAdapterPosition();
-                        if (p >= 0) {
-                            if (deferIfBusy(() -> notifyItemChanged(p))) return;
-                            notifyItemChanged(p);
-                        }
+                        Ui.tap(v);
+                        openGroupSheet(g);
                     });
-                }
-                gh.cards.removeAllViews();
-                if (!collapsed) {
-                    for (final Tab t : groupTabs) {
-                        View mini = LayoutInflater.from(TabsActivity.this)
-                                .inflate(R.layout.item_tab_mini, gh.cards, false);
-                        ImageView thumb = mini.findViewById(R.id.iv_mini_thumb);
-                        // v1.3.40: the mini's visual is the site's real logo
-                        // tile (snapshot thumbs die with the cache — field
-                        // report: "replace the thumbnail with website icon
-                        // entirely")
-                        if (t.isHome) thumb.setImageResource(R.drawable.ic_home);
-                        else {
-                            String mh = Fx.hostOf(t.url);
-                            thumb.setImageDrawable(com.bolt.browser.util.FaviconStore.avatar(
-                                    TabsActivity.this, mh,
-                                    t.title == null || t.title.isEmpty() ? mh : t.title, 32));
-                        }
-                        TextView ti = mini.findViewById(R.id.tv_mini_title);
-                        ti.setText(t.isHome ? getString(R.string.home)
-                                : (t.title == null || t.title.isEmpty() ? t.url : t.title));
-                        mini.setOnClickListener(v -> {
-                            if (selMode) { toggleSel(t); return; }
-                            int idx = tm.tabs.indexOf(t);
-                            if (idx >= 0) {
-                                tm.active = idx;
-                                finish();
-                            }
-                        });
-                        // v1.4.4 — THE IN-GROUP DRAG replaces the plain
-                        // long-click: hold-still still opens the member menu
-                        // (tabOptions fires at UP), hold+move reorders the
-                        // members inside the folder (tm.reorderGroupMember).
-                        wireMiniDrag(mini, gh.cards, t, gid, groupTabs.indexOf(t));
-                        // v1.4.9 — THE VISIBLE ⋯ (the report: "Maybe the
-                        // tabs one has the single tab remove from group
-                        // option but there is no indication that a menu
-                        // tab exits there"): every member mini wears its
-                        // own menu button — Edit tab / Remove from group /
-                        // Move to group / Close tab — the hold gesture stays
-                        // as the second door. The old X only closed (the
-                        // menu's last row); the ⋯ is the indicated door.
-                        mini.findViewById(R.id.btn_mini_menu).setOnClickListener(v -> {
-                            Ui.tap(v);
-                            tabOptions(t, gid);
-                        });
-                        applySelVisuals(mini, t);
-                        gh.cards.addView(mini);
-                    }
                 }
                 gh.menu.setOnClickListener(v -> groupOptions(g));
             } else {
@@ -3793,6 +3760,143 @@ public class TabsActivity extends AppCompatActivity {
             }
         } catch (Throwable ignored) {}
         return null;
+    }
+
+    /**
+     * v1.4.12 — THE GROUP FOLDER SHEET. The v1.3.9 inline expansion unrolled
+     * a group's members into a horizontal mini-strip inside the grid row;
+     * past two tabs that strip squished the minis unreadable. Opening the
+     * folder now shows a VERTICALLY SCROLLABLE bottom sheet (Ui.showSheet —
+     * the app's standard sheet, grab handle + rounded top + night veil):
+     * one full-width row per member tab — thumbnail (the same logo tile the
+     * cards and old minis wear), title, domain, and the visible ⋯ member
+     * menu (tabOptions: Edit tab / Remove from group / Move to group /
+     * Close tab — v1.4.9's indicated door survives). Tap a row = switch to
+     * that tab and leave the switcher, exactly like tapping a card.
+     */
+    /** v1.4.12 — the sheet reference so a member move can rebuild it. */
+    protected Dialog groupSheet;
+
+    protected void openGroupSheet(final JSONObject g) {
+        final long gid = g.optLong("id");
+        String name = g.optString("name", "Group");
+        // tabsOfGroup returns a fresh list and holds the monitor internally
+        // (TabManager, the v1.4.9 law) — no extra wrap needed here
+        List<Tab> groupTabs = new ArrayList<>(tm.tabsOfGroup(gid));
+        if (groupTabs.isEmpty()) { Fx.toast(this, getString(R.string.group_name)); return; }
+        LinearLayout body = Ui.sheetBody(this);
+        TextView t = new TextView(this);
+        t.setText(name + "  ·  " + groupTabs.size());
+        t.setTextSize(18);
+        t.setTypeface(Ui.medium());
+        t.setTextColor(Fx.txt(this));
+        t.setPadding(Fx.dp(this, 4), Fx.dp(this, 12), Fx.dp(this, 4), Fx.dp(this, 6));
+        body.addView(t, new LinearLayout.LayoutParams(-1, -2));
+        final Dialog[] dRef = new Dialog[1];
+        for (int i = 0; i < groupTabs.size(); i++) {
+            final Tab tab = groupTabs.get(i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight(Fx.dp(this, 56));
+            int ph = Fx.dp(this, 12), pv = Fx.dp(this, 8);
+            row.setPadding(ph, pv, ph, pv);
+            row.setBackground(androidx.core.content.ContextCompat.getDrawable(
+                    this, R.drawable.bg_item));
+            ImageView thumb = new ImageView(this);
+            try {
+                if (tab.isHome) thumb.setImageResource(R.drawable.ic_home);
+                else {
+                    String mh = Fx.hostOf(tab.url);
+                    thumb.setImageDrawable(com.bolt.browser.util.FaviconStore.avatar(
+                            this, mh,
+                            tab.title == null || tab.title.isEmpty() ? mh : tab.title, 36));
+                }
+            } catch (Throwable ignored) {}
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    Fx.dp(this, 40), Fx.dp(this, 40));
+            tlp.rightMargin = Fx.dp(this, 14);
+            row.addView(thumb, tlp);
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView title = new TextView(this);
+            title.setText(tab.isHome ? getString(R.string.home)
+                    : (tab.title == null || tab.title.isEmpty() ? tab.url : tab.title));
+            title.setTextSize(16);
+            title.setTextColor(Fx.txt(this));
+            title.setSingleLine(true);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            col.addView(title, new LinearLayout.LayoutParams(-1, -2));
+            TextView dom = new TextView(this);
+            dom.setText(tab.isHome ? "" : Fx.hostOf(tab.url));
+            dom.setTextSize(12);
+            dom.setTextColor(Fx.dim(this));
+            dom.setSingleLine(true);
+            col.addView(dom, new LinearLayout.LayoutParams(-1, -2));
+            row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+            ImageButton more = new ImageButton(this);
+            more.setImageResource(R.drawable.ic_more);
+            more.setBackground(androidx.core.content.ContextCompat.getDrawable(
+                    this, R.drawable.bg_tab_btn));
+            more.setPadding(Fx.dp(this, 6), Fx.dp(this, 6), Fx.dp(this, 6), Fx.dp(this, 6));
+            more.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            more.setColorFilter(Fx.dim(this));
+            more.setOnClickListener(v -> {
+                Ui.tap(v);
+                try { dRef[0].dismiss(); } catch (Throwable ignored) {}
+                tabOptions(tab, gid);
+            });
+            row.addView(more, new LinearLayout.LayoutParams(
+                    Fx.dp(this, 34), Fx.dp(this, 34)));
+            row.setOnClickListener(v -> {
+                Ui.tap(v);
+                if (selMode) { toggleSel(tab); return; }
+                int idx = tm.tabs.indexOf(tab);
+                if (idx >= 0) {
+                    tm.active = idx;
+                    try { dRef[0].dismiss(); } catch (Throwable ignored) {}
+                    finish();
+                }
+            });
+            // v1.4.12 — the in-group REORDER door. The old inline strip's
+            // hold+drag (wireMiniDrag) died with the strip; the v1.4.4 law —
+            // members can be reordered inside the folder — survives through
+            // an INDICATED door instead (the v1.4.9 ⋯ lesson): long-press a
+            // row, move it up or down (tm.reorderGroupMember, member-indexed
+            // exactly like the drag was), the sheet rebuilds in the new order.
+            final int memberIdx = i;
+            row.setOnLongClickListener(v -> {
+                Ui.tap(v);
+                showMemberMove(g, tab, memberIdx, groupTabs.size());
+                return true;
+            });
+            body.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        dRef[0] = Ui.showSheet(this, body);
+        groupSheet = dRef[0];
+    }
+
+    /** the long-press door: Move up / Move down inside the folder
+     *  (tm.reorderGroupMember — the v1.4.4 law, sheet edition). */
+    protected void showMemberMove(final JSONObject g, final Tab t, int idx, int n) {
+        final long gid = g.optLong("id");
+        List<String> opts = new ArrayList<>();
+        final List<int[]> moves = new ArrayList<>();
+        if (idx > 0) { opts.add("Move up"); moves.add(new int[]{idx, idx - 1}); }
+        if (idx < n - 1) { opts.add("Move down"); moves.add(new int[]{idx, idx + 1}); }
+        if (opts.isEmpty()) { Fx.toast(this, "The tab is alone in the group"); return; }
+        Ui.choiceSheet(this, g.optString("name", "Group"),
+                opts.toArray(new String[0]), -1, pick -> {
+                    try {
+                        int[] mv = moves.get(pick);
+                        if (tm.reorderGroupMember(gid, mv[0], mv[1])) {
+                            adapter.reload();
+                            try { if (groupSheet != null) groupSheet.dismiss(); }
+                            catch (Throwable ignored) {}
+                            openGroupSheet(g);   // the sheet rebuilds in the new order
+                        }
+                    } catch (Throwable ignored) {}
+                });
     }
 
     protected void groupOptions(final JSONObject g) {

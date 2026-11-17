@@ -540,8 +540,8 @@ public class Probe {
         need(rr.returncode == 0, "the probe runs green (the merge, the slot law, the folder add)")
 
 print("V — the version pin")
-need(re.search(r'versionCode 125\b', gradle) is not None, "versionCode 125")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
-need(re.search(r'versionName "1\.4\.11"', gradle) is not None, 'versionName "1.4.7"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(re.search(r'versionCode 126\b', gradle) is not None, "versionCode 126")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+need(re.search(r'versionName "1\.4\.12"', gradle) is not None, 'versionName "1.4.7"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 
 print()
 print(f"{'GATE GREEN' if fails == 0 else 'GATE RED (' + str(fails) + ')'}")

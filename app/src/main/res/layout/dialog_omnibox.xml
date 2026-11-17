@@ -14,10 +14,26 @@
         android:layout_width="match_parent" android:layout_height="52dp"
         android:layout_marginTop="10dp"
         android:background="@drawable/bg_urlbar" android:gravity="center_vertical">
-        <ImageView android:id="@+id/iv_omni_search"
-            android:layout_width="22dp" android:layout_height="22dp"
-            android:src="@drawable/ic_search" android:layout_marginStart="12dp"
-            android:contentDescription="@string/search"/>
+        <!-- v1.4.12 — THE ENGINE CHIP: the old static search glyph is now a
+             clickable chip (glyph + drop arrow) that opens the engine
+             picker — Google / DuckDuckGo / Bing / Brave / Startpage — for
+             the query currently in the field. -->
+        <LinearLayout android:id="@+id/omni_engine"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:gravity="center_vertical" android:paddingStart="10dp"
+            android:paddingEnd="2dp" android:background="?attr/selectableItemBackground"
+            android:clickable="true" android:focusable="true">
+            <ImageView android:id="@+id/iv_omni_search"
+                android:layout_width="20dp" android:layout_height="20dp"
+                android:src="@drawable/ic_search"
+                android:contentDescription="@string/search"/>
+            <ImageView android:id="@+id/iv_omni_engine_arrow"
+                android:layout_width="14dp" android:layout_height="14dp"
+                android:layout_marginStart="1dp"
+                android:src="@drawable/ic_drop_down"
+                android:contentDescription="Choose search engine"/>
+        </LinearLayout>
         <EditText android:id="@+id/et_omni"
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:singleLine="true"
@@ -25,6 +41,12 @@
             android:textSize="17sp" android:background="@null"
             android:paddingStart="10dp" android:paddingEnd="10dp"
             android:importantForAutofill="no"/>
+        <!-- v1.4.12 — THE IMAGE-SEARCH DOOR: camera or gallery pick, the
+             picture routes to the selected engine's visual search. -->
+        <ImageButton android:id="@+id/btn_omni_cam"
+            android:layout_width="40dp" android:layout_height="40dp"
+            android:src="@drawable/ic_camera" android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Image search"/>
         <ImageButton android:id="@+id/btn_omni_voice"
             android:layout_width="40dp" android:layout_height="40dp"
             android:src="@drawable/ic_mic" android:background="?attr/selectableItemBackgroundBorderless"

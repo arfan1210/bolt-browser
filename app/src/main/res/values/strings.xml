@@ -382,6 +382,11 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.12 (2026-11-18): the usability five-pack — the AI translate
+         payload diet, the group folder sheet + switcher context, the
+         incognito tabs process flag, the system search entries, the
+         omnibox engine/image doors -->
+    <item>1.4.12|AI screen translation uploads drop from 2–4 MB to ~200 KB (1280 px / 75% quality — no more mobile-network timeouts or 400/413 rejections); tab groups open a vertically scrollable bottom sheet instead of the squished inline strip, and the switcher scrolls to your active tab even when it lives inside a folder; the incognito tabs view finally runs in incognito mode (a missing process flag made it list and open NORMAL tabs); Bolt joins the text-selection toolbar and the system "Web search" surface; the omnibox gains an engine-switch chip beside the field and a camera/image-search icon that routes a photo to the selected engine\'s visual search.</item>
     <!-- v1.4.11 (2026-11-18): the stability four-pack — the OCR rotation
          leak, the UI-side tab-list races, the adblock extension-less
          blindspot, the cookie-jar lock contention -->

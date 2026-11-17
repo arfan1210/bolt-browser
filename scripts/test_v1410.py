@@ -64,28 +64,30 @@ about = open(os.path.join(ROOT, "app/src/main/java/com/bolt/browser/ui/AboutActi
 rel = open(os.path.join(ROOT, "scripts/release.sh"), encoding="utf8").read()
 
 print("A — the version bump (the collision corpse)")
-need(re.search(r"versionCode 125\b", gradle) is not None,
-     "versionCode 125 (v1.4.11 re-point 2026-11-18: pins follow the current release)")
-need(re.search(r'versionName "1\.4\.11"', gradle) is not None,
+need(re.search(r"versionCode 126\b", gradle) is not None,  # # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+     "versionCode 126 (v1.4.11 re-point 2026-11-18; v1.4.12 re-point: pins follow the current release)")
+need(re.search(r'versionName "1\.4\.12"', gradle) is not None,  # # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
      'versionName "1.4.11"')
 
 print("B — the About changelog (the label law + the honesty trim)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
         if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.11|"),   # v1.4.11 re-point (2026-11-18)
-     "the newest entry is 1.4.11 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.10|"),
-     "the second entry is 1.4.10 (the previous live release)")  # v1.4.11 re-point (2026-11-18)
-need("Aho-Corasick" in entries[1] and "regex Patterns" in entries[1],   # v1.4.11 re-point (2026-11-18): the four-pack line slid to [1]
+need(entries and entries[0].startswith("1.4.12|"),   # v1.4.12 re-point (2026-11-18): 1.4.12 landed at [0]
+     "the newest entry is 1.4.12 (the label law)")
+need(len(entries) > 1 and entries[1].startswith("1.4.11|"),   # v1.4.12 re-point (2026-11-18): the 1.4.11 line sits at [1]
+     "the second entry is 1.4.11 (the previous live release)")
+need(len(entries) > 2 and entries[2].startswith("1.4.10|"),   # v1.4.12 re-point (2026-11-18): the four-pack line slid to [2]
+     "the third entry is 1.4.10 (this gate's release)")
+need("Aho-Corasick" in entries[2] and "regex Patterns" in entries[2],   # v1.4.12 re-point (2026-11-18): the four-pack line slid to [2]
      "the 1.4.10 line names the pattern diet (the ~130 MB memory corpse)")
-need("WebView registry" in entries[1],   # v1.4.11 re-point (2026-11-18)
+need("WebView registry" in entries[2],   # v1.4.12 re-point (2026-11-18)
      "the 1.4.10 line names the closed-tab WebView leak")
-need("media service" in entries[1],   # v1.4.11 re-point (2026-11-18)
+need("media service" in entries[2],   # v1.4.12 re-point (2026-11-18)
      "the 1.4.10 line names the tab-list race")
-need("signing key" in entries[1] and "install in place" in entries[1],   # v1.4.11 re-point (2026-11-18)
+need("signing key" in entries[2] and "install in place" in entries[2],   # v1.4.12 re-point (2026-11-18)
      "the 1.4.10 line names the key rotation + the same-certificate promise")
-need("Under the hood" not in entries[2],   # v1.4.11 re-point (2026-11-18): the 1.4.9 line slid to [2]
+need("Under the hood" not in entries[3],   # v1.4.12 re-point (2026-11-18): the 1.4.9 line slid to [3]
      "the 1.4.9 line no longer claims the hardening (it shipped in 1.4.10, not 1.4.9)")
 
 print("C — the pipeline law (release.sh targets the two public repos)")

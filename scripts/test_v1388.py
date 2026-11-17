@@ -148,7 +148,7 @@ need("never receives the ongoing MOVE stream" in act,
      "the touch-target law is documented where it bit")
 
 print("I5 — version pin")
-need('versionName "1.4.11"' in gradle and "versionCode 125" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need('versionName "1.4.12"' in gradle and "versionCode 126" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
      "111 / 1.3.98")
 
 print()

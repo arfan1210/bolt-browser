@@ -128,7 +128,7 @@ print("version pin")
 # current pin — test_v1384.py; the E1-E6 contracts above still hold: the
 # guard, the enable-first flip, the sweep wiring, the allowlists, the
 # startup heal, the storage meter).
-need('versionName "1.4.11"' in gradle and "versionCode 125" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need('versionName "1.4.12"' in gradle and "versionCode 126" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
      "build.gradle must be bumped to 1.3.98 / 111 (test_v1386.py owns the pin)")
 
 print()

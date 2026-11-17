@@ -96,8 +96,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * BrowserActivity passes in); (3) saving a key dead-ended the run (now
  * the capture continues). The picker gains an "AI settings" neutral
  * button — provider/key/model/base editable ANY time — and the AI
- * request eats a 2200 px image (was 1600). startWithScript() is the
- * Bolt AI panel's direct entry.
+ * request ate a 2200 px image until v1.4.12's payload diet (1280 px
+ * q75, ~200 KB — the mobile-network timeout/400/413 class). 
+ * startWithScript() is the Bolt AI panel's direct entry.
  *
  * The pipeline:
  *
@@ -105,7 +106,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *     path, the v1.3.40-proven GPU-true capture)
  *     → mode pick (AI — the primary; Basic OCR — the universal
  *       no-AI fallback, EN+JP+CN in one pass; remembered)
- *     → downscale ≤1600 px + JPEG q90, pushed to the OCR WebView in
+ *     → downscale ≤1600 px + JPEG q90 (AI: ≤1280 px q75), pushed to the
+ *       OCR WebView in
  *       ~200 KB chunks (binder-safe)
  *     → OCR (tesseract.js; language models served from filesDir by
  *       shouldInterceptRequest at https://bolt.ocr/tess — never real
@@ -403,14 +405,18 @@ object ScreenTranslate {
     }
 
     /**
-     * v1.3.75 — the AI path gets MORE PIXELS: 2200 px long edge (manga
-     * strokes survive at reading size for a vision model; 1600 left small
-     * bubble text marginal — part of the "inaccurate and full of
-     * gibberish" report once the run fell back to OCR). Payload stays
-     * ~0.5–1 MB, far inside the 20 MB inline limit.
+     * v1.4.12 — THE PAYLOAD DIET. v1.3.75 raised the AI path to 2200 px q90
+     * ("more pixels" for manga strokes), but a modern phone screenshot at
+     * 2200 px q90 base64s to 2–4 MB — mobile networks time out and strict
+     * gateways answer 400/413 before the request ever lands. 1280 px long
+     * edge at q75 base64s to ~200 KB: still comfortably legible for a vision
+     * model's text extraction (the pixels of a 1080p screenshot mostly
+     * survive 1:1), and it uploads near-instantly even on a weak cell link.
+     * (The v1.3.75 "gibberish" report was the OCR FALLBACK being inaccurate,
+     * not the AI resolution — the diet does not reopen it.)
      */
     private fun encodeAi(bmp: Bitmap): Enc? {
-        return encodeScaled(bmp, 2200, 90)
+        return encodeScaled(bmp, 1280, 75)
     }
 
     /** the shared downscale+JPEG encoder behind [encodeJpeg]/[encodeAi]. */

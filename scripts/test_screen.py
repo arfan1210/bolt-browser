@@ -382,7 +382,10 @@ def main():
                   'openAiUrl(a, url)',
                   'scr ai cfg saved',
                   'fun startWithScript',
-                  'encodeScaled(bmp, 2200, 90)'):
+                  # v1.4.12 re-point (2026-11-18): the AI payload diet —
+                  # 2200/90 base64'd to 2-4 MB and died on mobile networks
+                  # (timeouts, HTTP 400/413); the AI encoder is 1280/75 now
+                  'encodeScaled(bmp, 1280, 75)'):
         if probe not in scr:
             print(f"FAIL: ScreenTranslate lacks {probe} (the v1.3.75 AI UX fixes)")
             return 1

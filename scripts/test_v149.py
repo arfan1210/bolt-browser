@@ -172,8 +172,9 @@ need('android:id="@+id/btn_mini_menu"' in mini and "@drawable/ic_more" in mini,
      "the tab mini wears a ⋯ button (the visible door)")
 need('android:id="@+id/btn_mini_close"' not in mini,
      "the close-only X is retired (Close tab lives in the menu)")
-need("R.id.btn_mini_menu" in ta and "tabOptions(t, gid);" in ta,
-     "the mini's ⋯ opens the member menu")
+need(("tabOptions(t, gid);" in ta or "tabOptions(tab, gid);" in ta)
+     and ("R.id.btn_mini_menu" in ta or "R.drawable.ic_more" in ta),
+     "the member tab's ⋯ opens the member menu")  # v1.4.12 re-point (2026-11-18): the inline mini-strip became the group folder SHEET (TabsActivity.openGroupSheet) — the visible ⋯ member-menu door survives as the sheet row's ic_more button -> tabOptions(tab, gid)
 to = ta.split("protected void tabOptions")[1][:3000] if "protected void tabOptions" in ta else ""
 need("R.string.edit_tab" in to and "R.string.remove_from_group" in to
      and "R.string.move_to_group" in to and "R.string.close_tab" in to,
@@ -662,10 +663,10 @@ public class Probe {
         need(rr.returncode == 0, "the probe runs green (the render-neighbour law end to end)")
 
 print("V — the version pin")
-need(re.search(r'versionCode 125\b', gradle) is not None, "versionCode 125")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
-need(re.search(r'versionName "1\.4\.11"', gradle) is not None, 'versionName "1.4.11"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(re.search(r'versionCode 126\b', gradle) is not None, "versionCode 126")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+need(re.search(r'versionName "1\.4\.12"', gradle) is not None, 'versionName "1.4.12"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 entries = re.findall(r'<item>([^<]+)</item>', strs.split('name="about_changelog"')[1]) if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.11|"), "the About changelog's newest entry is 1.4.11 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(entries and entries[0].startswith("1.4.12|"), "the About changelog's newest entry is 1.4.12 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 
 print()
 print("V149 GATE:", "OK" if fails == 0 else f"BAD ({fails} fail)")

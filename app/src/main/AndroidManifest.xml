@@ -99,6 +99,35 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
+            <!-- v1.4.12 — THE SYSTEM SEARCH ENTRIES. Bolt was missing from
+                 the text-selection floating toolbar and the "Web search"
+                 surfaces because nothing declared the three system search
+                 actions. Every launcher alias carries them (exactly one
+                 face is enabled at a time, so the app answers regardless
+                 of which icon is active):
+                   - WEB_SEARCH: the system search dialog / quick search box
+                     (query rides SearchManager.QUERY)
+                   - SEND text/plain: the share sheet's "search with" path
+                     (query rides EXTRA_TEXT)
+                   - PROCESS_TEXT: the text-selection floating toolbar
+                     (query rides EXTRA_PROCESS_TEXT)
+                 All three land in BrowserActivity.handleIntent() and route
+                 through loadInTab() — URL-vs-query resolution, engine
+                 choice, tracker stripping, the works. -->
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity-alias>
 
         <!-- v1.3.79 — APP ICON OPTIONS ("add option to change the logo of the
@@ -130,6 +159,35 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
+            <!-- v1.4.12 — THE SYSTEM SEARCH ENTRIES. Bolt was missing from
+                 the text-selection floating toolbar and the "Web search"
+                 surfaces because nothing declared the three system search
+                 actions. Every launcher alias carries them (exactly one
+                 face is enabled at a time, so the app answers regardless
+                 of which icon is active):
+                   - WEB_SEARCH: the system search dialog / quick search box
+                     (query rides SearchManager.QUERY)
+                   - SEND text/plain: the share sheet's "search with" path
+                     (query rides EXTRA_TEXT)
+                   - PROCESS_TEXT: the text-selection floating toolbar
+                     (query rides EXTRA_PROCESS_TEXT)
+                 All three land in BrowserActivity.handleIntent() and route
+                 through loadInTab() — URL-vs-query resolution, engine
+                 choice, tracker stripping, the works. -->
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity-alias>
         <activity-alias
             android:name=".ui.IconWizard"
@@ -148,6 +206,35 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
+            </intent-filter>
+            <!-- v1.4.12 — THE SYSTEM SEARCH ENTRIES. Bolt was missing from
+                 the text-selection floating toolbar and the "Web search"
+                 surfaces because nothing declared the three system search
+                 actions. Every launcher alias carries them (exactly one
+                 face is enabled at a time, so the app answers regardless
+                 of which icon is active):
+                   - WEB_SEARCH: the system search dialog / quick search box
+                     (query rides SearchManager.QUERY)
+                   - SEND text/plain: the share sheet's "search with" path
+                     (query rides EXTRA_TEXT)
+                   - PROCESS_TEXT: the text-selection floating toolbar
+                     (query rides EXTRA_PROCESS_TEXT)
+                 All three land in BrowserActivity.handleIntent() and route
+                 through loadInTab() — URL-vs-query resolution, engine
+                 choice, tracker stripping, the works. -->
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity-alias>
         <activity-alias
@@ -168,6 +255,35 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
+            <!-- v1.4.12 — THE SYSTEM SEARCH ENTRIES. Bolt was missing from
+                 the text-selection floating toolbar and the "Web search"
+                 surfaces because nothing declared the three system search
+                 actions. Every launcher alias carries them (exactly one
+                 face is enabled at a time, so the app answers regardless
+                 of which icon is active):
+                   - WEB_SEARCH: the system search dialog / quick search box
+                     (query rides SearchManager.QUERY)
+                   - SEND text/plain: the share sheet's "search with" path
+                     (query rides EXTRA_TEXT)
+                   - PROCESS_TEXT: the text-selection floating toolbar
+                     (query rides EXTRA_PROCESS_TEXT)
+                 All three land in BrowserActivity.handleIntent() and route
+                 through loadInTab() — URL-vs-query resolution, engine
+                 choice, tracker stripping, the works. -->
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity-alias>
         <activity-alias
             android:name=".ui.IconNeon"
@@ -186,6 +302,35 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
+            </intent-filter>
+            <!-- v1.4.12 — THE SYSTEM SEARCH ENTRIES. Bolt was missing from
+                 the text-selection floating toolbar and the "Web search"
+                 surfaces because nothing declared the three system search
+                 actions. Every launcher alias carries them (exactly one
+                 face is enabled at a time, so the app answers regardless
+                 of which icon is active):
+                   - WEB_SEARCH: the system search dialog / quick search box
+                     (query rides SearchManager.QUERY)
+                   - SEND text/plain: the share sheet's "search with" path
+                     (query rides EXTRA_TEXT)
+                   - PROCESS_TEXT: the text-selection floating toolbar
+                     (query rides EXTRA_PROCESS_TEXT)
+                 All three land in BrowserActivity.handleIntent() and route
+                 through loadInTab() — URL-vs-query resolution, engine
+                 choice, tracker stripping, the works. -->
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity-alias>
 

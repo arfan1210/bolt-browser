@@ -270,41 +270,125 @@ this relay, 2026-11-18):
    Never write `*/*` inside a Java block comment (Kotlin block comments
    nest, Java's do not); say "star-slash-star" if the glob itself matters.
 
+**v1.4.12 — the usability five-pack** (the sixth session of this relay,
+2026-11-18):
+
+1. *The AI translate payload diet.* `encodeAi` sent 2200 px q90 screenshots
+   (2–4 MB base64) — mobile networks timed out and strict gateways answered
+   400/413 before the request landed. Now 1280 px q75 (~200 KB), still
+   legible for vision-model text extraction; the OCR encoder (1600/90) is
+   untouched. Learning: v1.3.75's "more pixels" fix conflated the AI
+   resolution with the OCR FALLBACK's accuracy complaint — the report was
+   about the fallback, and the resolution bump only bought upload failures.
+   When a fix and a symptom arrive together, reread which one the field
+   report actually named.
+2. *The group folder sheet.* The v1.3.9 inline mini-strip squished groups
+   past two tabs. A group header now opens a vertically scrollable bottom
+   sheet (`openGroupSheet`, riding `Ui.showSheet` — handle, rounded top,
+   night veil) with one full-width row per member: favicon thumbnail,
+   title, domain, the ⋯ member menu, tap-to-switch. The collapsed flag and
+   its persistence retired with the strip; `wireMiniDrag`'s hold-drag died
+   with it too, so the v1.4.4 reorder law survives through a NEW indicated
+   door: long-press a row → Move up/Move down (`showMemberMove` →
+   `reorderGroupMember`, member-indexed as before) and the sheet rebuilds
+   in the new order. Two gates needed dated re-points (test_v149's ⋯ pin,
+   test_v144's drag pin) — the features live, their surfaces moved.
+3. *The incognito tabs process flag.* `TabsIncognitoActivity` ran in
+   `:incognito` but never set `TabManager.INCOGNITO` — a normal tabs view
+   in a private process (normal tabs.json, normal chip state, taps routing
+   to the normal browser). The static block now matches
+   `IncognitoActivity`'s byte for byte. Learning: when a class is split
+   into a second process, EVERY entry point in that process needs the
+   process's own invariants re-declared — an Activity with no code looks
+   like it inherits everything, but static initializers do not inherit.
+4. *The system search entries.* All five launcher aliases now carry
+   WEB_SEARCH, SEND (text/plain) and PROCESS_TEXT filters, and
+   `handleIntent()` funnels the query — `SearchManager.QUERY`,
+   `EXTRA_TEXT` or `EXTRA_PROCESS_TEXT` — into `loadInTab()`, posted
+   (onCreate runs handleIntent before the first tab exists) with an early
+   return so a search entry never also falls through to the VIEW branch.
+   Filters went on the ALIASES, not the demoted BrowserActivity: exactly
+   one face is enabled at a time, so every face must answer.
+5. *The omnibox engine + image doors.* The left glyph became an engine chip
+   (glyph + drop arrow → `Ui.choiceSheet` picker; a pick sets the engine
+   pref and re-runs a live query through the new engine; a prefilled URL
+   only switches). The right gained a camera icon: camera (runtime
+   permission 1023 → FileProvider EXTRA_OUTPUT capture 1021) or gallery
+   (ACTION_GET_CONTENT 1022), then `VisualSearch.kt` multipart-POSTs the
+   picture (≤1024 px re-encode) to the selected engine's visual search —
+   Google/Startpage via Google's search-by-image, Bing/DDG/Brave via
+   Bing's SBI (DDG and Brave publish no upload endpoint; a toast says
+   which route ran). Learning, twice over: Kotlin's `(String?) -> Unit`
+   function type boxes its return, so a Java lambda at the call site fails
+   to compile — use a `fun interface` SAM for cross-language callbacks;
+   and HttpURLConnection never auto-follows a POST's 3xx, so the Location
+   header is read and re-GET manually (a 200 body — Bing's shape — is
+   saved as a local page).
+6. *The standing sweep, v1.4.12 edition.* All 30 prior version gates
+   re-pinned 126/1.4.12 with dated notes (test_v1410 and test_v1411 got
+   surgical entry-index edits — every About-changelog pin slid one slot
+   down when the 1.4.12 line landed at entries[0]); test_screen's
+   2200/90 pin re-pointed to the diet constants; the repin script lives in
+   the workspace (`scripts/repin_gates_1412.py` pattern). Suite: 62/62
+   release-pipeline check commands green (53 python gates + 9 node
+   checks) across 36 version gates.
+7. *Environment learning (the credential restore).* The signing backup's
+   credential lines are `key = value` with an `=` separator — a parser
+   that takes "the first whitespace-delimited token after the key name"
+   grabs the `=` itself and fails the keystore check. The workspace
+   `scripts/restore_credentials.py` (rebuilt this session) now skips the
+   `=` before taking the token, verifies the cert fingerprint, and never
+   prints a secret. The 2026-11-18 recycle again wiped jdk21/, sdk/,
+   gradle-8.9/ and local.properties; full toolchain back via
+   `scripts/setup_toolchain.sh` in ~4 min.
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
 `scripts/setup_toolchain.sh`; a working copy lives at
 `/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64` in the maintainer's
 sandbox), the Android SDK 34 (`sdk/`), and Gradle 8.9 (`gradle-8.9/`) —
-all OUTSIDE the repo. The 2026-11-18 recycle wiped jdk21/, sdk/ and
-gradle-8.9/ again: the full toolchain restored in ~4 min via
-`scripts/setup_toolchain.sh` (the JDK alone is faster via the workspace's
-`scripts/restore_jdk.sh` when no build is needed). If Gradle fails with
-"Could not read workspace metadata", delete
+all OUTSIDE the repo. The 2026-11-18 recycle wiped jdk21/, sdk/,
+gradle-8.9/ and local.properties again: the full toolchain restored in
+~4 min via `scripts/setup_toolchain.sh` (the JDK alone is faster via the
+workspace's `scripts/restore_jdk.sh` when no build is needed). If Gradle
+fails with "Could not read workspace metadata", delete
 `.gradle-home/caches/8.9/transforms` and re-resolve. `local.properties`
 in the working clone carries `sdk.dir` + the signing credentials; it is
 gitignored, must never be committed, and DOES NOT SURVIVE a sandbox
 recycle — a fresh clone has none: re-create it from the signing backup
 that lives in the maintainer's workspace `download/` folder
 (`bolt-signing-backup.txt` + `bolt.keystore`; the workspace-side
-`scripts/restore_credentials.py` pattern rebuilds local.properties from
-the backup WITHOUT printing the password — the keyPassword line in the
-backup carries a trailing "(PKCS12…)" note, so parse the first
-whitespace-delimited token after `=`).
+`scripts/restore_credentials.py` rebuilds local.properties from the
+backup WITHOUT printing the password — the credential lines are
+`key = value`, so skip the `=` and take the first token after it; the
+keyPassword value's trailing "(PKCS12…)" note is dropped by the
+first-token rule).
 
-**Known-good numbers** (v1.4.11, release build): APK 2,749,213 B (budget
+**Known-good numbers** (v1.4.12, release build): APK 2,754,345 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-66/66 commands green across 35 version gates + static checks + compiled
-probes; filter rule census unchanged from v1.4.9 (103,087 network rules,
-1,709 on the regex path — see the hardening note above).
+62/62 release-pipeline check commands green (53 python gates + 9 node
+checks) across 36 version gates; filter rule census unchanged from
+v1.4.9 (103,087 network rules, 1,709 on the regex path — see the
+hardening note above).
 
 **Plans / candidates for future versions:**
 - The bundled EasyList/EasyPrivacy snapshot refresh stays a candidate (it
   was on the v1.4.11 list and was DEFERRED — the stability four-pack took
   the release; the in-app updater exists, but the APK baseline drifts).
-- v1.4.11 was the first FULL release through the dual-publish pipeline
-  end-to-end (gates → build → BOTH repos) — the v1.4.10 backfill only
-  proved the republish path. Done; nothing further to prove there.
+- v1.4.12's VisualSearch rides Google's classic search-by-image POST and
+  Bing's SBI — both are undocumented endpoints that can move. If a field
+  report names a dead route, the fallback ladder (engine home page) keeps
+  the door usable, and the endpoint map is ONE function (endpointFor) to
+  re-point; consider a Lens `uploadbyurl` path for images that already
+  have a URL (long-press an image → search by image) as a follow-up.
+- The engine chip re-runs a live query on switch, but a prefilled URL
+  only switches silently — a small "engine: NAME" toast on every switch
+  (not just the URL case) would make the state change louder.
+- The group sheet's long-press Move up/Move down replaced the drag; if a
+  field report misses the gesture, a RecyclerView-backed sheet could
+  restore ItemTouchHelper reordering — the door (showMemberMove +
+  reorderGroupMember) is already the wired backend for it.
 - The compound single-call sequences on tm.tabs (indexOf-then-add in the
   TabsActivity drag paths, cached size()+get() in the swipe walk) remain
   outside the monitor law — they are individually-atomic reads whose

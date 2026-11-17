@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.app.SearchManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -20,6 +21,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.text.Editable;
@@ -358,6 +360,10 @@ public class BrowserActivity extends AppCompatActivity {
     // ---- v1.3.38 new-feature state ----
     /** the omnibox field while the sheet is up (a voice result fills it). */
     protected EditText activeOmniField;
+    /** v1.4.12 — the omnibox image-search door: the file the camera app is
+     *  writing into (ACTION_IMAGE_CAPTURE with EXTRA_OUTPUT — full-res
+     *  capture needs the FileProvider path, not the data-extra thumbnail). */
+    protected File vsearchCapture;
     /** the password fill chip (mirrors the OTP chip). */
     protected TextView pwChip;
     protected final Runnable pwChipRetire = this::hidePwChip;
@@ -589,6 +595,39 @@ public class BrowserActivity extends AppCompatActivity {
                 ui.postDelayed(() -> {
                     try { showOmnibox(); } catch (Throwable ignored) {}
                 }, 350);
+            }
+        } catch (Throwable ignored) {}
+        // v1.4.12 — THE SYSTEM SEARCH ENTRIES (the manifest's new WEB_SEARCH /
+        // SEND text/plain / PROCESS_TEXT filters, one per launcher face).
+        // The query rides a different extra per surface: SearchManager.QUERY
+        // for WEB_SEARCH, EXTRA_TEXT for the share sheet, and
+        // EXTRA_PROCESS_TEXT for the text-selection floating toolbar. All
+        // three funnel into loadInTab(), which owns URL-vs-query resolution,
+        // the engine choice, and tracker stripping — the same path as typing
+        // into the omnibox. Posted (not run inline): onCreate calls this
+        // BEFORE the first tab exists, and loadInTab() needs the active tab
+        // the caller's next lines are still about to build.
+        try {
+            if (i != null && i.getAction() != null) {
+                String act = i.getAction();
+                String q = null;
+                if (Intent.ACTION_WEB_SEARCH.equals(act)) {
+                    q = i.getStringExtra(SearchManager.QUERY);
+                } else if (Intent.ACTION_SEND.equals(act)
+                        && "text/plain".equals(i.getType())) {
+                    q = i.getStringExtra(Intent.EXTRA_TEXT);
+                } else if (Intent.ACTION_PROCESS_TEXT.equals(act)) {
+                    CharSequence cs = i.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT);
+                    q = cs == null ? null : cs.toString();
+                }
+                if (q != null && !q.trim().isEmpty()) {
+                    final String query = q.trim();
+                    ui.post(() -> {
+                        try { loadInTab(query); } catch (Throwable ignored) {}
+                    });
+                    return;   // a search entry is fully handled — never fall
+                              // through to the VIEW/data branch as well
+                }
             }
         } catch (Throwable ignored) {}
         if (i == null || i.getData() == null) return;
@@ -12570,9 +12609,30 @@ public class BrowserActivity extends AppCompatActivity {
         // icon tinting
         int dim = Fx.tint(this);
         try { lay.<ImageView>findViewById(R.id.iv_omni_search).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageView>findViewById(R.id.iv_omni_engine_arrow).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageButton>findViewById(R.id.btn_omni_cam).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_paste).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_copy).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_clear).setColorFilter(dim); } catch (Throwable ignored) {}
+        // v1.4.12 — THE ENGINE CHIP: the search glyph + drop arrow at the
+        // field's left open the engine picker (Google / DuckDuckGo / Bing /
+        // Brave / Startpage). A pick applies to the query in the field —
+        // see showEnginePicker for the re-run rule.
+        try {
+            lay.findViewById(R.id.omni_engine).setOnClickListener(v -> {
+                Ui.tap(v);
+                showEnginePicker(lay, et);
+            });
+        } catch (Throwable ignored) {}
+        // v1.4.12 — THE IMAGE-SEARCH DOOR: the camera glyph at the field's
+        // right picks a picture (camera or gallery) and routes it to the
+        // selected engine's visual search.
+        try {
+            lay.findViewById(R.id.btn_omni_cam).setOnClickListener(v -> {
+                Ui.tap(v);
+                showImageSearchPicker();
+            });
+        } catch (Throwable ignored) {}
         // v1.3.38 — the omnibox mic (voice search): the transcript drops
         // into the field (editable before GO — the Google-search-bar feel).
         // Hidden when the device has no recognizer at all.
@@ -12673,6 +12733,110 @@ public class BrowserActivity extends AppCompatActivity {
                 if (imm != null) imm.showSoftInput(et, 0);
             } catch (Throwable ignored) {}
         }, 100);
+    }
+
+    /**
+     * v1.4.12 — THE ENGINE PICKER: a bottom sheet over the omnibox (the two
+     * anchor at opposite screen edges, so they stack cleanly). A pick sets
+     * the default engine — the same pref Settings owns, so the switch sticks
+     * everywhere — and when the field holds a live QUERY (not the prefilled
+     * URL of the open page, not something URL-shaped), that query re-runs
+     * through the newly picked engine immediately: "switch engines for the
+     * current query" in one tap.
+     */
+    protected void showEnginePicker(View lay, EditText et) {
+        final String[] names = getResources().getStringArray(R.array.search_engine_names);
+        Ui.choiceSheet(this, getString(R.string.search_engine), names,
+                prefs.searchEngine(), idx -> {
+                    try { prefs.set("searchEngine", idx); } catch (Throwable ignored) {}
+                    String q = et == null ? "" : et.getText().toString().trim();
+                    String cur = "";
+                    try {
+                        Tab at = activeTab();
+                        cur = at == null || at.url == null ? "" : at.url;
+                    } catch (Throwable ignored) {}
+                    boolean urlish = q.startsWith("http") || q.contains("://")
+                            || q.startsWith("www.") || q.equals(cur)
+                            || q.matches("(?i)[a-z0-9-]+(\\.[a-z0-9-]+)+(/.*)?");
+                    String name = names[Math.max(0, Math.min(names.length - 1, idx))];
+                    if (!q.isEmpty() && !urlish) {
+                        loadInTab(q);            // the current query, new engine
+                        omniboxDismiss(lay);
+                    } else {
+                        Fx.toast(this, getString(R.string.search_engine) + ": " + name);
+                    }
+                });
+    }
+
+    /**
+     * v1.4.12 — THE IMAGE-SEARCH DOOR: camera or gallery; the picture then
+     * routes to the selected engine's visual-search endpoint (see
+     * VisualSearch for the per-engine mapping — engines without an upload
+     * endpoint of their own ride their results provider: DDG/Brave via
+     * Bing, Startpage via Google).
+     */
+    protected void showImageSearchPicker() {
+        Ui.choiceSheet(this, "Image search",
+                new String[]{"Take photo", "Choose image"}, -1, idx -> {
+                    if (idx == 0) {
+                        if (ContextCompat.checkSelfPermission(BrowserActivity.this,
+                                Manifest.permission.CAMERA)
+                                == PackageManager.PERMISSION_GRANTED) {
+                            launchVisualCamera();
+                        } else {
+                            ActivityCompat.requestPermissions(BrowserActivity.this,
+                                    new String[]{Manifest.permission.CAMERA}, 1023);
+                        }
+                    } else {
+                        try {
+                            Intent gi = new Intent(Intent.ACTION_GET_CONTENT);
+                            gi.addCategory(Intent.CATEGORY_OPENABLE);
+                            gi.setType("image/*");
+                            startActivityForResult(gi, 1022);
+                        } catch (Throwable t) { Fx.toast(this, "No gallery app"); }
+                    }
+                });
+    }
+
+    /** full-res capture needs EXTRA_OUTPUT through the FileProvider (the
+     *  data-extra path returns a ~thumbnail bitmap). The capture lands in
+     *  the share dir the QR png already rides. */
+    protected void launchVisualCamera() {
+        try {
+            File dir = new File(getFilesDir(), "shared");
+            if (!dir.isDirectory()) dir.mkdirs();
+            File f = new File(dir, "vsearch-capture.jpg");
+            if (f.exists()) f.delete();
+            vsearchCapture = f;
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(this,
+                    "com.bolt.browser.fileprovider", f);
+            Intent ci = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            ci.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+            ci.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(ci, 1021);
+        } catch (Throwable t) { Fx.toast(this, "Camera unavailable"); }
+    }
+
+    /** upload the picked/captured picture and load the engine's answer. */
+    protected void runVisualSearch(File imageFile) {
+        int ei = prefs.searchEngine();
+        String[] names = getResources().getStringArray(R.array.search_engine_names);
+        String name = names[Math.max(0, Math.min(names.length - 1, ei))];
+        final com.bolt.browser.util.VisualSearch.Endpoint ep =
+                com.bolt.browser.util.VisualSearch.endpointFor(ei);
+        Fx.toast(this, ep.via == null
+                ? "Visual search: " + name
+                : "Via " + ep.via + " — " + name + " has no image upload");
+        com.bolt.browser.util.VisualSearch.search(this, ei, imageFile, url -> {
+            if (url != null) {
+                try { loadInTab(url); } catch (Throwable ignored) {}
+            } else {
+                Fx.toast(BrowserActivity.this, "Upload failed — manual image search");
+                try { loadInTab(ep.home); } catch (Throwable ignored) {}
+            }
+            try { imageFile.delete(); } catch (Throwable ignored) {}
+        });
     }
 
     protected void omniboxDismiss(View lay) {
@@ -13735,6 +13899,15 @@ public class BrowserActivity extends AppCompatActivity {
                 else pendingPermRequest.deny();
             } catch (Throwable ignored) {}
             pendingPermRequest = null;
+        } else if (requestCode == 1023) {
+            // v1.4.12 — the image-search capture: CAMERA granted -> the
+            // camera app finally launches (EXTRA_OUTPUT capture needs the
+            // permission held because the manifest declares CAMERA)
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                launchVisualCamera();
+            } else {
+                Fx.toast(this, "Camera permission needed for photo search");
+            }
         }
     }
 
@@ -13853,6 +14026,37 @@ public class BrowserActivity extends AppCompatActivity {
                 && data != null && data.getData() != null) {
             // v1.3.79 — the custom home logo landed (showHomeLogoPicker)
             applyHomeLogo(data.getData());
+        }
+        // v1.4.12 — THE OMNIBOX IMAGE-SEARCH DOOR. Camera capture (1021):
+        // the picture already sits in the FileProvider file (EXTRA_OUTPUT —
+        // the result intent carries no data). Gallery pick (1022): the
+        // content stream is copied into the cache dir first because the
+        // decoder needs a seekable file.
+        if (requestCode == 1021) {
+            File f = vsearchCapture;
+            vsearchCapture = null;
+            if (resultCode == RESULT_OK && f != null && f.exists() && f.length() > 0) {
+                runVisualSearch(f);
+            } else {
+                try { if (f != null) f.delete(); } catch (Throwable ignored) {}
+            }
+            return;
+        }
+        if (requestCode == 1022) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                try {
+                    File tmp = new File(getCacheDir(), "vsearch-pick.jpg");
+                    try (java.io.InputStream in = getContentResolver().openInputStream(data.getData());
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+                        if (in == null) throw new java.io.IOException("no stream");
+                        byte[] buf = new byte[16384];
+                        int n;
+                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    }
+                    runVisualSearch(tmp);
+                } catch (Throwable t) { Fx.toast(this, "Couldn't read the image"); }
+            }
+            return;
         }
     }
 }

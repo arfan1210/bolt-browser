@@ -438,10 +438,10 @@ public class Probe {
                 print(r2.stderr[:800])
 
 print("V — the version pin")
-need('versionCode 125' in gradle, 'versionCode 125')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
-need('versionName "1.4.11"' in gradle, 'versionName "1.4.11"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need('versionCode 126' in gradle, 'versionCode 126')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+need('versionName "1.4.12"' in gradle, 'versionName "1.4.12"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 entries = re.findall(r"<item>([^<]+)</item>", strs[strs.find('name="about_changelog"'):strs.find("</string-array>", strs.find('name="about_changelog"'))])
-need(entries and entries[0].startswith("1.4.11|"), "the About changelog's newest entry is 1.4.11 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(entries and entries[0].startswith("1.4.12|"), "the About changelog's newest entry is 1.4.12 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 
 print()
 if fails == 0:

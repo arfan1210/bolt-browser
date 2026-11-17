@@ -110,8 +110,9 @@ need("(overGroup && newZone != ZONE_LEFT && newZone != ZONE_RIGHT)" in ta,
      "the snap anchor treats a side-zoned folder like a tab card's side (the card eases to the landing side)")
 need("public boolean reorderGroupMember(long gid, int from, int to)" in tm,
      "TabManager.reorderGroupMember exists (the in-group reorder)")
-need("protected void wireMiniDrag(" in ta and "wireMiniDrag(mini, gh.cards, t, gid, groupTabs.indexOf(t));" in ta,
-     "the folder row's minis are wired for the in-group drag (member-indexed)")
+need("protected void wireMiniDrag(" in ta and ("wireMiniDrag(mini, gh.cards, t, gid, groupTabs.indexOf(t));" in ta
+     or ("showMemberMove(g, tab, memberIdx" in ta and "tm.reorderGroupMember(gid, mv[0], mv[1])" in ta)),
+     "the folder members reorder in-group, member-indexed")  # v1.4.12 re-point (2026-11-18): the inline mini-strip (and its hold-drag call) became the group folder SHEET — the v1.4.4 law survives as the sheet's long-press Move up/Move down door, still member-indexed through tm.reorderGroupMember
 need("if (miniDragTab != null) return 0;" in ta,
      "the ItemTouchHelper is gated off while a mini drag is armed (the row never also lifts)")
 need("if (miniDragTab != null) return;\n            if (deferIfBusy(this::notifyDataSetChanged))" in ta,
@@ -451,10 +452,10 @@ public class Probe {
                 print(r2.stderr[:800])
 
 print("V — the version pin")
-need('versionCode 125' in gradle, 'versionCode 125')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
-need('versionName "1.4.11"' in gradle, 'versionName "1.4.11"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need('versionCode 126' in gradle, 'versionCode 126')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+need('versionName "1.4.12"' in gradle, 'versionName "1.4.12"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 entries = re.findall(r"<item>([^<]+)</item>", strs[strs.find('name="about_changelog"'):strs.find("</string-array>", strs.find('name="about_changelog"'))])
-need(entries and entries[0].startswith("1.4.11|"), "the About changelog's newest entry is 1.4.11 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(entries and entries[0].startswith("1.4.12|"), "the About changelog's newest entry is 1.4.12 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 
 print()
 if fails == 0:

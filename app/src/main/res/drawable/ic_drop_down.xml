@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.12 — the dropdown arrow beside the engine glyph in the omnibox:
+     the affordance that says "this chip opens a menu" (material
+     arrow_drop_down, drawn small next to the 20dp search icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+<path android:fillColor="?attr/colorTint" android:pathData="M7,10l5,5 5,-5z"/>
+</vector>

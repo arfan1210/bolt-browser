@@ -133,8 +133,8 @@ need("text-shadow:0 0 0.35px currentColor" in media,
      "the hairline halo thickens thin text (site-set shadows still win: no !important)")
 
 print("V — version pin")
-need("versionCode 125" in gradle and 'versionName "1.4.11"' in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
-     "build.gradle pins 125 / 1.4.11")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need("versionCode 126" in gradle and 'versionName "1.4.12"' in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+     "build.gradle pins 126 / 1.4.12")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
 
 # ---- semantic probes (node) ----
 node = subprocess.run(["which", "node"], capture_output=True, text=True).stdout.strip()

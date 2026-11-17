@@ -4,6 +4,71 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.12] — 2026-11-18
+
+**The usability five-pack: the AI translate payload diet, the group folder
+sheet, the incognito tabs process flag, the system search entries, and the
+omnibox engine/image doors.**
+
+### Fixed — THE AI TRANSLATE PAYLOAD (the 2–4 MB screenshot nobody could upload)
+- `ScreenTranslate.encodeAi` scaled screenshots to 2200 px at 90% JPEG
+  quality — a modern phone screenshot base64s to **2–4 MB** at that size,
+  which mobile networks time out on and strict API gateways reject with
+  HTTP 400/413 before the request ever reaches the model. The AI path now
+  downscales to **1280 px long edge at 75% quality (~200 KB base64)** —
+  still comfortably legible for vision-model text extraction (a 1080p
+  screenshot's text survives at 1:1 scale) and near-instant to upload even
+  on a weak cell link. The OCR path (1600 px q90) is untouched.
+
+### Fixed — THE GROUP FOLDER SHEET (the squished inline strip) + switcher context
+- Opening a tab group used to unroll its members into a horizontal
+  mini-strip inside the grid row — past two tabs the strip **squished them
+  unreadable**. A group now opens a **vertically scrollable bottom sheet**:
+  one full-width row per tab with thumbnail, title, domain, and the visible
+  ⋯ member menu (Edit tab / Remove from group / Move to group / Close
+  tab). Tap a row to switch to that tab; the inline strip never renders
+  again. The collapsed/expanded toggle state and its persistence are
+  retired with it (the chevron now always reads "tap opens the folder").
+- The switcher's auto-scroll never found the active tab when it lived
+  **inside a group** (a member never renders as its own grid item, so the
+  walk fell through to a scroll-to-end and the user's current context
+  started off-screen). The walk now resolves the active member's GROUP row
+  by `groupId` and scrolls there with `scrollToPositionWithOffset`; loose
+  tabs keep matching directly (search-filtered flat lists included).
+
+### Fixed — THE INCOGNITO TABS PROCESS FLAG (a normal tabs view in a private process)
+- `TabsIncognitoActivity` runs in the `:incognito` process but never set
+  `TabManager.INCOGNITO = true` the way its browser sibling
+  `IncognitoActivity` does — so the incognito tabs view booted in NORMAL
+  mode: it listed the normal `tabs.json`, rendered the normal chip state,
+  and its tab taps routed to the normal `BrowserActivity`. The static
+  initializer block now runs in the incognito process exactly as in
+  `IncognitoActivity`.
+
+### Added — THE SYSTEM SEARCH ENTRIES (Bolt joins the text-selection toolbar)
+- Bolt was missing from Android's text-selection floating toolbar and the
+  system "Web search" surfaces. Every launcher alias now carries
+  `ACTION_WEB_SEARCH`, `ACTION_SEND` (text/plain) and `ACTION_PROCESS_TEXT`
+  filters, and `BrowserActivity.handleIntent()` extracts the query from
+  `SearchManager.QUERY`, `Intent.EXTRA_TEXT` or
+  `Intent.EXTRA_PROCESS_TEXT` respectively and routes it through
+  `loadInTab()` — the same URL-vs-query resolution, engine choice and
+  tracker stripping as typing into the omnibox.
+
+### Added — THE OMNIBOX ENGINE + IMAGE DOORS (search the way you meant to)
+- The omnibox's left glyph is now an **engine chip with a dropdown arrow**:
+  tapping it lists the built-in engines (Google, DuckDuckGo, Bing, Brave,
+  Startpage); picking one switches the default engine AND — when the field
+  holds a live query rather than the prefilled URL — re-runs that query
+  through the newly picked engine immediately.
+- A **camera/image-search icon** now sits at the omnibox's right edge.
+  Picking a picture (camera with a runtime permission flow, or gallery)
+  uploads it to the selected engine's visual search: Google and Startpage
+  via Google's search-by-image endpoint, Bing directly, and DuckDuckGo and
+  Brave via Bing (they publish no upload endpoint of their own — DDG's
+  image index is Bing-sourced; a toast says which route ran). On upload
+  failure the engine's manual image-search page opens instead.
+
 ## [1.4.11] — 2026-11-18
 
 **The stability four-pack: one memory leak, one crash family, one adblock
