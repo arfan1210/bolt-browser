@@ -197,9 +197,12 @@ object Workspaces {
         val out = ArrayList<Pair<String, String>>()
         try {
             val tm = com.bolt.browser.core.TabManager.get(c)
-            for (t in tm.tabs) {
-                if (t.isHome || t.url.isNullOrEmpty() || !t.url.startsWith("http")) continue
-                out.add(Pair(t.title ?: "", t.url))
+            // v1.4.9: the thread law — iteration under the list monitor
+            synchronized(tm.tabs) {
+                for (t in tm.tabs) {
+                    if (t.isHome || t.url.isNullOrEmpty() || !t.url.startsWith("http")) continue
+                    out.add(Pair(t.title ?: "", t.url))
+                }
             }
         } catch (t: Throwable) { }
         return out

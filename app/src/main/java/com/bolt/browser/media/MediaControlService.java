@@ -966,8 +966,10 @@ public class MediaControlService extends Service {
     private boolean anyTabHoldsMedia() {
         try {
             TabManager tm = TabManager.get(this);
-            for (Tab t : tm.tabs) {
-                if (t != null && (t.mediaPlaying || t.holdsMedia)) return true;
+            synchronized (tm.tabs) {   // v1.4.9: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) {
+                    if (t != null && (t.mediaPlaying || t.holdsMedia)) return true;
+                }
             }
         } catch (Throwable ignored) { }
         return false;
@@ -978,9 +980,11 @@ public class MediaControlService extends Service {
     private int indexOfAnyMediaTab() {
         try {
             TabManager tm = TabManager.get(this);
-            for (int i = 0; i < tm.tabs.size(); i++) {
-                Tab t = tm.tabs.get(i);
-                if (t != null && (t.mediaPlaying || t.holdsMedia)) return i;
+            synchronized (tm.tabs) {   // v1.4.9: the thread law — size()+get() as one step
+                for (int i = 0; i < tm.tabs.size(); i++) {
+                    Tab t = tm.tabs.get(i);
+                    if (t != null && (t.mediaPlaying || t.holdsMedia)) return i;
+                }
             }
         } catch (Throwable ignored) { }
         return -1;
@@ -1081,12 +1085,14 @@ public class MediaControlService extends Service {
     private Tab resolveMediaTab() {
         try {
             TabManager tm = TabManager.get(this);
-            if (mediaTabIdx >= 0 && mediaTabIdx < tm.tabs.size()) {
-                return tm.tabs.get(mediaTabIdx);
-            }
-            // fall back to any tab with live media
-            for (Tab t : tm.tabs) {
-                if (t != null && t.mediaPlaying) return t;
+            synchronized (tm.tabs) {   // v1.4.9: the thread law — bounds check + get + scan atomically
+                if (mediaTabIdx >= 0 && mediaTabIdx < tm.tabs.size()) {
+                    return tm.tabs.get(mediaTabIdx);
+                }
+                // fall back to any tab with live media
+                for (Tab t : tm.tabs) {
+                    if (t != null && t.mediaPlaying) return t;
+                }
             }
         } catch (Throwable ignored) { }
         return null;
@@ -1854,17 +1860,20 @@ n     *  single background thread (8 s timeouts, ≤4 MB, downsampled to ≤512 
             // with the &t= position param stripped — the persisted tab url
             // and the heartbeat url differ only in that param)
             int idx = -1;
-            String bare = stripPosParam(url);
-            for (int i = 0; i < tm.tabs.size(); i++) {
-                Tab t = tm.tabs.get(i);
-                if (t == null || t.url == null || t.isHome) continue;
-                if (stripPosParam(t.url).equals(bare)) { idx = i; break; }
+            Tab t;
+            synchronized (tm.tabs) {   // v1.4.9: the thread law — the phoenix runs off the UI thread
+                String bare = stripPosParam(url);
+                for (int i = 0; i < tm.tabs.size(); i++) {
+                    Tab tt = tm.tabs.get(i);
+                    if (tt == null || tt.url == null || tt.isHome) continue;
+                    if (stripPosParam(tt.url).equals(bare)) { idx = i; break; }
+                }
+                t = idx >= 0 ? tm.tabs.get(idx) : null;
             }
-            if (idx < 0) {
+            if (t == null) {
                 phoenixGiveUp("media tab not found in the saved session");
                 return;
             }
-            Tab t = tm.tabs.get(idx);
             if (t.web != null) {
                 // the tab already has a live WebView (activity raced us back
                 // to life) — do not build a second one
@@ -1965,7 +1974,9 @@ n     *  single background thread (8 s timeouts, ≤4 MB, downsampled to ≤512 
     private Tab tabAt(int idx) {
         try {
             TabManager tm = TabManager.get(this);
-            if (idx >= 0 && idx < tm.tabs.size()) return tm.tabs.get(idx);
+            synchronized (tm.tabs) {   // v1.4.9: the thread law — bounds check + get atomically
+                if (idx >= 0 && idx < tm.tabs.size()) return tm.tabs.get(idx);
+            }
         } catch (Throwable ignored) {}
         return null;
     }

@@ -423,6 +423,15 @@ python3 scripts/test_v148.py
 # DEMONSTRATED) ----
 python3 scripts/test_v149.py
 
+# ---- v1.4.9 gate, part 2 (the hardening four-pack: the adblock PATTERN
+# DIET — ~130 MB of compiled regex replaced by plain literals + one
+# Aho-Corasick scan per request, equivalence-proven against the old
+# engine over the full bundled lists; the dead write-only liveWebs
+# WebView registry leak; the TabManager thread law vs the media service
+# readers; compiled+run probes: automaton vs brute force, old-engine vs
+# new-engine decision equivalence) ----
+python3 scripts/test_v149_perf.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 $BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR assembleRelease

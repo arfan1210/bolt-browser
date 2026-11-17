@@ -18,7 +18,17 @@ public class TabManager {
     public static boolean INCOGNITO = false; // set per process
 
     private static TabManager instance;
-    public final List<Tab> tabs = new ArrayList<>();
+    // v1.4.9 — THE THREAD LAW: this list is MUTATED on the UI thread
+    // (open/close/drag) and READ from service threads (MediaControlService:
+    // media ownership + the phoenix resurrection; Workspaces/TabSleep
+    // utilities) — a plain ArrayList let a reader's iterator race a UI
+    // mutation into ConcurrentModificationException, and the indexed
+    // readers raced size() against get(). It is a synchronizedList now,
+    // and every ITERATION — here and in the service readers — holds the
+    // list's monitor: that is the documented contract of
+    // Collections.synchronizedList (single calls are atomic; iteration
+    // is safe ONLY under synchronized(list)).
+    public final List<Tab> tabs = java.util.Collections.synchronizedList(new ArrayList<>());
     public int active = -1;
     private final Prefs prefs;
     private final android.content.Context appCtx;   // v1.3.39 (tab trash)
@@ -111,31 +121,40 @@ public class TabManager {
     }
 
     public Tab current() {
-        if (tabs.isEmpty()) {
-            tabs.add(new Tab());
-            active = 0;
+        synchronized (tabs) {
+            if (tabs.isEmpty()) {
+                tabs.add(new Tab());
+                active = 0;
+            }
+            if (active < 0 || active >= tabs.size()) active = tabs.size() - 1;
+            return tabs.get(active);
         }
-        if (active < 0 || active >= tabs.size()) active = tabs.size() - 1;
-        return tabs.get(active);
     }
 
     public Tab addTab(Tab t) {
-        tabs.add(t);
-        active = tabs.size() - 1;
+        synchronized (tabs) {
+            tabs.add(t);
+            active = tabs.size() - 1;
+        }
         scheduleSave();
         return t;
     }
 
     public Tab newTabAt(int pos) {
         Tab t = new Tab();
-        tabs.add(Math.max(0, Math.min(tabs.size(), pos)), t);
+        synchronized (tabs) {
+            tabs.add(Math.max(0, Math.min(tabs.size(), pos)), t);
+        }
         scheduleSave();
         return t;
     }
 
     public void close(int idx) {
-        if (idx < 0 || idx >= tabs.size()) return;
-        Tab t = tabs.remove(idx);
+        Tab t;
+        synchronized (tabs) {
+            if (idx < 0 || idx >= tabs.size()) return;
+            t = tabs.remove(idx);
+        }
         // v1.3.39 TAB TRASH (menu-3 #7, default on): the closed tab drops
         // into the 7-day bin before its WebView dies.
         try { com.bolt.browser.util.TabTrash.onClose(appCtx, t); } catch (Throwable ignored) {}
@@ -159,8 +178,10 @@ public class TabManager {
                 ((android.view.ViewGroup) t.web.getParent()).removeView(t.web);
             t.web.destroy();
         }
-        if (active >= tabs.size()) active = tabs.size() - 1;
-        if (active < 0) active = 0;
+        synchronized (tabs) {
+            if (active >= tabs.size()) active = tabs.size() - 1;
+            if (active < 0) active = 0;
+        }
         save();
     }
 
@@ -189,9 +210,12 @@ public class TabManager {
         // builds a fresh one and reloads the page
         t.web = null;
         t.homeView = null;
-        int at = Math.max(0, Math.min(tabs.size(), lastClosedAt));
-        tabs.add(at, t);
-        active = at;
+        int at;
+        synchronized (tabs) {
+            at = Math.max(0, Math.min(tabs.size(), lastClosedAt));
+            tabs.add(at, t);
+            active = at;
+        }
         lastClosed = null;
         lastClosedAt = -1;
         scheduleSave();
@@ -199,11 +223,13 @@ public class TabManager {
     }
 
     public void move(int from, int to) {
-        if (from < 0 || from >= tabs.size() || to < 0 || to >= tabs.size() || from == to) return;
-        Tab wasActive = (active >= 0 && active < tabs.size()) ? tabs.get(active) : null;
-        Tab t = tabs.remove(from);
-        tabs.add(to, t);
-        reResolveActive(wasActive);   // v1.4.5: same tab stays active
+        synchronized (tabs) {
+            if (from < 0 || from >= tabs.size() || to < 0 || to >= tabs.size() || from == to) return;
+            Tab wasActive = (active >= 0 && active < tabs.size()) ? tabs.get(active) : null;
+            Tab t = tabs.remove(from);
+            tabs.add(to, t);
+            reResolveActive(wasActive);   // v1.4.5: same tab stays active
+        }
         save();
     }
 
@@ -211,7 +237,8 @@ public class TabManager {
         if (INCOGNITO) return; // never persist incognito tabs
         try {
             JSONArray a = new JSONArray();
-            for (Tab t : tabs) {
+            synchronized (tabs) {
+                for (Tab t : tabs) {
                 // v1.3.18: persist EVERY tab — including pure home/new-tab pages.
                 // The old filter (skip isHome tabs with empty url) is exactly how
                 // "open 2 new tabs, close via recents, reopen → tabs gone" lost
@@ -224,6 +251,7 @@ public class TabManager {
                 // v1.3.27: playing-media tabs persist a YouTube resume point
                 try { o.put("url", resumeUrl(t)); } catch (Throwable ignored) {}
                 a.put(o);
+                }
             }
             Fx.writeJsonArray(new java.io.File(prefs.filesDir(), "tabs.json"), a);
             Fx.writeText(new java.io.File(prefs.filesDir(), "tabs_active.json"),
@@ -238,6 +266,7 @@ public class TabManager {
      *  first. Stable sort with the list index as the final tiebreaker so
      *  legacy tabs (timestamp 0) keep their relative order. */
     public List<Tab> sortedForDisplay(int sortMode) {
+        synchronized (tabs) {
         List<Tab> out = new ArrayList<>(tabs);
         if (sortMode == 1 || sortMode == 2) {
             final boolean byVisit = sortMode == 2;
@@ -249,6 +278,7 @@ public class TabManager {
             });
         }
         return out;
+        }
     }
 
     /** v1.3.27 — the URL a tab persists: for a tab holding media (playing OR
@@ -296,15 +326,24 @@ public class TabManager {
     }
 
     public void closeAll() {
+        // v1.4.9: one consistent snapshot under the list monitor, then the
+        // teardown runs OUTSIDE it (WebView.destroy() must never hold the
+        // lock a media reader needs on its own thread)
+        List<Tab> snapshot;
+        int n;
+        synchronized (tabs) {
+            snapshot = new ArrayList<>(tabs);
+            n = tabs.size();
+        }
         // v1.3.39: everything the sweep closes lands in the trash bin too.
-        for (Tab t : new ArrayList<>(tabs)) {
+        for (Tab t : snapshot) {
             try { com.bolt.browser.util.TabTrash.onClose(appCtx, t); } catch (Throwable ignored) {}
         }
-        for (int i = tabs.size() - 1; i >= 0; i--) {
+        for (int i = n - 1; i >= 0; i--) {
             try { com.bolt.browser.media.MediaControlService.onTabGone(null, i); }
             catch (Throwable ignored) {}
         }
-        for (Tab t : new ArrayList<>(tabs)) {
+        for (Tab t : snapshot) {
             if (t.web != null) {
                 try {
                     t.web.stopLoading();
@@ -313,8 +352,10 @@ public class TabManager {
                 } catch (Throwable ignored) {}
             }
         }
-        tabs.clear();
-        active = -1;
+        synchronized (tabs) {
+            tabs.clear();
+            active = -1;
+        }
         save();
     }
 
@@ -330,15 +371,21 @@ public class TabManager {
     }
 
     public void assignGroup(int tabIndex, long groupId) {
-        if (tabIndex >= 0 && tabIndex < tabs.size()) {
-            tabs.get(tabIndex).groupId = groupId;
-            save();
+        synchronized (tabs) {
+            if (tabIndex >= 0 && tabIndex < tabs.size()) {
+                tabs.get(tabIndex).groupId = groupId;
+            } else {
+                return;
+            }
         }
+        save();
     }
 
     public List<Tab> tabsOfGroup(long gid) {
         List<Tab> out = new ArrayList<>();
-        for (Tab t : tabs) if (t.groupId == gid) out.add(t);
+        synchronized (tabs) {
+            for (Tab t : tabs) if (t.groupId == gid) out.add(t);
+        }
         return out;
     }
 
@@ -366,10 +413,12 @@ public class TabManager {
                 JSONObject o = g.optJSONObject(i);
                 if (o != null) live.add(o.optLong("id"));
             }
-            for (Tab t : tabs) {
-                if (t.groupId != 0 && !live.contains(t.groupId)) {
-                    t.groupId = 0;
-                    healed++;
+            synchronized (tabs) {
+                for (Tab t : tabs) {
+                    if (t.groupId != 0 && !live.contains(t.groupId)) {
+                        t.groupId = 0;
+                        healed++;
+                    }
                 }
             }
             if (healed > 0) save();
@@ -422,8 +471,10 @@ public class TabManager {
      *  list is rewritten. */
     private void reResolveActive(Tab was) {
         if (was == null) return;
-        int at = tabs.indexOf(was);
-        if (at >= 0) active = at;
+        synchronized (tabs) {
+            int at = tabs.indexOf(was);
+            if (at >= 0) active = at;
+        }
     }
 
     /** the groups reordered by their FIRST MEMBER's position in tm.tabs
@@ -443,6 +494,7 @@ public class TabManager {
      *  render additionally honours each empty's explicit "slot" field —
      *  see rebuildItems; this merge is the array/on-top memory.) */
     public List<JSONObject> groupsInFirstMemberOrder() {
+        synchronized (tabs) {
         List<JSONObject> all = groups();
         java.util.HashMap<Long, Integer> firstAt = new java.util.HashMap<>();
         for (int i = 0; i < tabs.size(); i++) {
@@ -478,6 +530,7 @@ public class TabManager {
             if (j < membered.size()) out.add(membered.get(j));
         }
         return out;
+        }
     }
 
     /** v1.4.5 — THE PLACEMENT MATERIALIZE (the projection law's writer):
@@ -504,6 +557,7 @@ public class TabManager {
      *  holds ever moves). */
     public boolean materializeOnTopOrder() {
         try {
+            synchronized (tabs) {
             Tab wasActive = (active >= 0 && active < tabs.size()) ? tabs.get(active) : null;
             List<JSONObject> order = groupsInFirstMemberOrder();
             List<Tab> out = new ArrayList<>(tabs.size());
@@ -534,6 +588,7 @@ public class TabManager {
                 prefs.setGroupAnchor(g.optLong("id"),
                         i > 0 ? rowKeyOf(topRows.get(i - 1)) : "",
                         i < topRows.size() - 1 ? rowKeyOf(topRows.get(i + 1)) : "");
+            }
             }
             save();
             return true;
@@ -577,7 +632,9 @@ public class TabManager {
 
     /** the live tab with the given tid (anchor resolution), or null. */
     public Tab tabByTid(long tid) {
-        for (Tab t : tabs) if (t.tid == tid) return t;
+        synchronized (tabs) {
+            for (Tab t : tabs) if (t.tid == tid) return t;
+        }
         return null;
     }
 
@@ -663,6 +720,7 @@ public class TabManager {
     public List<Object> followRowOrder() { return followRowOrder(true); }
 
     public List<Object> followRowOrder(boolean includeAnchorless) {
+        synchronized (tabs) {
         List<Object> out = new ArrayList<>(tabs.size() + 4);
         java.util.HashSet<Long> emitted = new java.util.HashSet<>();
         List<JSONObject> grp = groups();
@@ -710,6 +768,7 @@ public class TabManager {
             for (JSONObject g : leftover) out.add(putAt++, g);
         }
         return out;
+        }
     }
 
     /** v1.4.8 — THE ANCHOR REFRESH: when a row an empty is anchored to
@@ -920,6 +979,7 @@ public class TabManager {
      *  tm.tabs (the one memory). Returns true when anything moved. */
     public boolean moveGroupRelative(long gid, Tab anchor, boolean after) {
         try {
+            synchronized (tabs) {
             if (anchor == null || gid == 0 || anchor.groupId == gid) return false;
             List<Tab> members = tabsOfGroup(gid);
             if (members.isEmpty()) return false;
@@ -945,6 +1005,7 @@ public class TabManager {
             // keep the groups array in first-member order: every reader of
             // the array sees the SAME arrangement tm.tabs renders
             prefs.reorderGroups(groupsInFirstMemberOrder());
+            }
             save();
             return true;
         } catch (Throwable t) {
@@ -967,6 +1028,7 @@ public class TabManager {
      *  groups-array re-sort every writer maintains). */
     public boolean reorderGroupMember(long gid, int from, int to) {
         try {
+            synchronized (tabs) {
             List<Tab> members = tabsOfGroup(gid);
             int n = members.size();
             if (gid == 0 || n < 2 || from < 0 || from >= n
@@ -984,6 +1046,7 @@ public class TabManager {
             tabs.addAll(rest);
             reResolveActive(wasActive);   // v1.4.5: same tab stays active
             prefs.reorderGroups(groupsInFirstMemberOrder());
+            }
             save();
             return true;
         } catch (Throwable t) {
@@ -1000,6 +1063,7 @@ public class TabManager {
      *  exactly like a folder drag's boundary. Returns true when it moved. */
     public boolean moveTabBesideGroup(Tab dragged, long gid, boolean after) {
         try {
+            synchronized (tabs) {
             if (dragged == null || gid == 0 || dragged.groupId != 0) return false;
             List<Tab> host = tabsOfGroup(gid);
             if (host.isEmpty()) return false;
@@ -1013,6 +1077,7 @@ public class TabManager {
             }
             tabs.add(after ? bi + 1 : bi, dragged);
             reResolveActive(wasActive);   // v1.4.5: same tab stays active
+            }
             save();
             return true;
         } catch (Throwable t) {

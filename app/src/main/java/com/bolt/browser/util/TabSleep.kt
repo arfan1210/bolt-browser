@@ -56,9 +56,12 @@ object TabSleep {
     @JvmStatic
     fun sleepOthers(c: Context, tm: TabManager, keepIndex: Int): Int {
         var n = 0
-        for (i in tm.tabs.indices) {
+        // v1.4.9: the thread law — snapshot under the list monitor, sleep
+        // (a WebView teardown) outside it
+        val snapshot: List<Tab> = synchronized(tm.tabs) { ArrayList(tm.tabs) }
+        for (i in snapshot.indices) {
             if (i == keepIndex) continue
-            if (sleep(tm.tabs[i])) n++
+            if (sleep(snapshot[i])) n++
         }
         if (n > 0) tm.scheduleSave()
         return n
@@ -71,9 +74,12 @@ object TabSleep {
         if (min <= 0) return
         val cutoff = System.currentTimeMillis() - min * 60_000L
         var n = 0
-        for (i in tm.tabs.indices) {
+        // v1.4.9: the thread law — snapshot under the list monitor, sleep
+        // (a WebView teardown) outside it
+        val snapshot: List<Tab> = synchronized(tm.tabs) { ArrayList(tm.tabs) }
+        for (i in snapshot.indices) {
             if (i == activeIndex) continue
-            val t = tm.tabs[i]
+            val t = snapshot[i]
             if (t.lastVisitedAt in 1 until cutoff && canSleep(t)) {
                 if (sleep(t)) n++
             }

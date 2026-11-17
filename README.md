@@ -69,6 +69,7 @@ built and signed by the maintainer; the signing key is never in this repo.
 
 ```
 app/src/main/java/com/bolt/browser/   single module, Java + Kotlin
+app/src/main/java/com/bolt/browser/adblock/   FilterEngine + AhoCorasick (v1.4.9)
 app/src/main/assets/filters/          EasyList / EasyPrivacy snapshots
 app/src/main/assets/                  WebAuthn compat layer, OCR host page
 scripts/                              test gates + release tooling
@@ -77,7 +78,90 @@ scripts/                              test gates + release tooling
 The `scripts/test_v*.py` files are version gates: each release must pass its
 gate plus all earlier ones (`scripts/release.sh` runs them in order before
 building). They are plain Python + static analysis — no device required
-except where a gate spawns the emulator probes.
+except where a gate spawns the emulator probes. Several gates compile and
+RUN transcribed Java probes (the B sections) — they need `javac` on PATH
+(see `scripts/setup_toolchain.sh`).
+
+## Development notes (maintainer log)
+
+This section is the running context for anyone (or any AI session) picking
+the project up cold. Read top to bottom; the newest learnings are last.
+
+**The workflow law.** Every behavioural change ships with its own gate
+(`scripts/test_v<version>.py`) that pins it forever; older gates may be
+re-pointed only with a dated note when a later change legitimately moves
+their target (see the `v1.4.9 re-point` in `test_v141.py`). Before any
+release: all gates green, then `release.sh <ver>` builds, checks the APK
+size law (hard fail over 6,000,000 B), checks the signing cert against the
+fingerprint baked into the script, and publishes. The signing key NEVER
+lives in this repo — release credentials come from a gitignored
+`local.properties` or `BOLT_*` env vars (template in `app/build.gradle`).
+
+**v1.4.9 hardening four-pack** (the second v1.4.9 session):
+
+1. *Adblock memory — the pattern diet.* The old engine compiled a
+   `java.util.regex.Pattern` for every one of ~132k network rules
+   (~130 MB of heap on device). Measured on the bundled lists:
+   103,087 network rules — 90,534 `||host^rest`, 6,880 `||host/path`,
+   3,964 generic literals — are now plain strings (no Pattern), leaving
+   1,709 rules (1.7%) that genuinely need regex. Generic rules are found
+   by one Aho-Corasick scan per request (`adblock/AhoCorasick.java`,
+   pure-Java, compact CSR arrays) which also replaced the old
+   enumerate-all-substrings token probe (and its per-request HashSet).
+   Equivalence is proven by `scripts/test_v149_perf.py`: the old regex
+   engine and the new literal engine decide identically over 1,013,884
+   crafted rule-by-rule checks and a corpus of realistic URLs, and the
+   JVM heap proof measured 244 MB -> 49 MB for the same lists.
+   Two semantic subtleties worth remembering: EasyList `^` is ONE
+   separator character, not a regex; and `||host` rules may only match
+   at the URL's real host (label boundaries — userinfo URLs and no-dot
+   lookalikes were never matched by the old prefix and must stay
+   unmatched).
+2. *Userscript leak.* `UserscriptEngine` kept a static `liveWebs` map of
+   every WebView ever attached — write-only dead code (delivery always
+   went through `JsBridge.attached`), so it only pinned each closed tab's
+   Activity context against GC. Deleted outright, with its call site.
+3. *Tab list thread law.* `TabManager.tabs` is now a
+   `Collections.synchronizedList` and EVERY iteration holds its monitor —
+   in TabManager itself (22 sites) and in the background readers
+   (`MediaControlService` media scans + phoenix resurrection,
+   `Workspaces.liveTabs`, `TabSleep`). Long WebView teardowns happen
+   OUTSIDE the monitor (snapshot first, then destroy).
+4. *Signing-key rotation.* The release keystore's password was exposed
+   in private history; it was rotated (`keytool -storepasswd`; PKCS12
+   keys ride the store password — `-keypasswd` is not applicable) to a
+   random 32-char secret kept in the maintainer's workspace + offline
+   backup only. The certificate is unchanged (same key pair), verified
+   by building a release APK and matching `apksigner` output against the
+   fingerprint in `release.sh`.
+
+**Environment notes** (the sandbox toolchain, for fresh sessions): the
+build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
+`openjdk-21-jdk-headless` and graft, see the pattern in
+`scripts/setup_toolchain.sh`; a working copy lives at
+`/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64` in the maintainer's
+sandbox), the Android SDK 34 (`sdk/`), and Gradle 8.9 (`gradle-8.9/`) —
+all OUTSIDE the repo. If Gradle fails with "Could not read workspace
+metadata", delete `.gradle-home/caches/8.9/transforms` and re-resolve.
+`local.properties` in the working clone carries `sdk.dir` + the signing
+credentials; it is gitignored and must never be committed.
+
+**Known-good numbers** (v1.4.9, release build): APK 2,746,825 B (budget
+6,000,000); gates: 34/34 green; filter rule census above.
+
+**Plans / candidates for future versions:**
+- v1.4.10 candidates: refresh the bundled EasyList/EasyPrivacy snapshots
+  (they age; the in-app updater exists, but the APK baseline drifts);
+  consider the same pattern-diet treatment for the cosmetic selector
+  storage if its memory ever shows up in profiles.
+- The `byHost` maps are cleared+rebuilt in place during a filter-list
+  reload while match threads may be mid-read (pre-existing since the
+  first release; the automaton is already swapped atomically as one
+  volatile reference — the maps could ride the same pattern if it ever
+  bites).
+- On-device memory measurement of the pattern diet (the gate proves the
+  JVM ratio; a heap dump on a real device would put a hard number in the
+  release notes).
 
 ## License
 

@@ -208,8 +208,10 @@ need('boundary = after ? host.get(host.size() - 1) : host.get(0);' in tm,
      "a grouped anchor clamps to its group's OUTER member (never between members)")
 need(re.search(r"public boolean moveGroupRelative\(long gid, Tab anchor, boolean after\) \{[\s\S]{0,1100}?rest\.addAll\(insert, members\);", tm) is not None,
      "the members move as a BLOCK (removed, then inserted before/after the boundary)")
-need(re.search(r"public boolean moveGroupRelative\(long gid, Tab anchor, boolean after\) \{[\s\S]{0,1400}?prefs\.reorderGroups\(groupsInFirstMemberOrder\(\)\);", tm) is not None,
-     "the groups array is re-sorted to first-member order inside the move (both placements agree)")
+need(re.search(r"public boolean moveGroupRelative\(long gid, Tab anchor, boolean after\) \{[\s\S]{0,1600}?prefs\.reorderGroups\(groupsInFirstMemberOrder\(\)\);", tm) is not None,
+     "the groups array is re-sorted to first-member order inside the move (both placements agree)"
+     "  [v1.4.9 re-point: budget 1400->1600 — the thread law wrapped the body in"
+     "  synchronized (tabs), +86 chars, semantics untouched]")
 need(re.search(r'gdone = tm\.moveGroupRelative\(gid, ganchor, gafter\);', ta) is not None
      and "prefs.moveGroupRelative" not in ta,
      "clearView's group drop block-moves in BOTH placements (the array-only reorder is retired)")

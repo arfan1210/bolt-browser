@@ -25,22 +25,52 @@ import java.util.regex.Pattern;
  * - main-frame navigations are never blocked by URL filters (fixes the
  *   "images disappearing" over-blocking bug: rules with type options only
  *   apply to matching resource types)
+ *
+ * v1.4.9 — THE PATTERN DIET (the ~130 MB adblock memory corpse): the
+ * pre-v1.4.9 engine compiled a java.util.regex Pattern for EVERY network
+ * rule (~132k across the bundled lists) even though ~98% of them are plain
+ * literal matches; the compiled Patterns alone bloated the heap to ~130 MB.
+ * Now a rule keeps a Pattern only when its syntax demands one (unbounded
+ * '*' wildcards, more than one '^' separator, exotic anchor mixes) — about
+ * 1.7k of the bundled rules. Everything else matches as a literal:
+ * '||host…' rules through the host-key bucket walk plus a boundary check
+ * (matchPlain), generic rules through one AhoCorasick scan per request
+ * that finds every keyword — literal bodies and regex rules' literal
+ * tokens alike — in a single pass (the old engine hashed every 2..12-char
+ * substring of each URL to find candidates, allocating a HashSet per
+ * request). Rule semantics are unchanged: the v1.4.9 gate proves the
+ * literal path decision-identical to the old regex path, rule by rule,
+ * over the full bundled lists (scripts/test_v149_perf.py).
  */
 public class FilterEngine {
 
     public enum Type { DOCUMENT, SCRIPT, IMAGE, STYLESHEET, XHR, SUBDOC, FONT, MEDIA, OTHER }
 
     static class NetRule {
+        // v1.4.9 — see the class header (THE PATTERN DIET): regex stays
+        // null for the ~98% of rules that are plain literals; those carry
+        // plain/plainKind (matchPlain) instead and cost a String, not a
+        // compiled Pattern (~1 KB each).
         Pattern regex;
         String hostKey;          // for ||rules
+        String plain;            // plain path: the literal needle
+        String plainRest;        // host-sep rules: the literal after the single '^' ("" = none)
+        byte plainKind;          // PLAIN_* constant; PLAIN_NONE when regex != null
+        boolean allow;           // @@ exceptions ride the shared automaton
         EnumSet<Type> types;     // empty = all types
         Boolean thirdParty;      // null = any
         String[] domAllow, domDeny; // domain= option
     }
 
+    private static final byte PLAIN_NONE = 0, PLAIN_CONTAINS = 1, PLAIN_STARTS = 2,
+            PLAIN_ENDS = 3, PLAIN_EQUALS = 4, PLAIN_HOST = 5, PLAIN_HOST_SEP = 6;
+
     private static class Buckets {
         final Map<String, List<NetRule>> byHost = new HashMap<>();
-        final Map<String, List<NetRule>> byToken = new HashMap<>();
+        // v1.4.9: byToken is GONE — the old probe index enumerated every
+        // 2..12-char substring of each URL (a fresh HashSet per request)
+        // to find candidate rules; one AhoCorasick scan now finds every
+        // keyword in a single allocation-free pass.
         final List<NetRule> catchAll = new ArrayList<>();
         int count;
     }
@@ -48,6 +78,12 @@ public class FilterEngine {
     private static volatile FilterEngine instance;
     private final Buckets block = new Buckets();
     private final Buckets allow = new Buckets();
+    // v1.4.9 — the shared literal automaton (block + allow generic rules
+    // alike). Built off to the side inside synchronized load() and swapped
+    // in as ONE volatile reference, so a list refresh can never expose a
+    // half-built index to a matching thread.
+    private volatile AhoCorasick ac = new AhoCorasick();
+    private AhoCorasick acBuild;   // transient, only non-null inside load()
     private final Set<String> globalSelectors = new HashSet<>();
     private final Map<String, List<String>> hostSelectors = new HashMap<>();
     private final Map<String, List<String>> negSelectors = new HashMap<>();
@@ -93,8 +129,9 @@ public class FilterEngine {
     }
 
     public synchronized void load(Context c) {
-        block.byHost.clear(); block.byToken.clear(); block.catchAll.clear(); block.count = 0;
-        allow.byHost.clear(); allow.byToken.clear(); allow.catchAll.clear(); allow.count = 0;
+        block.byHost.clear(); block.catchAll.clear(); block.count = 0;
+        allow.byHost.clear(); allow.catchAll.clear(); allow.count = 0;
+        acBuild = new AhoCorasick();
         globalSelectors.clear(); hostSelectors.clear(); negSelectors.clear();
         cosmeticExcGlobal.clear(); cosmeticExcHost.clear();
         elemhideHosts.clear(); generichideHosts.clear(); specifichideHosts.clear();
@@ -122,6 +159,9 @@ public class FilterEngine {
                 }
             } catch (Throwable ignored) {}
         }
+        acBuild.build();
+        ac = acBuild;
+        acBuild = null;
         ruleCount = block.count + allow.count;
         ready = true;
     }
@@ -383,6 +423,7 @@ public class FilterEngine {
         if (domDeny != null) r.domDeny = domDeny.toArray(new String[0]);
 
         String hostKey = null;
+        int hostLen = 0;               // v1.4.9: raw chars the host token spans in p
         String p = pattern;
         boolean anchoredStart = false, anchoredEnd = false;
         if (p.startsWith("||")) {
@@ -391,6 +432,7 @@ public class FilterEngine {
             int i = 0;
             StringBuilder hb = new StringBuilder();
             while (i < p.length() && isHostChar(p.charAt(i))) { hb.append(p.charAt(i)); i++; }
+            hostLen = i;
             if (hb.length() >= 2) hostKey = hb.toString().toLowerCase();
             anchoredStart = true; // host anchor
         } else if (p.startsWith("|")) {
@@ -402,37 +444,75 @@ public class FilterEngine {
             anchoredEnd = true;
         }
 
-        StringBuilder rx = new StringBuilder();
-        if (anchoredStart && hostKey != null) {
-            rx.append("^(?:[a-z][a-z0-9+.-]*://)?(?:[a-z0-9-]+\\.)*");
-        } else if (anchoredStart) {
-            rx.append("^");
-        }
-        for (int i = 0; i < p.length(); i++) {
-            char ch = p.charAt(i);
-            if (ch == '*') rx.append(".*");
-            else if (ch == '^') rx.append("(?:[^a-z0-9._%-]|$)");
-            else rx.append(Pattern.quote(String.valueOf(ch)));
-        }
-        if (anchoredEnd) rx.append("$");
-        try {
-            r.regex = Pattern.compile(rx.toString(), Pattern.CASE_INSENSITIVE);
-        } catch (Throwable e) {
-            return;
+        // v1.4.9 — THE PLAIN PATH. A rule needs a compiled Pattern only
+        // when its body carries unbounded specials: a '*' wildcard, or
+        // more '^' separators than the single one that may sit right
+        // after a ||host. Everything else is a literal: EasyList's
+        // '||host^rest' is host + ONE separator character + literal rest
+        // — '^' is a single-character class, not a regex. Classification
+        // is conservative: any doubt (a domain token whose lowercasing
+        // is not length-preserving, exotic anchor mixes on host rules)
+        // falls back to the regex path below, whose semantics are exactly
+        // the pre-v1.4.9 engine's. The equivalence gate
+        // (scripts/test_v149_perf.py) proves both paths decide
+        // identically, rule by rule, over the full bundled lists.
+        boolean noStar = p.indexOf('*') < 0;
+        if (hostKey != null && !anchoredEnd && hostLen > 0
+                && p.substring(0, hostLen).toLowerCase().length() == hostLen) {
+            // the domain token lowercases 1:1 — slicing p at hostLen is safe
+            if (noStar && p.indexOf('^') < 0) {
+                r.plainKind = PLAIN_HOST;               // ||host, ||host/path…
+                r.plain = p.toLowerCase();
+            } else if (p.length() > hostLen && p.charAt(hostLen) == '^'
+                    && p.indexOf('^', hostLen + 1) < 0
+                    && p.indexOf('*', hostLen + 1) < 0) {
+                r.plainKind = PLAIN_HOST_SEP;           // ||host^, ||host^rest
+                r.plain = p.substring(0, hostLen).toLowerCase();
+                r.plainRest = p.substring(hostLen + 1).toLowerCase();
+            }
+        } else if (hostKey == null && noStar && p.indexOf('^') < 0) {
+            r.plainKind = anchoredStart
+                    ? (anchoredEnd ? PLAIN_EQUALS : PLAIN_STARTS)
+                    : (anchoredEnd ? PLAIN_ENDS : PLAIN_CONTAINS);
+            r.plain = p.toLowerCase();
         }
         r.hostKey = hostKey;
+        r.allow = isAllow;
+
+        if (r.plainKind == PLAIN_NONE) {
+            StringBuilder rx = new StringBuilder();
+            if (anchoredStart && hostKey != null) {
+                rx.append("^(?:[a-z][a-z0-9+.-]*://)?(?:[a-z0-9-]+\\.)*");
+            } else if (anchoredStart) {
+                rx.append("^");
+            }
+            for (int i = 0; i < p.length(); i++) {
+                char ch = p.charAt(i);
+                if (ch == '*') rx.append(".*");
+                else if (ch == '^') rx.append("(?:[^a-z0-9._%-]|$)");
+                else rx.append(Pattern.quote(String.valueOf(ch)));
+            }
+            if (anchoredEnd) rx.append("$");
+            try {
+                r.regex = Pattern.compile(rx.toString(), Pattern.CASE_INSENSITIVE);
+            } catch (Throwable e) {
+                return;
+            }
+        }
 
         Buckets b = isAllow ? allow : block;
         b.count++;
         if (hostKey != null) {
+            // host-anchored rules (plain and regex alike) live under their
+            // host key — the match-time walk probes the request host and
+            // each parent domain
             b.byHost.computeIfAbsent(hostKey, k -> new ArrayList<>()).add(r);
+        } else if (r.plainKind != PLAIN_NONE) {
+            acBuild.add(r.plain, r);          // the literal body is the keyword
         } else {
             String token = firstLiteralToken(p);
-            if (token != null) {
-                b.byToken.computeIfAbsent(token, k -> new ArrayList<>()).add(r);
-            } else {
-                b.catchAll.add(r);
-            }
+            if (token != null) acBuild.add(token, r);   // regex rule: literal token rides the automaton
+            else b.catchAll.add(r);
         }
     }
 
@@ -508,8 +588,18 @@ public class FilterEngine {
         boolean third = pageHost != null && !pageHost.isEmpty()
                 && !Fx.baseDomain(reqHost).equals(Fx.baseDomain(pageHost));
 
-        if (matchBucket(allow, u, reqHost, pageHost, type, third, null)) return false;
-        return matchBucket(block, u, reqHost, pageHost, type, third, null);
+        if (matchBucket(allow, u, reqHost, pageHost, type, third)) return false;
+        // v1.4.9 — one AhoCorasick scan finds every generic candidate (the
+        // literal bodies AND the regex rules' literal tokens); an allow hit
+        // wins immediately, a block hit only stands when no allow rule hit
+        AhoCorasick a = ac;
+        if (a.size() > 0) {
+            AcScan s = new AcScan(u, reqHost, pageHost, type, third);
+            a.scan(u, s);
+            if (s.allowHit) return false;
+            if (s.blockHit) return true;
+        }
+        return matchBucket(block, u, reqHost, pageHost, type, third);
     }
 
     /** simple substring/wildcard match for user rules */
@@ -537,48 +627,31 @@ public class FilterEngine {
     }
 
     private boolean matchBucket(Buckets b, String url, String reqHost, String pageHost,
-                                Type type, boolean third, Object unused) {
-        // 1. host-anchored rules
+                                Type type, boolean third) {
+        // 1. host-anchored rules (plain and regex alike): probe the request
+        //    host and each parent domain
         if (b.byHost.size() > 0 && !reqHost.isEmpty()) {
             String h = reqHost;
             while (h != null && !h.isEmpty()) {
                 List<NetRule> rs = b.byHost.get(h);
                 if (rs != null) {
                     for (NetRule r : rs) {
-                        if (ruleMatch(r, url, pageHost, type, third)) return true;
+                        if (ruleMatch(r, url, reqHost, pageHost, type, third)) return true;
                     }
                 }
                 int dot = h.indexOf('.');
                 h = dot > 0 ? h.substring(dot + 1) : null;
             }
         }
-        // 2. token-indexed generic rules
-        if (b.byToken.size() > 0) {
-            Set<String> seen = new HashSet<>();
-            int ul = url.length();
-            for (int i = 0; i < ul - 1; i++) {
-                for (int len = 2; len <= 12 && i + len <= ul; len++) {
-                    String tok = url.substring(i, i + len);
-                    if (seen.contains(tok)) continue;
-                    List<NetRule> rs = b.byToken.get(tok);
-                    if (rs != null) {
-                        seen.add(tok);
-                        for (NetRule r : rs) {
-                            if (ruleMatch(r, url, pageHost, type, third)) return true;
-                        }
-                    }
-                }
-                if (!seen.isEmpty() && i > 200) break; // safety: don't scan huge URLs forever
-            }
-        }
-        // 3. catch-all
+        // 2. catch-all: regex rules with no usable literal token
         for (NetRule r : b.catchAll) {
-            if (ruleMatch(r, url, pageHost, type, third)) return true;
+            if (ruleMatch(r, url, reqHost, pageHost, type, third)) return true;
         }
         return false;
     }
 
-    private boolean ruleMatch(NetRule r, String url, String pageHost, Type type, boolean third) {
+    private boolean ruleMatch(NetRule r, String url, String reqHost, String pageHost,
+                              Type type, boolean third) {
         if (r.types != null) {
             if (type == Type.DOCUMENT) {
                 if (!r.types.contains(Type.DOCUMENT)) return false;
@@ -600,8 +673,100 @@ public class FilterEngine {
             }
             if (!ok) return false;
         }
-        Matcher m = r.regex.matcher(url);
-        return m.find();
+        if (r.regex != null) {
+            Matcher m = r.regex.matcher(url);
+            return m.find();
+        }
+        return matchPlain(r, url, reqHost);
+    }
+
+    /** v1.4.9 — literal matching, decision-identical to the regex the
+     *  pre-v1.4.9 engine compiled for the same rule (proven rule by rule
+     *  over the full bundled lists by scripts/test_v149_perf.py). */
+    private static boolean matchPlain(NetRule r, String url, String reqHost) {
+        switch (r.plainKind) {
+            case PLAIN_CONTAINS: return url.contains(r.plain);
+            case PLAIN_STARTS:   return url.startsWith(r.plain);
+            case PLAIN_ENDS:     return url.endsWith(r.plain);
+            case PLAIN_EQUALS:   return url.equals(r.plain);
+            case PLAIN_HOST: {
+                int pos = hostPos(url, reqHost, r.hostKey);
+                return pos >= 0 && url.regionMatches(pos, r.plain, 0, r.plain.length());
+            }
+            case PLAIN_HOST_SEP: {
+                int pos = hostPos(url, reqHost, r.hostKey);
+                if (pos < 0) return false;
+                int dl = r.plain.length();
+                if (!url.regionMatches(pos, r.plain, 0, dl)) return false;
+                int e = pos + dl;
+                if (e >= url.length()) return r.plainRest.isEmpty();
+                if (!isSepChar(url.charAt(e))) return false;
+                return r.plainRest.isEmpty()
+                        || url.regionMatches(e + 1, r.plainRest, 0, r.plainRest.length());
+            }
+            default: return false;
+        }
+    }
+
+    /** v1.4.9 — where hostKey starts inside the URL's real host: the host
+     *  begins right after the scheme, and hostKey must land on a label
+     *  boundary (start of the host or right after a dot). That is exactly
+     *  the ground the old regex's "^(scheme)?(subdomain\.)*host" prefix
+     *  could cover — userinfo ("https://user@host/") broke the old prefix
+     *  (the label class cannot eat '@') and a no-dot string suffix
+     *  ("x" + host) was never a label boundary, so neither may match here
+     *  either. The bucket walk already proved reqHost ends with hostKey.
+     *  -1 only in degenerate cases. */
+    private static int hostPos(String url, String reqHost, String hostKey) {
+        if (reqHost == null || reqHost.isEmpty() || hostKey == null) return -1;
+        int a = url.indexOf("://");
+        int from = a < 0 ? 0 : a + 3;
+        int end = url.length();
+        for (int i = from; i < url.length(); i++) {
+            char c = url.charAt(i);
+            if (c == '/' || c == '?' || c == '#') { end = i; break; }
+        }
+        int at = url.indexOf('@', from);
+        if (at >= 0 && at < end) return -1;   // userinfo: outside the old prefix's reach
+        if (!url.regionMatches(from, reqHost, 0, reqHost.length())
+                || from + reqHost.length() > end) return -1;
+        int pos = from + reqHost.length() - hostKey.length();
+        if (pos < from || (pos > from && url.charAt(pos - 1) != '.')) return -1;
+        return pos;
+    }
+
+    /** v1.4.9 — the EasyList '^' separator: any character that is not
+     *  [a-z0-9._%-] (the end of the string is handled by the caller) —
+     *  exactly the character class the old engine compiled, ASCII
+     *  case-insensitivity included. */
+    private static boolean isSepChar(char c) {
+        boolean alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                || (c >= '0' && c <= '9');
+        return !alnum && c != '.' && c != '_' && c != '%' && c != '-';
+    }
+
+    /** v1.4.9 — the per-request automaton sink: evaluates each candidate
+     *  as the scan finds it; an allow hit ends the whole scan early
+     *  (@@ exceptions win, nothing after them matters). */
+    private final class AcScan implements AhoCorasick.Sink {
+        private final String url, reqHost, pageHost;
+        private final Type type;
+        private final boolean third;
+        private boolean blockHit, allowHit;
+
+        AcScan(String url, String reqHost, String pageHost, Type type, boolean third) {
+            this.url = url; this.reqHost = reqHost; this.pageHost = pageHost;
+            this.type = type; this.third = third;
+        }
+
+        @Override public boolean accept(Object payload) {
+            NetRule r = (NetRule) payload;
+            if (ruleMatch(r, url, reqHost, pageHost, type, third)) {
+                if (r.allow) { allowHit = true; return false; }
+                blockHit = true;
+            }
+            return true;
+        }
     }
 
     // ------------------------------------------------------------------ cosmetic

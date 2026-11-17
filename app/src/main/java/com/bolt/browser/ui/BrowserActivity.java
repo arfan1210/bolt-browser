@@ -6862,8 +6862,12 @@ public class BrowserActivity extends AppCompatActivity {
         private volatile WebView attached;
 
         public void attach(WebView w) {
+            // v1.4.9: the UserscriptEngine.registerWeb(w) call is gone — it
+            // fed a static WebView registry that nothing ever read (delivery
+            // uses this bridge's own `attached` field), while the registry's
+            // strong references pinned every destroyed tab's Activity
+            // context in memory (the leak corpse)
             attached = w;
-            UserscriptEngine.registerWeb(w);
         }
 
         private void eval(String js) {

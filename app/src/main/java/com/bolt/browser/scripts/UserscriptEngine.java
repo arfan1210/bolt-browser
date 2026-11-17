@@ -1,9 +1,6 @@
 package com.bolt.browser.scripts;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.webkit.WebView;
 
 import com.bolt.browser.util.Fx;
 import com.bolt.browser.util.Prefs;
@@ -70,20 +67,13 @@ public class UserscriptEngine {
 
     public interface XhrCallback { void deliver(String js); }
 
-    /** last webviews registered per tab attach (for engine -> page delivery) */
-    private static final Map<String, WebView> liveWebs = new ConcurrentHashMap<>();
-    private static final Handler ui = new Handler(Looper.getMainLooper());
-
-    public static void registerWeb(WebView w) {
-        // keep a registry keyed by identity; evict the oldest entries when it grows
-        try {
-            liveWebs.put(String.valueOf(System.identityHashCode(w)), w);
-            if (liveWebs.size() > 24) {
-                Iterator<Map.Entry<String, WebView>> it = liveWebs.entrySet().iterator();
-                while (it.hasNext() && liveWebs.size() > 12) it.remove();
-            }
-        } catch (Throwable ignored) {}
-    }
+    // v1.4.9 — the static liveWebs WebView registry is GONE. It was written
+    // on every JsBridge.attach() (BrowserActivity) but read by NOTHING —
+    // engine -> page delivery always went through the bridge's own
+    // `attached` field — so the map only held strong references to every
+    // WebView ever attached, pinning each leaked tab's Activity context
+    // against garbage collection. Dead code: removed outright, not
+    // weakened (a WeakReference to something nobody reads is still dead).
 
     // ---------------------------------------------------------------- parsing
 
