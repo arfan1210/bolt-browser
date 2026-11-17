@@ -662,10 +662,10 @@ public class Probe {
         need(rr.returncode == 0, "the probe runs green (the render-neighbour law end to end)")
 
 print("V — the version pin")
-need(re.search(r'versionCode 123\b', gradle) is not None, "versionCode 123")
-need(re.search(r'versionName "1\.4\.9"', gradle) is not None, 'versionName "1.4.9"')
+need(re.search(r'versionCode 124\b', gradle) is not None, "versionCode 124")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need(re.search(r'versionName "1\.4\.10"', gradle) is not None, 'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 entries = re.findall(r'<item>([^<]+)</item>', strs.split('name="about_changelog"')[1]) if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.9|"), "the About changelog's newest entry is 1.4.9 (the label law)")
+need(entries and entries[0].startswith("1.4.10|"), "the About changelog's newest entry is 1.4.10 (the label law; v1.4.10 re-point 2026-11-17)")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 print("V149 GATE:", "OK" if fails == 0 else f"BAD ({fails} fail)")

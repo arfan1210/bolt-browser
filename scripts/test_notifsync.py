@@ -28,7 +28,8 @@ gates):
 """
 import re, sys, pathlib
 
-BASE = pathlib.Path("/home/z/my-project/bolt-light-browser"
+# v1.4.10 re-point (2026-11-17): the private bolt-light-browser checkout is gone — gates read the PUBLIC source checkout
+BASE = pathlib.Path("/home/z/my-project/bolt-browser"
                    "/app/src/main/java/com/bolt/browser")
 failures = []
 

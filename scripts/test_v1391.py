@@ -227,9 +227,9 @@ need(re.search(r'"New tab".{0,4000}"Save AI response".{0,4000}"Scan QR"', act, r
      "renamed 'Save AI response' in v1.3.95)")
 
 print("V1 — version pin")
-need(re.search(r"versionCode\s+123\b", gradle) is not None,
-     "versionCode 123")
-need('versionName "1.4.9"' in gradle,
+need(re.search(r"versionCode\s+124\b", gradle) is not None,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "versionCode 124")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionName "1.4.10"' in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
      'versionName "1.4.7"')
 
 print()

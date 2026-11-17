@@ -76,21 +76,6 @@ RMEOF
 fi
 echo "public releases repo ready."
 
-# ---- optional: install the Actions workflow into the private repo ----------
-# .github/workflows/mirror-release.yml cannot be pushed with a token that
-# lacks the workflow permission — this installs it via the contents API,
-# which works once the token is (re)scoped. Best-effort, silent skip on 403.
-WF_LOCAL="$(dirname "$0")/mirror-release.workflow.yml.txt"
-WF_API="https://api.github.com/repos/arfan1210/bolt-light-browser/contents/.github/workflows/mirror-release.yml"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" -H "$ACC" "$WF_API")
-if [ "$CODE" = "404" ] && [ -f "$WF_LOCAL" ]; then
-  B64W=$(base64 -w0 "$WF_LOCAL")
-  WCODE=$(curl -s -o /tmp/wf.json -w "%{http_code}" -X PUT -H "$AUTH" -H "$ACC" "$WF_API" \
-    -d "{\"message\":\"ci: mirror release APK to public releases repo\",\"content\":\"$B64W\"}")
-  if [ "$WCODE" = "201" ]; then
-    echo "installed .github/workflows/mirror-release.yml (Actions mirror armed once RELEASE_MIRROR_TOKEN secret is added)"
-  else
-    echo "note: could not install the Actions workflow yet (HTTP $WCODE) — the"
-    echo "scripts/mirror_release.sh path still mirrors every release meanwhile."
-  fi
-fi
+# v1.4.10 (2026-11-17): the private-repo Actions mirror section that used to
+# live here is DELETED — releases publish DIRECTLY to this repo now
+# (scripts/release.sh); there is no mirror hop and no mirror secret.

@@ -5,8 +5,9 @@ present in the shipped dex string pool. Suffix-merge aware (substring match,
 not whole-line); counts extracted names before trusting the verdict."""
 import re, subprocess, sys, pathlib
 
-SRC = pathlib.Path("/home/z/my-project/bolt-light-browser/app/src/main/java")
-APK = "/home/z/my-project/bolt-light-browser/app/build/outputs/apk/release/app-release.apk"
+# v1.4.10 re-point (2026-11-17): the private bolt-light-browser checkout is gone — gates read the PUBLIC source checkout
+SRC = pathlib.Path("/home/z/my-project/bolt-browser/app/src/main/java")
+APK = "/home/z/my-project/bolt-browser/app/build/outputs/apk/release/app-release.apk"
 
 names = set()
 pat = re.compile(r"@JavascriptInterface\s+public\s+[A-Za-z0-9_<>\[\], .]+\s+(\w+)\s*\(")

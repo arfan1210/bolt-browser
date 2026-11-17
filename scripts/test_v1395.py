@@ -250,7 +250,7 @@ var cases = [
   ["https://www.amazon.com/s?k=usb+cable", "usb cable"],
   ["https://www.google.com/maps/search/pizza+place", "pizza place"],
   ["https://www.google.com/search?q=c%2B%2B+tutorial", "c++ tutorial"],
-  ["https://github.com/arfan1210/bolt-light-browser", null],
+  ["https://github.com/arfan1210/bolt-browser", null],
   ["https://example.com/watch?v=abc123", null],
   ["https://example.com/page?q=", null]
 ];
@@ -275,8 +275,8 @@ else:
     print("  SKIP node not found — H probe skipped")
 
 print("V — version pin")
-need("versionCode 123" in gradle and 'versionName "1.4.9"' in gradle,
-     "build.gradle pins 113 / 1.3.100")
+need("versionCode 124" in gradle and 'versionName "1.4.10"' in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "build.gradle pins 124 / 1.4.10")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails:

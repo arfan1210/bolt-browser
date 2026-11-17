@@ -461,10 +461,10 @@ public class Probe {
                 print(r2.stderr[:800])
 
 print("V — the version pin")
-need('versionCode 123' in gradle, 'versionCode 121')
-need('versionName "1.4.9"' in gradle, 'versionName 1.4.5')
+need('versionCode 124' in gradle, 'versionCode 124')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionName "1.4.10"' in gradle, 'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 entries = re.findall(r"<item>([^<]+)</item>", strs[strs.find('name="about_changelog"'):strs.find("</string-array>", strs.find('name="about_changelog"'))])
-need(entries and entries[0].startswith("1.4.9|"), "the About changelog's newest entry is 1.4.7 (the label law, re-pinned for v1.4.7)")
+need(entries and entries[0].startswith("1.4.10|"), "the About changelog's newest entry is 1.4.10 (the label law; v1.4.10 re-point 2026-11-17)")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails == 0:

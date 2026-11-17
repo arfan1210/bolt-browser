@@ -157,8 +157,8 @@ need("var hid=false;try{hid=isReallyHidden();}catch(x){}" in mhk,
 print("V1 — version pin")
 m = re.search(r"versionCode\s+(\d+)", gradle)
 m2 = re.search(r'versionName\s+"([^"]+)"', gradle)
-need(m and m.group(1) == "123" and m2 and m2.group(1) == "1.4.9",
-     "build.gradle pins 123 / 1.4.9 (got %s / %s)" % (
+need(m and m.group(1) == "124" and m2 and m2.group(1) == "1.4.10",  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "build.gradle pins 124 / 1.4.10 (got %s / %s)" % (  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
          m.group(1) if m else "?", m2.group(1) if m2 else "?"))
 
 print()

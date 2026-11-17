@@ -112,8 +112,8 @@ need(os.system("node " + os.path.join(ROOT, "scripts/test_v1399_js.js") + " > /d
      "the functional mock-DOM probe passes (stale string -> hints agree with the string; live engine -> all three agree)")
 
 print("V — version pin")
-need("versionCode 123" in gradle and 'versionName "1.4.9"' in gradle,
-     "build.gradle pins 113 / 1.3.100")
+need("versionCode 124" in gradle and 'versionName "1.4.10"' in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "build.gradle pins 124 / 1.4.10")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails:

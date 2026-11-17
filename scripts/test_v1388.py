@@ -148,7 +148,7 @@ need("never receives the ongoing MOVE stream" in act,
      "the touch-target law is documented where it bit")
 
 print("I5 — version pin")
-need('versionName "1.4.9"' in gradle and "versionCode 123" in gradle,
+need('versionName "1.4.10"' in gradle and "versionCode 124" in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
      "111 / 1.3.98")
 
 print()

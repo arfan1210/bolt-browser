@@ -158,7 +158,7 @@ print("B — the About changelog + the easter egg")
 need('name="about_changelog"' in strs, "the about_changelog string-array exists")
 entries = re.findall(r"<item>([^<]+)</item>", strs[strs.find('name="about_changelog"'):strs.find("</string-array>", strs.find('name="about_changelog"'))]) if 'name="about_changelog"' in strs else []
 need(len(entries) >= 8, f"the changelog carries the recent releases ({len(entries)} entries)")
-need(entries and entries[0].startswith("1.4.9|"), "the NEWEST entry is the CURRENT version 1.4.4 (the label law: what the user reads is what shipped)")
+need(entries and entries[0].startswith("1.4.10|"), "the NEWEST entry is the CURRENT version 1.4.10 (the label law; v1.4.10 re-point 2026-11-17)")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 need(all("|" in e for e in entries), "every entry is version|summary (pipe-parsed)")
 need("1.4.0|" in strs and "1.3.100|" in strs, "the v1.4.0 and v1.3.100 lines are there (the milestone + the prior release)")
 need('name="recent_updates"' in strs and 'name="changelog_hint"' in strs,
@@ -446,8 +446,8 @@ if probe_ok:
                 print(r2.stderr[:800])
 
 print("V — the version pin")
-need('versionCode 123' in gradle, 'versionCode 121')
-need('versionName "1.4.9"' in gradle, 'versionName 1.4.3')
+need('versionCode 124' in gradle, 'versionCode 124')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionName "1.4.10"' in gradle, 'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails == 0:

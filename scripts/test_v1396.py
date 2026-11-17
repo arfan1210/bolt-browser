@@ -181,8 +181,8 @@ need("Save as PDF in the preview" in ba,
      "the print-success hint still names the tap")
 
 print("V — version pin")
-need("versionCode 123" in gradle and 'versionName "1.4.9"' in gradle,
-     "build.gradle pins 113 / 1.3.100")
+need("versionCode 124" in gradle and 'versionName "1.4.10"' in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "build.gradle pins 124 / 1.4.10")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails:

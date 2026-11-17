@@ -1,30 +1,37 @@
 #!/bin/bash
-# Bolt Light Browser — full release flow (build → verify → GitHub release → mirror)
+# Bolt Browser — full release flow (build → verify → publish), v1.4.10
+# pipeline (2026-11-17): the old private repo is DEAD. The
+# flow now lives entirely on the two public repos:
+#   SOURCE   github.com/arfan1210/bolt-browser          <- tag v<ver> + main
+#   RELEASES github.com/arfan1210/bolt-browser-releases <- release + APK +
+#                                                         changelog body
+# The releases repo is ALSO what the in-app update checker reads
+# (AboutActivity RELEASES_API) — publisher and checker cannot drift apart.
 #
 # Run AFTER bumping versionCode/versionName in app/build.gradle and updating
-# CHANGELOG.md. Everything below is automated; stop on any failure.
+# the About changelog + CHANGELOG.md. Everything below is automated; stop on
+# any failure.
 #
 # Usage:  bash scripts/release.sh <ver> [notes-file]
-#   ver        e.g. 1.3.17
+#   ver        e.g. 1.4.10
 #   notes-file optional markdown body for the release (default: CHANGELOG.md
 #              section for that version is extracted)
 #
-# Assets uploaded (same set since v1.3.6):
-#   Bolt-v<ver>.apk          raw installable APK
-#   Bolt-v<ver>.zip          the same APK wrapped in a zip (for hosts that
-#                            mangle .apk downloads)
-#   Bolt-v<ver>-source.zip   git archive of the tag (PRIVATE repo only —
-#                            contains bolt.keystore; NEVER mirrored public)
-# The public mirror gets ONLY the .apk (scripts/mirror_release.sh).
+# Assets uploaded:
+#   Bolt-v<ver>.apk   the installable APK (the releases repo's convention
+#                     since the first public release — APK only, the source
+#                     lives on the tag in the source repo)
 set -e
 VER="${1:?usage: release.sh <ver> [notes-file]}"
 NOTES="${2:-}"
 BASE=/home/z/my-project
-REPO_DIR=$BASE/bolt-light-browser
-TOK=$(cat $BASE/.ghtoken)
+REPO_DIR=$BASE/bolt-browser
+TOK="${GHTOKEN:-$(cat $BASE/.ghtoken)}"
 AUTH="Authorization: Bearer $TOK"
 ACC="Accept: application/vnd.github+json"
-API="https://api.github.com/repos/arfan1210/bolt-light-browser"
+API="https://api.github.com/repos/arfan1210/bolt-browser-releases"
+SRC_API="https://api.github.com/repos/arfan1210/bolt-browser"
+PUSHURL="https://x-access-token:${TOK}@github.com/arfan1210/bolt-browser.git"
 CERT_EXPECT="bcd57eb42ca770a340f78ad64b56999d6238f88ab194cc8c787ee46082938ae4"
 
 cd $REPO_DIR
@@ -34,6 +41,25 @@ TAG="v$VER"
 [ -z "$(git status --porcelain)" ] || { echo "ERROR: uncommitted changes"; exit 1; }
 VNAME=$(grep -o 'versionName "[^"]*"' app/build.gradle | head -1 | cut -d'"' -f2)
 [ "$VNAME" = "$VER" ] || { echo "ERROR: app/build.gradle says $VNAME, asked to release $VER"; exit 1; }
+
+# ---- 0b. THE LIVE-VERSION GUARD (the v1.4.10 collision corpse: v1.4.9/123
+# was already live from the private repo, so a same-version rebuild could
+# never install — Android only accepts RISING versionCodes). Refuse to
+# publish anything that does not compare GREATER than the live latest.
+LIVE_VER=$(curl -s -H "$AUTH" -H "$ACC" "$API/releases/latest" | python3 -c "import json,sys;print(json.load(sys.stdin).get('tag_name','').lstrip('v'))" 2>/dev/null || true)
+if [ -n "$LIVE_VER" ]; then
+  python3 - "$LIVE_VER" "$VER" << 'PYEOF' || exit 1
+import sys
+live, ver = sys.argv[1], sys.argv[2]
+key = lambda s: [int(x) for x in s.split(".")]
+if key(live) >= key(ver):
+    print(f"ERROR: releases repo already serves v{live} — v{ver} is not a RISING "
+          "version and Android would reject the update (the v1.4.10 corpse). "
+          "Bump versionName/versionCode first.")
+    sys.exit(1)
+print(f"live-version guard OK: live v{live} < releasing v{ver}")
+PYEOF
+fi
 
 # ---- 1. static checks (never skip) ----
 python3 scripts/check_js.py
@@ -306,7 +332,7 @@ python3 scripts/test_v13100.py
 # ---- v1.4.0 gate (the put-as-insert corpse — moveGroup/moveSpeeddial rebuilt
 # lossless, proven by a compiled+run probe; the orphan heal; the draggable tab
 # groups; the launcher folder window + reorder-only folder drags; About + the
-# update checker against the public mirror) ----
+# update checker against the public releases repo) ----
 python3 scripts/test_v140.py
 
 # ---- v1.4.1 gate (the folder-window shared-LayoutParams corpse — the icons
@@ -432,8 +458,18 @@ python3 scripts/test_v149.py
 # new-engine decision equivalence) ----
 python3 scripts/test_v149_perf.py
 
+# ---- v1.4.10 gate (the version-collision corpse + the pipeline law: the
+# bump to 124/1.4.10 because v1.4.9/123 was ALREADY live from the private
+# repo; the About changelog label + honesty trim; release.sh retargeted to
+# the two public repos with the live-version guard; the dead private repo
+# must stay out of the pipeline) ----
+python3 scripts/test_v1410.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
+# GRADLE_USER_HOME: the workspace-shared cache (see README environment
+# notes — a fresh ~/.gradle would re-resolve every dependency)
+export GRADLE_USER_HOME=$BASE/.gradle-home
 $BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR assembleRelease
 APK=$REPO_DIR/app/build/outputs/apk/release/app-release.apk
 ls -la "$APK"
@@ -457,17 +493,18 @@ CERT=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK" 2>
 [ "$CERT" = "$CERT_EXPECT" ] || { echo "ERROR: cert mismatch: $CERT"; exit 1; }
 echo "cert OK: $CERT"
 
-# ---- 4. commit, tag, push ----
-git push -q origin main
+# ---- 4. commit, tag, push (SOURCE repo: bolt-browser) ----
+# The push URL carries the token explicitly — the remote stays clean
+# https with no credentials persisted in .git/config.
+git push -q "$PUSHURL" main
 git tag -f "$TAG"
-git push -qf origin "$TAG"
+git push -qf "$PUSHURL" "$TAG"
 
 # ---- 5. local assets ----
 STAGE=$BASE/download; mkdir -p $STAGE
 cp "$APK" "$STAGE/Bolt-$TAG.apk"
 rm -f "$STAGE/Bolt-$TAG.zip"
 (cd $STAGE && zip -q -9 "Bolt-$TAG.zip" "Bolt-$TAG.apk")
-git archive --format=zip --prefix="bolt/" -o "$STAGE/Bolt-$TAG-source.zip" "$TAG"
 
 # ---- 6. release body ----
 if [ -n "$NOTES" ]; then
@@ -498,12 +535,12 @@ echo "release id: $(python3 -c "import json;print(json.load(open('/tmp/rel.json'
 RELID=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['id'])")
 UPURL=$(python3 -c "import json;print(json.load(open('/tmp/rel.json'))['upload_url'].replace('{?name,label}',''))")
 
-# ---- 8. upload the 3 assets (replace any existing) ----
-for A in "Bolt-$TAG.apk" "Bolt-$TAG.zip" "Bolt-$TAG-source.zip"; do
+# ---- 8. upload the APK asset (replace any existing) ----
+for A in "Bolt-$TAG.apk"; do
   for AID in $(curl -s -H "$AUTH" -H "$ACC" "$API/releases/$RELID/assets" | python3 -c "import json,sys;print(' '.join(str(a['id']) for a in json.load(sys.stdin) if a['name']=='$A'))"); do
     curl -s -X DELETE -H "$AUTH" "$API/releases/assets/$AID" || true
   done
-  CT=$([ "${A##*.}" = apk ] && echo "application/vnd.android.package-archive" || echo "application/zip")
+  CT="application/vnd.android.package-archive"
   curl -s -X POST -H "$AUTH" -H "Content-Type: $CT" --data-binary "@$STAGE/$A" "$UPURL?name=$A" \
     | python3 -c "import json,sys;d=json.load(sys.stdin);print(' uploaded:',d.get('name'),d.get('size'),'bytes')"
 done
@@ -515,37 +552,28 @@ curl -sL -H "$AUTH" -H "Accept: application/octet-stream" "$API/releases/assets/
 md5sum "$APK" /tmp/verify.apk
 [ "$(md5sum "$APK" | cut -d' ' -f1)" = "$(md5sum /tmp/verify.apk | cut -d' ' -f1)" ] || { echo "ERROR: uploaded APK differs"; exit 1; }
 
-# ---- 10. mirror to the PUBLIC repo (APK only) ----
-# Primary path: the mirror-release Actions workflow fires on this publish and
-# uploads the APK itself. Poll the public release for up to 4 minutes; verify
-# the public APK byte-matches. Only if that fails/times out, fall back to the
-# local mirror script (never run both at once — simultaneous creates race on
-# the public release object).
-PUB="https://api.github.com/repos/arfan1210/bolt-browser-releases"
-echo "waiting for the Actions mirror to publish the public APK..."
-PUB_OK=""
-for i in $(seq 1 24); do
-  sleep 10
-  AURL=$(curl -s -H "$AUTH" -H "$ACC" "$PUB/releases/tags/$TAG" | python3 -c "
-import json,sys
-r=json.load(sys.stdin)
-a=next((a for a in r.get('assets',[]) if a['name'].endswith('.apk')),None)
-print(a['browser_download_url'] if a else '')" 2>/dev/null)
-  if [ -n "$AURL" ]; then PUB_OK="$AURL"; break; fi
-done
-if [ -n "$PUB_OK" ]; then
-  curl -sL -o /tmp/pub_verify.apk "$PUB_OK"
-  if [ "$(md5sum "$APK" | cut -d' ' -f1)" = "$(md5sum /tmp/pub_verify.apk | cut -d' ' -f1)" ]; then
-    echo "public APK verified (Actions mirror): $PUB_OK"
-  else
-    echo "public APK md5 mismatch — re-mirroring locally"
-    bash scripts/mirror_release.sh "$VER"
-  fi
-else
-  echo "Actions mirror did not land in time — mirroring locally"
-  bash scripts/mirror_release.sh "$VER"
-fi
+# ---- 10. LIVE verification (the v1.4.10 report: "verify the release is
+# live on GitHub" — no mirror hop anymore, the release IS on the public
+# releases repo): the /releases/latest endpoint the in-app update checker
+# reads must return THIS version, with the APK asset downloadable
+# ANONYMOUSLY and byte-identical.
+echo "verifying the live release..."
+python3 - "$VER" "$API" << 'PYEOF'
+import json, sys, urllib.request
+ver, api = sys.argv[1], sys.argv[2]
+r = json.load(urllib.request.urlopen(api + "/releases/latest"))
+assert r["tag_name"] == "v" + ver, f"latest is {r['tag_name']}, expected v{ver}"
+apk = next((a for a in r["assets"] if a["name"].endswith(".apk")), None)
+assert apk, "no .apk asset on the live release"
+data = urllib.request.urlopen(apk["browser_download_url"]).read()   # anonymous
+local = open(f"/home/z/my-project/download/Bolt-v{ver}.apk", "rb").read()
+assert len(data) == len(local), f"size mismatch: live {len(data)} vs local {len(local)}"
+import hashlib
+assert hashlib.md5(data).hexdigest() == hashlib.md5(local).hexdigest(), "md5 mismatch"
+print(f"LIVE OK: {r['html_url']}")
+print(f"  asset {apk['name']} {apk['size']} B, anonymous download verified, md5 match")
+PYEOF
 
 echo
-echo "PRIVATE : https://github.com/arfan1210/bolt-light-browser/releases/tag/$TAG"
-echo "PUBLIC  : https://github.com/arfan1210/bolt-browser-releases/releases/tag/$TAG"
+echo "SOURCE  : https://github.com/arfan1210/bolt-browser/tree/$TAG"
+echo "RELEASE : https://github.com/arfan1210/bolt-browser-releases/releases/tag/$TAG"

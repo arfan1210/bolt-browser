@@ -82,14 +82,16 @@ if [ ! -d "$BASE/sdk/platforms/android-34" ] || [ ! -d "$BASE/sdk/build-tools/34
 fi
 
 # ---------- 4. Repo + creds ----------
-TOKEN=$(cat $BASE/.ghtoken)
-if [ ! -d "$BASE/bolt-light-browser/.git" ]; then
-  git clone -q https://arfan1210:$TOKEN@github.com/arfan1210/bolt-light-browser.git $BASE/bolt-light-browser
+# v1.4.10 (2026-11-17): the source repo is the PUBLIC bolt-browser (the old
+# private repo is dead). Clone needs NO token; pushes authenticate via the
+# explicit push URL in scripts/release.sh.
+TOKEN=$(cat $BASE/.ghtoken 2>/dev/null || echo none)
+if [ ! -d "$BASE/bolt-browser/.git" ]; then
+  git clone -q https://github.com/arfan1210/bolt-browser.git $BASE/bolt-browser
 fi
-cd $BASE/bolt-light-browser
+cd $BASE/bolt-browser
 git config user.name "arfan1210"
 git config user.email "arfan1210@users.noreply.github.com"
-git remote set-url origin https://arfan1210:$TOKEN@github.com/arfan1210/bolt-light-browser.git
 
 # local.properties (sdk.dir + signing creds; never commit)
 grep -q "sdk.dir=" local.properties 2>/dev/null || echo "sdk.dir=$BASE/sdk" >> local.properties
@@ -103,8 +105,9 @@ grep -q "org.gradle.java.home" /home/z/.gradle/gradle.properties 2>/dev/null || 
 
 # ---------- 5. Keystore check ----------
 if [ ! -f "$BASE/bolt.keystore" ]; then
-  echo "WARNING: $BASE/bolt.keystore missing. Recover: git show 0ba6a3d:bolt.keystore (pre-untracking commit), then verify:"
+  echo "WARNING: $BASE/bolt.keystore missing. Ask the maintainer for the"
+  echo "rotated backup (password: download/bolt-keystore-password.txt), then verify:"
   echo "  keytool -list -v -keystore $BASE/bolt.keystore -storepass <pw> -alias bolt   # SHA-256 must be $CERT_EXPECT"
 fi
 
-echo "[OK] Toolchain ready. Build: cd $BASE/bolt-light-browser && JAVA_HOME=$JDK PATH=\$JAVA_HOME/bin:\$PATH $BASE/gradle-8.9/bin/gradle assembleRelease -x lint"
+echo "[OK] Toolchain ready. Build: cd $BASE/bolt-browser && JAVA_HOME=$JDK GRADLE_USER_HOME=$BASE/.gradle-home PATH=\$JAVA_HOME/bin:\$PATH $BASE/gradle-8.9/bin/gradle assembleRelease -x lint"

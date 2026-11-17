@@ -36,7 +36,8 @@ enumerate hosts the static list misses.
 """
 import re, sys, pathlib
 
-SRC = pathlib.Path("/home/z/my-project/bolt-light-browser"
+# v1.4.10 re-point (2026-11-17): the private bolt-light-browser checkout is gone — gates read the PUBLIC source checkout
+SRC = pathlib.Path("/home/z/my-project/bolt-browser"
                    "/app/src/main/java/com/bolt/browser/ui/BrowserActivity.java")
 src = SRC.read_text(errors="ignore")
 
@@ -130,7 +131,7 @@ print("   (field report: 'clearing youtube's data clears the login but the")
 print("    signed-out history remains — the in-page deleteDatabase is BLOCKED")
 print("    by the page's own open connections and WebStorage.deleteOrigin's")
 print("    contract excludes IndexedDB, so the IDB survived every wipe)")
-KOTLIN = pathlib.Path("/home/z/my-project/bolt-light-browser"
+KOTLIN = pathlib.Path("/home/z/my-project/bolt-browser"
                       "/app/src/main/java/com/bolt/browser/util/SiteStorageWipe.kt")
 check("the physical sweep file exists (util/SiteStorageWipe.kt)",
       KOTLIN.exists())
@@ -188,7 +189,7 @@ check("host enumeration covers the partition surface (music./accounts. too)",
 check("the affected tabs' exact hosts join the wipe targets",
       "Fx.hostOf" in wipe_code
       and "!targets.contains(th)) targets.add(th)" in wipe_code)
-CHIPS = pathlib.Path("/home/z/my-project/bolt-light-browser"
+CHIPS = pathlib.Path("/home/z/my-project/bolt-browser"
                      "/app/src/main/java/com/bolt/browser/util/CookiePartitionScan.kt")
 check("the read-only partition scanner exists (util/CookiePartitionScan.kt)",
       CHIPS.exists())

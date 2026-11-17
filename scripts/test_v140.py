@@ -400,8 +400,8 @@ for s in ("about_bolt", "check_for_updates", "up_to_date", "update_available",
     need(f'name="{s}"' in strs, f"the string {s} exists")
 
 print("V — the version pin (the v1.4.0 milestone)")
-need('versionCode 123' in gradle, 'versionCode 120 (re-pinned for v1.4.1)')
-need('versionName "1.4.9"' in gradle, 'versionName 1.4.3')
+need('versionCode 124' in gradle, 'versionCode 124 (v1.4.10 re-point 2026-11-17)')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionName "1.4.10"' in gradle, 'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 print()
 if fails == 0:

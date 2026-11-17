@@ -135,6 +135,48 @@ lives in this repo — release credentials come from a gitignored
    by building a release APK and matching `apksigner` output against the
    fingerprint in `release.sh`.
 
+**v1.4.10 — the version-collision corpse + the pipeline law** (the third
+session of this relay, 2026-11-17):
+
+1. *The collision corpse.* The v1.4.9 hardening was built and gated as a
+   second v1.4.9 (code 123) — but v1.4.9/123 was ALREADY live on the
+   releases repo, published from the old private repo before the
+   hardening existed (public v1.4.9 APK: 2,744,241 B, pre-hardening;
+   the hardening build: 2,746,825 B). Android only installs updates
+   whose versionCode RISES, so a same-version rebuild could never
+   reach a single device. The hardening therefore ships as **v1.4.10 /
+   code 124**. `release.sh` now carries THE LIVE-VERSION GUARD: it reads
+   the releases repo's `/releases/latest` and refuses to publish any
+   version that does not compare greater — pinned by `test_v1410.py`.
+2. *The pipeline law.* The private repo is dead (its checkout is an
+   empty dir). Everything lives on the two public repos now: the tag +
+   main on `bolt-browser`, the GitHub release + APK + changelog body on
+   `bolt-browser-releases` — the SAME endpoint the in-app update checker
+   reads, so publisher and checker cannot drift apart. `release.sh` was
+   retargeted end-to-end (authenticated push URL, direct release create,
+   APK-only asset per the releases repo's convention, anonymous-download
+   live verification at the end); the dead mirror tooling
+   (`mirror_release.sh`, the workflow txt, `refresh_mirror_secret.py`)
+   is deleted; `ensure_releases_repo.sh` lost its private-repo section.
+   `CHANGELOG.md` now exists in this repo — release bodies are extracted
+   from it (the About changelog stays the one-line-per-version summary).
+3. *The standing sweep.* All 28 prior version gates re-pinned
+   124/1.4.10 with dated notes (including v1389's captured-group pin
+   form; v1390's digit-class pin already accepts 124). The gates that
+   HARDCODED the dead private checkout's path (`test_sitewipe`,
+   `test_reloadgate`, `test_notifsync`, `test_fs`, `verify_bridge`) now
+   read the public checkout — a fresh session must know: **the gates
+   read files by absolute path, and the source of truth is
+   `/home/z/my-project/bolt-browser`**.
+4. *The honesty trim.* The About changelog's 1.4.9 line claimed the
+   hardening ("Under the hood: …") which v1.4.9 never contained; it is
+   trimmed back to what v1.4.9 actually shipped, and the hardening text
+   lives on the 1.4.10 line (the label law: what the user reads is what
+   shipped).
+5. *Toolchain note.* `release.sh` now exports
+   `GRADLE_USER_HOME=$BASE/.gradle-home` itself — a fresh `~/.gradle`
+   would re-resolve every dependency and trip the metadata warnings.
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
@@ -146,11 +188,14 @@ metadata", delete `.gradle-home/caches/8.9/transforms` and re-resolve.
 `local.properties` in the working clone carries `sdk.dir` + the signing
 credentials; it is gitignored and must never be committed.
 
-**Known-good numbers** (v1.4.9, release build): APK 2,746,825 B (budget
-6,000,000); gates: 34/34 green; filter rule census above.
+**Known-good numbers** (v1.4.10, release build): APK 2,747,009 B (budget
+6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
+65/65 commands green across 34 version gates + static checks + compiled
+probes; filter rule census unchanged from v1.4.9 (103,087 network rules,
+1,709 on the regex path — see the hardening note above).
 
 **Plans / candidates for future versions:**
-- v1.4.10 candidates: refresh the bundled EasyList/EasyPrivacy snapshots
+- v1.4.11 candidates: refresh the bundled EasyList/EasyPrivacy snapshots
   (they age; the in-app updater exists, but the APK baseline drifts);
   consider the same pattern-diet treatment for the cosmetic selector
   storage if its memory ever shows up in profiles.

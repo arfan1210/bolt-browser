@@ -147,8 +147,8 @@ need("ins.use {" in abk,
      "addEntry closes the source stream even when the zip write throws")
 
 print("V — version pin")
-need("versionCode 123" in gradle and 'versionName "1.4.9"' in gradle,
-     "build.gradle pins 113 / 1.3.100")
+need("versionCode 124" in gradle and 'versionName "1.4.10"' in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+     "build.gradle pins 124 / 1.4.10")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
 
 # ---- the ancInv semantic probe (node): each DK ancestor toggles parity ----
 node = subprocess.run(["which", "node"], capture_output=True, text=True).stdout.strip()
