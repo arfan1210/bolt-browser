@@ -170,10 +170,10 @@ need("public void aiCapture(final String mode, final int count)" in act,
 need('"ai export "' in act, "the export is logged to diagnostics")
 
 print("H5 — version pin")
-need(re.search(r"versionCode\s+124\b", gradle) is not None,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
-     "versionCode 124")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
-need(re.search(r'versionName\s+"1\.4\.10"', gradle) is not None,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
-     'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need(re.search(r"versionCode\s+125\b", gradle) is not None,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+     "versionCode 125")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need(re.search(r'versionName\s+"1\.4\.11"', gradle) is not None,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+     'versionName "1.4.11"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
 
 print()
 if failures:

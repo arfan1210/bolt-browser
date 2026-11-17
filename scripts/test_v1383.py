@@ -157,7 +157,7 @@ print("F8 — version pin")
 # owns the current pin; the F1-F7 contracts above still hold: the alias,
 # the demotion, the never-again law, the fossil rule, the normalizer,
 # the synchronous heal, the stopped-state law).
-need('versionName "1.4.10"' in gradle and "versionCode 124" in gradle,  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionName "1.4.11"' in gradle and "versionCode 125" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
      "build.gradle must be bumped to 1.3.98 / 111 (test_v1386.py owns the pin)")
 
 print()

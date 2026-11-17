@@ -326,7 +326,9 @@ public class BrowserActivity extends AppCompatActivity {
         @Override public void run() {
             try {
                 android.webkit.WebView cw = null;
-                for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                    for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+                }
                 com.bolt.browser.util.CacheGuard.check(BrowserActivity.this, false, cw);
             } catch (Throwable ignored) {}
             // v1.3.79: 3 -> 6 minutes — every tick walks thousands of cache
@@ -651,7 +653,9 @@ public class BrowserActivity extends AppCompatActivity {
         // WebViews works, the effect is app-global)
         try {
             android.webkit.WebView cw = null;
-            for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+            }
             com.bolt.browser.util.CacheGuard.check(this, false, cw);
         } catch (Throwable ignored) {}
         // v1.3.77 — coming back cancels the close-out sweep (the user
@@ -714,9 +718,11 @@ public class BrowserActivity extends AppCompatActivity {
         // resume ALL WebViews paused by onPause() (v1.3.11: the pause decision
         // is now per-tab, so the resume must be too; calling onResume() on a
         // WebView that was never paused is harmless)
-        for (Tab t : tm.tabs) {
-            if (t.web != null) {
-                try { t.web.onResume(); } catch (Throwable ignored) {}
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+            for (Tab t : tm.tabs) {
+                if (t.web != null) {
+                    try { t.web.onResume(); } catch (Throwable ignored) {}
+                }
             }
         }
         // v1.4.7 — THE ROTATION RESYNC: while the app was away, the
@@ -736,16 +742,18 @@ public class BrowserActivity extends AppCompatActivity {
         try {
             int nowOr = getResources().getConfiguration().orientation;
             if (pausedOrientation >= 0 && nowOr != pausedOrientation) {
-                for (Tab t : tm.tabs) {
-                    if (t.web != null && (t.holdsMedia || t.mediaPlaying)) {
-                        final Tab ft = t;
-                        ui.postDelayed(() -> {
-                            try {
-                                if (ft.web != null) ft.web.evaluateJavascript(
-                                        "try{var __rse=new Event('resize');__rse.__boltRS=1;"
-                                                + "window.dispatchEvent(__rse);}catch(x){}", null);
-                            } catch (Throwable ignored) {}
-                        }, 450);
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                    for (Tab t : tm.tabs) {
+                        if (t.web != null && (t.holdsMedia || t.mediaPlaying)) {
+                            final Tab ft = t;
+                            ui.postDelayed(() -> {
+                                try {
+                                    if (ft.web != null) ft.web.evaluateJavascript(
+                                            "try{var __rse=new Event('resize');__rse.__boltRS=1;"
+                                                    + "window.dispatchEvent(__rse);}catch(x){}", null);
+                                } catch (Throwable ignored) {}
+                            }, 450);
+                        }
                     }
                 }
             }
@@ -868,12 +876,14 @@ public class BrowserActivity extends AppCompatActivity {
         // own logic can see.
         boolean pipWatch = inPip || customView != null;
         boolean anyMedia = false;
-        for (Tab t : tm.tabs) {
-            if (t.web == null) continue;
-            if ((pipWatch && (t.mediaPlaying || t.holdsMedia))
-                    || (bgOn && (t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t))) {
-                anyMedia = true;
-                break;
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+            for (Tab t : tm.tabs) {
+                if (t.web == null) continue;
+                if ((pipWatch && (t.mediaPlaying || t.holdsMedia))
+                        || (bgOn && (t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t))) {
+                    anyMedia = true;
+                    break;
+                }
             }
         }
         // authoritative set (not just engage): clears any stale flag left by
@@ -891,16 +901,18 @@ public class BrowserActivity extends AppCompatActivity {
         // bgPlay OFF, and a playing non-active tab could be paused (or not) by
         // whichever tab happened to be in front — another "sometimes".
         // v1.3.64: the pipWatch clause keeps the watched tab alive in PiP too.
-        for (Tab t : tm.tabs) {
-            if (t.web == null) continue;
-            // v1.3.16: keep alive any tab HOLDING media — playing (v1.3.11) OR
-            // paused-but-loaded (holdsMedia). A paused media tab is still the
-            // notification's target; web.onPause() on it freezes the renderer
-            // and every later notification PLAY tap dies silently.
-            boolean keep = (pipWatch && (t.mediaPlaying || t.holdsMedia))
-                    || (bgOn && (t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t));
-            if (!keep) {
-                try { t.web.onPause(); } catch (Throwable ignored) {}
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+            for (Tab t : tm.tabs) {
+                if (t.web == null) continue;
+                // v1.3.16: keep alive any tab HOLDING media — playing (v1.3.11) OR
+                // paused-but-loaded (holdsMedia). A paused media tab is still the
+                // notification's target; web.onPause() on it freezes the renderer
+                // and every later notification PLAY tap dies silently.
+                boolean keep = (pipWatch && (t.mediaPlaying || t.holdsMedia))
+                        || (bgOn && (t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t));
+                if (!keep) {
+                    try { t.web.onPause(); } catch (Throwable ignored) {}
+                }
             }
         }
         // v1.3.25: leaving the foreground is the decisive moment for the media
@@ -926,9 +938,11 @@ public class BrowserActivity extends AppCompatActivity {
         try {
             if (!incognito && prefs.bgPlay()) {
                 boolean anyMedia = false;
-                for (Tab t : tm.tabs) {
-                    if (t.web != null && (t.mediaPlaying || t.holdsMedia)
-                            && !siteBlockBg(t)) { anyMedia = true; break; }
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                    for (Tab t : tm.tabs) {
+                        if (t.web != null && (t.mediaPlaying || t.holdsMedia)
+                                && !siteBlockBg(t)) { anyMedia = true; break; }
+                    }
                 }
                 if (anyMedia && !com.bolt.browser.util.BackgroundSurvival.isIgnoring(this)) {
                     pendingBoOffer = true;
@@ -1391,12 +1405,14 @@ public class BrowserActivity extends AppCompatActivity {
             // detached playback is proven). Detach them from this dying view
             // tree WITHOUT pausing or destroying; the media service owns the
             // process lifetime from here.
-            for (Tab t : tm.tabs) {
-                if (t.web != null) {
-                    try {
-                        if (t.web.getParent() instanceof ViewGroup)
-                            ((ViewGroup) t.web.getParent()).removeView(t.web);
-                    } catch (Throwable ignored) {}
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) {
+                    if (t.web != null) {
+                        try {
+                            if (t.web.getParent() instanceof ViewGroup)
+                                ((ViewGroup) t.web.getParent()).removeView(t.web);
+                        } catch (Throwable ignored) {}
+                    }
                 }
             }
         } else {
@@ -1415,8 +1431,17 @@ public class BrowserActivity extends AppCompatActivity {
      *  re-attaches and rewires it to this activity's clients instead. */
     protected void destroyStaleWebViews() {
         try {
-            for (int i = 0; i < tm.tabs.size(); i++) {
-                Tab t = tm.tabs.get(i);
+            // v1.4.11: the thread law — snapshot under the monitor, destroy
+            // OUTSIDE it (a WebView destroy() is long; background readers
+            // holding the list's monitor — the media scans, the phoenix —
+            // must never wait on a teardown). The snapshot's indices feed
+            // onTabGone exactly like the live list's used to.
+            List<Tab> staleSnap;
+            synchronized (tm.tabs) {
+                staleSnap = new ArrayList<>(tm.tabs);
+            }
+            for (int i = 0; i < staleSnap.size(); i++) {
+                Tab t = staleSnap.get(i);
                 if (t.web == null) continue;
                 if (t.web.getContext() != this) {
                     if (t.mediaPlaying || t.holdsMedia) continue;   // adopt, don't destroy
@@ -1448,12 +1473,16 @@ public class BrowserActivity extends AppCompatActivity {
             WebViewDatabase.getInstance(this).clearFormData();
             android.webkit.CookieManager.getInstance().removeAllCookies(null);
         } catch (Throwable ignored) {}
-        for (Tab t : tm.tabs) {
+        // v1.4.11: the thread law — snapshot under the monitor, destroy
+        // OUTSIDE it (clearCache(true) + destroy() are long teardowns)
+        List<Tab> wipeSnap;
+        synchronized (tm.tabs) { wipeSnap = new ArrayList<>(tm.tabs); }
+        for (Tab t : wipeSnap) {
             if (t.web != null) {
                 try { t.web.clearCache(true); t.web.destroy(); } catch (Throwable ignored) {}
             }
         }
-        tm.tabs.clear();
+        synchronized (tm.tabs) { tm.tabs.clear(); }
         // separate process: leave no residue
         android.os.Process.killProcess(android.os.Process.myPid());
     }
@@ -3752,7 +3781,9 @@ public class BrowserActivity extends AppCompatActivity {
     /** find the tab owning this WebView (not just the active one — fixes
      *  stale URLs/titles on tabs that finished loading in the background) */
     protected Tab tabOf(WebView v) {
-        for (Tab t : tm.tabs) if (t.web == v) return t;
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+            for (Tab t : tm.tabs) if (t.web == v) return t;
+        }
         return null;
     }
 
@@ -3967,8 +3998,10 @@ public class BrowserActivity extends AppCompatActivity {
         if (android.os.Build.VERSION.SDK_INT < 26) return; // setRendererPriorityPolicy is API 26+
         try {
             boolean anyMedia = false;
-            for (Tab t : tm.tabs) {
-                if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) {
+                    if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
+                }
             }
             // v1.3.29 — signature gate. This runs on EVERY media event
             // ("media" reason), which during SPA/mix metadata churn was
@@ -3978,31 +4011,35 @@ public class BrowserActivity extends AppCompatActivity {
             // (same tabs, same waive bits) there is nothing to do — skip the
             // IPCs and the diag line entirely.
             StringBuilder sig = new StringBuilder(anyMedia ? "M" : "-");
-            for (int i = 0; i < tm.tabs.size(); i++) {
-                Tab t = tm.tabs.get(i);
-                if (t == null || t.web == null) continue;
-                boolean media = (t.mediaPlaying || t.holdsMedia);
-                boolean visible = (i == tm.active && shownTabIndex == i && !t.isHome);
-                // visible or media-holding tabs: (IMPORTANT, false) = never
-                // waived = platform max. Hidden non-media tabs while media is
-                // live somewhere: (IMPORTANT, true) = full protection in front,
-                // WAIVED while hidden = first to be reclaimed under pressure.
-                boolean waive = anyMedia && !media && !visible;
-                sig.append(i).append(waive ? 'w' : media ? 'm' : visible ? 'v' : '-');
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+                for (int i = 0; i < tm.tabs.size(); i++) {
+                    Tab t = tm.tabs.get(i);
+                    if (t == null || t.web == null) continue;
+                    boolean media = (t.mediaPlaying || t.holdsMedia);
+                    boolean visible = (i == tm.active && shownTabIndex == i && !t.isHome);
+                    // visible or media-holding tabs: (IMPORTANT, false) = never
+                    // waived = platform max. Hidden non-media tabs while media is
+                    // live somewhere: (IMPORTANT, true) = full protection in front,
+                    // WAIVED while hidden = first to be reclaimed under pressure.
+                    boolean waive = anyMedia && !media && !visible;
+                    sig.append(i).append(waive ? 'w' : media ? 'm' : visible ? 'v' : '-');
+                }
             }
             String sigStr = sig.toString();
             if (sigStr.equals(lastPolicySig)) return;
             lastPolicySig = sigStr;
-            for (int i = 0; i < tm.tabs.size(); i++) {
-                Tab t = tm.tabs.get(i);
-                if (t == null || t.web == null) continue;
-                boolean media = (t.mediaPlaying || t.holdsMedia);
-                boolean visible = (i == tm.active && shownTabIndex == i && !t.isHome);
-                boolean waive = anyMedia && !media && !visible;
-                try {
-                    t.web.setRendererPriorityPolicy(
-                            android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, waive);
-                } catch (Throwable ignored) {}
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+                for (int i = 0; i < tm.tabs.size(); i++) {
+                    Tab t = tm.tabs.get(i);
+                    if (t == null || t.web == null) continue;
+                    boolean media = (t.mediaPlaying || t.holdsMedia);
+                    boolean visible = (i == tm.active && shownTabIndex == i && !t.isHome);
+                    boolean waive = anyMedia && !media && !visible;
+                    try {
+                        t.web.setRendererPriorityPolicy(
+                                android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, waive);
+                    } catch (Throwable ignored) {}
+                }
             }
             try {
                 com.bolt.browser.util.Diag.log(this, "rendererPolicies " + why
@@ -4029,13 +4066,15 @@ public class BrowserActivity extends AppCompatActivity {
                 || level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL;
         if (!critical) return;
         int dropped = 0;
-        for (int i = 0; i < tm.tabs.size(); i++) {
-            Tab t = tm.tabs.get(i);
-            if (t == null || t.snap == null) continue;
-            if (i == tm.active) continue;   // keep the visible tab's live preview
-            try { t.snap.recycle(); } catch (Throwable ignored) {}
-            t.snap = null;
-            dropped++;
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+            for (int i = 0; i < tm.tabs.size(); i++) {
+                Tab t = tm.tabs.get(i);
+                if (t == null || t.snap == null) continue;
+                if (i == tm.active) continue;   // keep the visible tab's live preview
+                try { t.snap.recycle(); } catch (Throwable ignored) {}
+                t.snap = null;
+                dropped++;
+            }
         }
         try {
             com.bolt.browser.util.Diag.log(this, "trimMemory level=" + level
@@ -4055,14 +4094,21 @@ public class BrowserActivity extends AppCompatActivity {
         int slept = 0;
         try {
             boolean anyMedia = false;
-            for (Tab t : tm.tabs) {
-                if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) {
+                    if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
+                }
             }
             if (anyMedia) {
                 boolean lastDitch = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
                         && activityBackground;
-                for (int i = 0; i < tm.tabs.size(); i++) {
-                    Tab t = tm.tabs.get(i);
+                // v1.4.11: the thread law — sleepTab() destroys a WebView
+                // (long teardown), so iterate a SNAPSHOT taken under the
+                // monitor, never the live list
+                List<Tab> sleepSnap;
+                synchronized (tm.tabs) { sleepSnap = new ArrayList<>(tm.tabs); }
+                for (int i = 0; i < sleepSnap.size(); i++) {
+                    Tab t = sleepSnap.get(i);
                     if (t == null || t.web == null) continue;
                     boolean media = t.mediaPlaying || t.holdsMedia;
                     boolean active = (i == tm.active);
@@ -4125,13 +4171,15 @@ public class BrowserActivity extends AppCompatActivity {
                 keepHidden.add(tgt.web);
             }
             if (prefs.bgPlay()) {
-                for (int i = 0; i < tm.tabs.size(); i++) {
-                    if (i == showIdx) continue;
-                    Tab t = tm.tabs.get(i);
-                    if (t == null || t.web == null) continue;
-                    if ((t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t)) {
-                        if (keepHidden == null) keepHidden = new ArrayList<>();
-                        if (!keepHidden.contains(t.web)) keepHidden.add(t.web);
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+                    for (int i = 0; i < tm.tabs.size(); i++) {
+                        if (i == showIdx) continue;
+                        Tab t = tm.tabs.get(i);
+                        if (t == null || t.web == null) continue;
+                        if ((t.mediaPlaying || t.holdsMedia) && !siteBlockBg(t)) {
+                            if (keepHidden == null) keepHidden = new ArrayList<>();
+                            if (!keepHidden.contains(t.web)) keepHidden.add(t.web);
+                        }
                     }
                 }
             }
@@ -6406,8 +6454,10 @@ public class BrowserActivity extends AppCompatActivity {
             Tab t = activeTab();
             if (t == null || t.web == null) return;
             if (!dlUrl.equals(t.web.getUrl())) {
-                for (Tab o : tm.tabs) {
-                    if (o != null && o.web != null && dlUrl.equals(o.web.getUrl())) { t = o; break; }
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                    for (Tab o : tm.tabs) {
+                        if (o != null && o.web != null && dlUrl.equals(o.web.getUrl())) { t = o; break; }
+                    }
                 }
             }
             WebBackForwardList hl = t.web.copyBackForwardList();
@@ -6830,12 +6880,26 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     /** WebView's WebResourceRequest does not expose the resource type, so infer it
-     *  from the URL path extension (same approach as other WebView-based blockers). */
+     *  from the URL path extension (same approach as other WebView-based blockers).
+     *
+     *  v1.4.11 — THE ADBLOCK BLINDSPOT: extension-less endpoints. The old
+     *  walk typed every URL without a file extension as OTHER, so `$script`
+     *  rules never fired on the modern tracker shape — collection/beacon
+     *  endpoints (/collect, /tag.js-less API paths, /beacon.gif-less POSTs)
+     *  that serve JavaScript or are fetched AS scripts with no `.js` in the
+     *  path. The request's Accept header now disambiguates the fall-through:
+     *  a fetch that asks for image/* first is an IMAGE (an <img> tag / a CSS
+     *  background), text/css first is a STYLESHEET, and a JavaScript MIME
+     *  first is a SCRIPT. Only the FIRST (preferred) MIME in the list is
+     *  trusted — jQuery-style XHRs (Accept: "application/json, text/javascript,
+     *  star-slash-star") list text/javascript second and must NOT be typed
+     *  SCRIPT (over-blocking JSON APIs would break sites); an extension in
+     *  the path still wins over the header, keeping every shipped extension
+     *  decision identical. */
     protected static FilterEngine.Type inferType(WebResourceRequest req) {
         if (req.isForMainFrame()) return FilterEngine.Type.DOCUMENT;
         String path = req.getUrl().getPath();
-        if (path == null) return FilterEngine.Type.OTHER;
-        String p = path.toLowerCase();
+        String p = path == null ? "" : path.toLowerCase();
         if (p.endsWith(".js") || p.endsWith(".mjs")) return FilterEngine.Type.SCRIPT;
         if (p.endsWith(".css")) return FilterEngine.Type.STYLESHEET;
         if (p.endsWith(".png") || p.endsWith(".jpg") || p.endsWith(".jpeg")
@@ -6849,6 +6913,33 @@ public class BrowserActivity extends AppCompatActivity {
                 || p.endsWith(".m4a") || p.endsWith(".aac") || p.endsWith(".ogg")
                 || p.endsWith(".wav") || p.endsWith(".m3u8") || p.endsWith(".ts")
                 || p.endsWith(".mov")) return FilterEngine.Type.MEDIA;
+        // v1.4.11: no extension signal — the Accept header's preferred MIME
+        // says what the fetcher is (see the blindspot note above)
+        String accept = null;
+        try {
+            java.util.Map<String, String> hs = req.getRequestHeaders();
+            if (hs != null) {
+                for (java.util.Map.Entry<String, String> e : hs.entrySet()) {
+                    if ("accept".equalsIgnoreCase(e.getKey())) { accept = e.getValue(); break; }
+                }
+            }
+        } catch (Throwable ignored) {}
+        if (accept != null && !accept.isEmpty()) {
+            String first = accept.split(",", 2)[0].split(";", 2)[0]
+                    .trim().toLowerCase();
+            if (first.startsWith("image/")) return FilterEngine.Type.IMAGE;
+            if (first.equals("text/css")) return FilterEngine.Type.STYLESHEET;
+            if (first.equals("application/javascript")
+                    || first.equals("text/javascript")
+                    || first.equals("application/ecmascript")
+                    || first.equals("application/x-ecmascript")) {
+                return FilterEngine.Type.SCRIPT;
+            }
+            if (first.startsWith("video/") || first.startsWith("audio/")) {
+                return FilterEngine.Type.MEDIA;
+            }
+            if (first.startsWith("font/")) return FilterEngine.Type.FONT;
+        }
         return FilterEngine.Type.OTHER;
     }
 
@@ -7526,8 +7617,10 @@ public class BrowserActivity extends AppCompatActivity {
     /** live aggregation across all tabs — the single source of truth for
      *  "is any tab playing media" (replaces last-report-wins) */
     protected boolean anyTabMediaPlaying() {
-        for (Tab t : tm.tabs) {
-            if (t.mediaPlaying) return true;
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+            for (Tab t : tm.tabs) {
+                if (t.mediaPlaying) return true;
+            }
         }
         return false;
     }
@@ -7664,9 +7757,11 @@ public class BrowserActivity extends AppCompatActivity {
             String js = "window.__boltSetMedia && window.__boltSetMedia('"
                     + com.bolt.browser.media.MediaHook.mediaSettingsJson(prefs)
                             .replace("'", "\\'") + "')";
-            for (Tab t : tm.tabs) {
-                if (t.web != null) {
-                    try { t.web.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) {
+                    if (t.web != null) {
+                        try { t.web.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+                    }
                 }
             }
         } catch (Throwable ignored) {}
@@ -12112,13 +12207,15 @@ public class BrowserActivity extends AppCompatActivity {
         //    delete request forever; that deletion moved to step 5's on-disk
         //    sweep, the only deterministic path.)
         final List<Tab> affected = new ArrayList<>();
-        for (int i = 0; i < tm.tabs.size(); i++) {
-            Tab t2 = tm.tabs.get(i);
-            if (t2 == null) continue;
-            String tb = Fx.baseDomain(Fx.hostOf(t2.url));
-            boolean hit = false;
-            for (String d : relatedDomains(base)) if (d.equals(tb)) hit = true;
-            if (hit) affected.add(t2);
+        synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+            for (int i = 0; i < tm.tabs.size(); i++) {
+                Tab t2 = tm.tabs.get(i);
+                if (t2 == null) continue;
+                String tb = Fx.baseDomain(Fx.hostOf(t2.url));
+                boolean hit = false;
+                for (String d : relatedDomains(base)) if (d.equals(tb)) hit = true;
+                if (hit) affected.add(t2);
+            }
         }
         final String[] restoreUrls = new String[affected.size()];
         for (int i = 0; i < affected.size(); i++) {
@@ -12632,17 +12729,19 @@ public class BrowserActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
             // 1) open tabs — switching beats reloading
             try {
-                for (int i = 0; i < tm.tabs.size() && items.size() < 3; i++) {
-                    Tab t = tm.tabs.get(i);
-                    if (t == tm.current()) continue;
-                    String title = t.isHome ? getString(R.string.home)
-                            : (t.title == null ? "" : t.title);
-                    String url = t.url == null ? "" : t.url;
-                    if (!ql.isEmpty() && (title.toLowerCase().contains(ql)
-                            || url.toLowerCase().contains(ql))) {
-                        items.add(new Object[]{R.drawable.ic_tabcount,
-                                title.isEmpty() ? url : title,
-                                getString(R.string.switch_to_tab), "tab:" + i});
+                synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
+                    for (int i = 0; i < tm.tabs.size() && items.size() < 3; i++) {
+                        Tab t = tm.tabs.get(i);
+                        if (t == tm.current()) continue;
+                        String title = t.isHome ? getString(R.string.home)
+                                : (t.title == null ? "" : t.title);
+                        String url = t.url == null ? "" : t.url;
+                        if (!ql.isEmpty() && (title.toLowerCase().contains(ql)
+                                || url.toLowerCase().contains(ql))) {
+                            items.add(new Object[]{R.drawable.ic_tabcount,
+                                    title.isEmpty() ? url : title,
+                                    getString(R.string.switch_to_tab), "tab:" + i});
+                        }
                     }
                 }
             } catch (Throwable ignored) {}

@@ -382,6 +382,10 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.11 (2026-11-18): the stability four-pack — the OCR rotation
+         leak, the UI-side tab-list races, the adblock extension-less
+         blindspot, the cookie-jar lock contention -->
+    <item>1.4.11|Screen translation no longer leaks the whole screen on rotation (the headless OCR WebView now lives on the app context instead of pinning the closed screen forever); every remaining tab-list walk in the browser and switcher UIs holds the list lock, killing the remaining crash-on-rotate/switch races; the adblock engine reads the request\'s Accept header, so extension-less tracker scripts are finally typed — and blocked — as scripts; the per-site wipe retries a briefly-locked cookie jar instead of silently skipping it.</item>
     <!-- v1.4.10 (2026-11-17): the hardening four-pack — v1.4.9/123 was
          already live from the private repo, so these fixes ride 1.4.10/124;
          the 1.4.9 line below is trimmed back to what v1.4.9 actually shipped -->

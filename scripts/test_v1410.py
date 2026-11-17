@@ -64,28 +64,28 @@ about = open(os.path.join(ROOT, "app/src/main/java/com/bolt/browser/ui/AboutActi
 rel = open(os.path.join(ROOT, "scripts/release.sh"), encoding="utf8").read()
 
 print("A — the version bump (the collision corpse)")
-need(re.search(r"versionCode 124\b", gradle) is not None,
-     "versionCode 124 (v1.4.9/123 is LIVE — Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.10"', gradle) is not None,
-     'versionName "1.4.10"')
+need(re.search(r"versionCode 125\b", gradle) is not None,
+     "versionCode 125 (v1.4.11 re-point 2026-11-18: pins follow the current release)")
+need(re.search(r'versionName "1\.4\.11"', gradle) is not None,
+     'versionName "1.4.11"')
 
 print("B — the About changelog (the label law + the honesty trim)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
         if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.10|"),
-     "the newest entry is 1.4.10 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.9|"),
-     "the second entry is 1.4.9 (the previous live release)")
-need("Aho-Corasick" in entries[0] and "regex Patterns" in entries[0],
+need(entries and entries[0].startswith("1.4.11|"),   # v1.4.11 re-point (2026-11-18)
+     "the newest entry is 1.4.11 (the label law)")
+need(len(entries) > 1 and entries[1].startswith("1.4.10|"),
+     "the second entry is 1.4.10 (the previous live release)")  # v1.4.11 re-point (2026-11-18)
+need("Aho-Corasick" in entries[1] and "regex Patterns" in entries[1],   # v1.4.11 re-point (2026-11-18): the four-pack line slid to [1]
      "the 1.4.10 line names the pattern diet (the ~130 MB memory corpse)")
-need("WebView registry" in entries[0],
+need("WebView registry" in entries[1],   # v1.4.11 re-point (2026-11-18)
      "the 1.4.10 line names the closed-tab WebView leak")
-need("media service" in entries[0],
+need("media service" in entries[1],   # v1.4.11 re-point (2026-11-18)
      "the 1.4.10 line names the tab-list race")
-need("signing key" in entries[0] and "install in place" in entries[0],
+need("signing key" in entries[1] and "install in place" in entries[1],   # v1.4.11 re-point (2026-11-18)
      "the 1.4.10 line names the key rotation + the same-certificate promise")
-need("Under the hood" not in entries[1],
+need("Under the hood" not in entries[2],   # v1.4.11 re-point (2026-11-18): the 1.4.9 line slid to [2]
      "the 1.4.9 line no longer claims the hardening (it shipped in 1.4.10, not 1.4.9)")
 
 print("C — the pipeline law (release.sh targets the two public repos)")

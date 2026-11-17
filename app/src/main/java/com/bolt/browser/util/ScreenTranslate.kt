@@ -1350,13 +1350,24 @@ object ScreenTranslate {
     // ---------------- the headless OCR WebView (tesseract.js host) ------------
 
     /**
-     * A 1×1 INVISIBLE WebView attached to the activity decor. Loads the
-     * 4 KB asset page (base URL pinned to cdn.jsdelivr.net so the
-     * tesseract.js engine + wasm core are same-origin fetches served by
-     * the CDN's immutable cache), and serves language models from
-     * filesDir through shouldInterceptRequest at https://bolt.ocr/tess —
-     * the host never resolves anywhere; EVERY request to it stays on the
-     * device. Results come back through the BoltOcr bridge.
+     * A 1×1 INVISIBLE headless WebView. Loads the 4 KB asset page (base URL
+     * pinned to cdn.jsdelivr.net so the tesseract.js engine + wasm core are
+     * same-origin fetches served by the CDN's immutable cache), and serves
+     * language models from filesDir through shouldInterceptRequest at
+     * https://bolt.ocr/tess — the host never resolves anywhere; EVERY request
+     * to it stays on the device. Results come back through the BoltOcr bridge.
+     *
+     * v1.4.11 — THE CONTEXT LEAK. The host WebView used to be built with the
+     * ACTIVITY (`WebView(a)`) and attached to the activity's decor view — but
+     * this object lives in the `ScreenTranslate` singleton, which outlives
+     * every activity. Screen rotation destroyed the activity while the
+     * singleton kept the WebView (context → the whole activity + its view
+     * tree) pinned forever: the classic rotation leak. The WebView is now
+     * built with `a.applicationContext` (an app-scoped context that never
+     * dies) and is NEVER attached — a headless WebView needs no window to
+     * load a page and run JS/wasm; every other context use inside this class
+     * (asset read, model files, diag log) rides the same appCtx so no
+     * activity reference survives construction.
      */
     private class OcrHost(a: Activity) {
         private val wv: WebView
@@ -1371,7 +1382,10 @@ object ScreenTranslate {
         private var diagN = 0
 
         init {
-            wv = WebView(a)
+            // v1.4.11: appCtx, never the activity — see the class header (the
+            // rotation leak). The activity parameter is read exactly once
+            // here and never stored.
+            wv = WebView(appCtx)
             wv.layoutParams = ViewGroup.LayoutParams(1, 1)
             wv.visibility = View.INVISIBLE
             val s = wv.settings
@@ -1386,7 +1400,7 @@ object ScreenTranslate {
                     if (u.host == "bolt.ocr") {
                         val lang = (u.lastPathSegment ?: "").substringBefore('.')
                         if (lang in LANG_OK) {
-                            val f = modelFile(a, lang)
+                            val f = modelFile(appCtx, lang)
                             if (f.exists() && f.length() > MIN_MODEL) {
                                 val r = WebResourceResponse("application/octet-stream", null,
                                     FileInputStream(f))
@@ -1409,14 +1423,16 @@ object ScreenTranslate {
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                     if (diagN < 12) {
                         diagN++
-                        try { Diag.log(a, "scr ocr console " + m.message()) } catch (_: Throwable) {}
+                        try { Diag.log(appCtx, "scr ocr console " + m.message()) } catch (_: Throwable) {}
                     }
                     return true
                 }
             }
-            (a.window.decorView as? ViewGroup)?.addView(wv)
+            // v1.4.11: NOT attached — the old decorView addView pinned the
+            // WebView to the (dying-on-rotation) activity's window; a
+            // headless app-context WebView runs its page unattached.
             val html = try {
-                a.assets.open("scr_ocr.html").bufferedReader().use { it.readText() }
+                appCtx.assets.open("scr_ocr.html").bufferedReader().use { it.readText() }
             } catch (t: Throwable) { "" }
             wv.loadDataWithBaseURL("https://cdn.jsdelivr.net/", html, "text/html", "utf-8", null)
         }

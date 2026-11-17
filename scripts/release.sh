@@ -483,6 +483,16 @@ python3 scripts/test_v149_perf.py
 # must stay out of the pipeline) ----
 python3 scripts/test_v1410.py
 
+# ---- v1.4.11 gate (the stability four-pack: the OCR rotation leak — the
+# headless OCR WebView rides the app context and never touches the decor;
+# the thread law round 2 — ZERO unprotected tm.tabs iterations left in the
+# UI files, teardown loops snapshot-first; the adblock extension-less
+# blindspot — inferType's Accept-header fall-through, first-MIME-only,
+# extension still authoritative, proven by a compiled+run probe; the
+# cookie-jar lock contention — bounded retry-backoff, read-only law
+# intact) ----
+python3 scripts/test_v1411.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

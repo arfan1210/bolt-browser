@@ -19,8 +19,8 @@ android {
         // v1.4.10 (2026-11-17): the v1.4.9 hardening four-pack rides this
         // bump — v1.4.9/123 was ALREADY published from the private repo, so
         // an update at the same versionCode would be rejected by Android.
-        versionCode 124
-        versionName "1.4.10"
+        versionCode 125
+        versionName "1.4.11"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

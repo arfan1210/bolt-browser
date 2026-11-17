@@ -218,6 +218,58 @@ this relay, 2026-11-18):
    pinned, the republish mode pinned, the dual anonymous verification
    pinned. Suite after the change: 65/65 green.
 
+**v1.4.11 — the stability four-pack** (the fifth session of this relay,
+2026-11-18):
+
+1. *The OCR rotation leak.* `ScreenTranslate`'s singleton held an `OcrHost`
+   whose headless OCR WebView was built with the ACTIVITY context
+   (`WebView(a)`) and attached to the activity's decor view — the singleton
+   outlives every activity, so each rotation leaked the whole destroyed
+   Activity. The WebView now rides `a.applicationContext` (read once at
+   construction, never stored), is never attached (a headless WebView runs
+   its page + JS/wasm unattached), and every other context use inside the
+   host (asset read, model files, diag) rides the same appCtx. Learning:
+   a singleton that touches a Context must derive appCtx on day one — an
+   Activity context inside a process-lifetime object is a leak by
+   construction.
+2. *The thread law, round 2.* v1.4.9 synchronized `TabManager.tabs` and the
+   background readers, but 30 raw `tm.tabs` iterations remained in the UI
+   files (22 enhanced-for + 8 indexed size()+get() walks in
+   BrowserActivity/TabsActivity) — `Collections.synchronizedList` demands
+   manual `synchronized(list)` for iteration, so each was a
+   ConcurrentModificationException waiting for a background mutation. All
+   now hold the monitor; the three loops that destroy WebViews inside
+   (`destroyStaleWebViews`, `wipeIncognito`, onTrimMemory's sleep walk)
+   follow the snapshot-first law (snapshot under the monitor, teardown
+   outside — the phoenix pattern). The audit is a GATE now: test_v1411
+   embeds a bracket-depth walker that fails on any unprotected iteration.
+3. *The adblock extension-less blindspot.* `inferType` guessed resource
+   types purely by URL extension, so extension-less tracker endpoints
+   (`/collect`, `/beacon`) typed OTHER and bypassed `$script` rules. The
+   fall-through now reads the request's `Accept` header, typed by the FIRST
+   preferred MIME only — jQuery XHRs list text/javascript SECOND and stay
+   OTHER (over-blocking JSON APIs would break sites); an explicit extension
+   still wins, keeping every shipped decision byte-identical. Pinned by a
+   compiled+run probe of the extracted method (the parse-gate law).
+4. *The cookie-jar lock contention.* `CookiePartitionScan` opened the
+   Cookies SQLite file read-only while Chromium's cookie backend could be
+   mid-write; a lock was swallowed as generic best-effort, so the scan
+   silently returned nothing exactly when the user was actively browsing.
+   Locks are transient: each jar now retries with a bounded backoff
+   (60/120/240 ms — inside the wipe flow's head-start window); the
+   read-only law (OPEN_READONLY, rawQuery only) is untouched.
+5. *The standing sweep, v1.4.11 edition.* All 28 older version gates
+   re-pinned 125/1.4.11 with dated notes; test_v1410 got surgical edits
+   (its About-changelog checks shifted an index: the 1.4.10 four-pack line
+   slid to entries[1], the trimmed 1.4.9 line to entries[2]). v1390's
+   digit-class pin already accepted 125. Suite: 66/66 green (was 65; the
+   new gate adds one command).
+6. *A Java comment corpse worth remembering.* The first build died with
+   "unclosed string literal" at a JAVADOC line — the comment quoted the
+   Accept glob `*/*`, and that `*/` sequence CLOSES a Java block comment.
+   Never write `*/*` inside a Java block comment (Kotlin block comments
+   nest, Java's do not); say "star-slash-star" if the glob itself matters.
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
@@ -225,32 +277,42 @@ build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64` in the maintainer's
 sandbox), the Android SDK 34 (`sdk/`), and Gradle 8.9 (`gradle-8.9/`) —
 all OUTSIDE the repo. The 2026-11-18 recycle wiped jdk21/, sdk/ and
-gradle-8.9/: the JDK alone is restorable in ~1 min via the workspace's
-`scripts/restore_jdk.sh` (the `jdk_graft()` from setup_toolchain.sh —
-enough to run the full gate suite); a full BUILD additionally needs
-setup_toolchain.sh steps 2-3 (Gradle 8.9 + Android SDK 34, ~10 min). If
-Gradle fails with "Could not read workspace metadata", delete
+gradle-8.9/ again: the full toolchain restored in ~4 min via
+`scripts/setup_toolchain.sh` (the JDK alone is faster via the workspace's
+`scripts/restore_jdk.sh` when no build is needed). If Gradle fails with
+"Could not read workspace metadata", delete
 `.gradle-home/caches/8.9/transforms` and re-resolve. `local.properties`
 in the working clone carries `sdk.dir` + the signing credentials; it is
 gitignored, must never be committed, and DOES NOT SURVIVE a sandbox
-recycle — a fresh clone has none: re-create it (setup_toolchain.sh writes
-the skeleton; the keystore + its rotated-password backup live in the
-maintainer's workspace `download/` folder, never in any repo).
+recycle — a fresh clone has none: re-create it from the signing backup
+that lives in the maintainer's workspace `download/` folder
+(`bolt-signing-backup.txt` + `bolt.keystore`; the workspace-side
+`scripts/restore_credentials.py` pattern rebuilds local.properties from
+the backup WITHOUT printing the password — the keyPassword line in the
+backup carries a trailing "(PKCS12…)" note, so parse the first
+whitespace-delimited token after `=`).
 
-**Known-good numbers** (v1.4.10, release build): APK 2,747,009 B (budget
+**Known-good numbers** (v1.4.11, release build): APK 2,749,213 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-65/65 commands green across 34 version gates + static checks + compiled
+66/66 commands green across 35 version gates + static checks + compiled
 probes; filter rule census unchanged from v1.4.9 (103,087 network rules,
 1,709 on the regex path — see the hardening note above).
 
 **Plans / candidates for future versions:**
-- v1.4.11 candidates: refresh the bundled EasyList/EasyPrivacy snapshots
-  (they age; the in-app updater exists, but the APK baseline drifts);
-  consider the same pattern-diet treatment for the cosmetic selector
-  storage if its memory ever shows up in profiles.
-- v1.4.11 will be the first FULL release to exercise the dual-publish
-  end-to-end (gates → build → both repos) — the v1.4.10 backfill only
-  proved the republish path.
+- The bundled EasyList/EasyPrivacy snapshot refresh stays a candidate (it
+  was on the v1.4.11 list and was DEFERRED — the stability four-pack took
+  the release; the in-app updater exists, but the APK baseline drifts).
+- v1.4.11 was the first FULL release through the dual-publish pipeline
+  end-to-end (gates → build → BOTH repos) — the v1.4.10 backfill only
+  proved the republish path. Done; nothing further to prove there.
+- The compound single-call sequences on tm.tabs (indexOf-then-add in the
+  TabsActivity drag paths, cached size()+get() in the swipe walk) remain
+  outside the monitor law — they are individually-atomic reads whose
+  worst case is a one-off cosmetic drift or a caught IOOBE, not the
+  iterator corpse; sweep them only if a field report ever names one.
+- `inferType` could grow a `Sec-Fetch-Dest` check the day WebView's
+  `getRequestHeaders()` starts exposing it (it is the authoritative
+  signal; Accept is the best available today).
 - The `byHost` maps are cleared+rebuilt in place during a filter-list
   reload while match threads may be mid-read (pre-existing since the
   first release; the automaton is already swapped atomically as one

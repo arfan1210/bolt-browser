@@ -691,7 +691,9 @@ public class TabsActivity extends AppCompatActivity {
         opts.add(getString(R.string.new_group));
         for (JSONObject g : groups) {
             int n = 0;
-            for (Tab t : tm.tabs) if (t.groupId == g.optLong("id")) n++;
+            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                for (Tab t : tm.tabs) if (t.groupId == g.optLong("id")) n++;
+            }
             opts.add(g.optString("name") + "  ·  " + n);
         }
         new AlertDialog.Builder(this)
@@ -3853,7 +3855,9 @@ public class TabsActivity extends AppCompatActivity {
                         // loose, the folder entry is removed): empties
                         // anchored to it re-anchor to its old neighbours
                         try { tm.refreshAnchorsAround("g" + gid); } catch (Throwable ignored) {}
-                        for (Tab t : tm.tabs) if (t.groupId == gid) t.groupId = 0;
+                        synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
+                            for (Tab t : tm.tabs) if (t.groupId == gid) t.groupId = 0;
+                        }
                         prefs.removeGroup(gid);
                         tm.save();
                         adapter.reload();

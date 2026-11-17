@@ -505,10 +505,10 @@ if probe_ok:
                 print(r2.stderr[:800])
 
 print("V — the version pin")
-need('versionCode 124' in gradle, 'versionCode 124')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
-need('versionName "1.4.10"' in gradle, 'versionName "1.4.10"')  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need('versionCode 125' in gradle, 'versionCode 125')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
+need('versionName "1.4.11"' in gradle, 'versionName "1.4.11"')  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
 entries = re.findall(r"<item>([^<]+)</item>", strs[strs.find('name="about_changelog"'):strs.find("</string-array>", strs.find('name="about_changelog"'))])
-need(entries and entries[0].startswith("1.4.10|"), "the About changelog's newest entry is 1.4.10 (the label law; v1.4.10 re-point 2026-11-17)")  # v1.4.10 re-point (2026-11-17): 123/1.4.9 -> 124/1.4.10 (the collision corpse: v1.4.9/123 was already live)
+need(entries and entries[0].startswith("1.4.11|"), "the About changelog's newest entry is 1.4.11 (the label law; v1.4.11 re-point 2026-11-18)")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)
 
 print()
 if fails == 0:

@@ -28,10 +28,20 @@ import java.io.File
  * SAFETY: strictly READ-ONLY — one SELECT over the `cookies` table of every
  * WebView profile root's `Cookies` SQLite file, never a write, never a
  * delete (all mutation stays behind CookieManager.setCookie). Failures —
- * locked DB, schema drift, missing file — return an empty list; the caller
+ * mid-migration schema, missing file — return an empty list; the caller
  * degrades to the static host approximation. Runs on the caller's thread:
  * start it on a background thread and join with a timeout (the wipe flow
  * gives it the 600 ms in-page window as a head start).
+ *
+ * v1.4.11 — THE LOCK-CONTENTION RETRY. Opening the Cookies file straight
+ * from disk while Chromium's cookie backend is mid-write throws
+ * SQLiteDatabaseLockedException ("database is locked") — the old catch
+ * swallowed it as a generic best-effort failure, so the scan silently
+ * returned nothing exactly when the user was ACTIVELY BROWSING (the one
+ * moment the disk jar is busiest). A lock is TRANSIENT, not fatal: each
+ * profile is now retried with a bounded backoff (60/120/240 ms — the whole
+ * retry budget stays inside the wipe flow's head-start window) before
+ * degrading. Every other failure stays one-shot best-effort as before.
  *
  * WHAT IT DELIBERATELY IGNORES: rows with has_cross_site_ancestor=1
  * (third-party partitions — the cookie was set from a cross-site embed;
@@ -68,43 +78,75 @@ object CookiePartitionScan {
             for (profile in listOf(File(root, "Default"), root)) {
                 val db = File(profile, "Cookies")
                 if (!db.isFile) continue
-                try {
-                    val sql = android.database.sqlite.SQLiteDatabase.openDatabase(
-                            db.absolutePath, null,
-                            android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+                // v1.4.11 — the lock-contention retry: a busy jar is
+                // TRANSIENT; anything else stays best-effort one-shot
+                var attempt = 0
+                while (true) {
                     try {
-                        // host_key carries a leading dot for Domain= cookies
-                        // (".youtube.com"); top_frame_site_key is a serialized
-                        // SchemefulSite ("https://www.youtube.com"). Empty
-                        // top_frame_site_key = a plain non-partitioned cookie.
-                        // has_cross_site_ancestor=0 keeps first-party (kSameSite)
-                        // partitions only — the ones setCookie can address.
-                        sql.rawQuery(
-                                "SELECT DISTINCT host_key, top_frame_site_key FROM cookies " +
-                                "WHERE top_frame_site_key != '' AND has_cross_site_ancestor = 0",
-                                null).use { c ->
-                            while (c.moveToNext()) {
-                                val hostKey = c.getString(0) ?: continue
-                                val tfsk = c.getString(1) ?: continue
-                                val partHost = hostOfSite(tfsk) ?: continue
-                                if (!partHost.contains(".")) continue
-                                val cookieBase = Fx.baseDomain(Fx.hostOf(hostKey.trimStart('.')))
-                                val partBase = Fx.baseDomain(Fx.hostOf(partHost))
-                                if (cookieBase.isEmpty() || !family.contains(cookieBase)) continue
-                                if (partBase.isEmpty() || !family.contains(partBase)) continue
-                                out.add(partHost)
-                            }
+                        scanDb(db, family, out)
+                        break
+                    } catch (e: android.database.sqlite.SQLiteException) {
+                        if (!isLockError(e) || attempt >= LOCK_BACKOFF_MS.size) break
+                        try {
+                            Thread.sleep(LOCK_BACKOFF_MS[attempt].toLong())
+                        } catch (_: InterruptedException) {
+                            return ArrayList(out)   // wipe flow moving on without us
                         }
-                    } finally {
-                        try { sql.close() } catch (ignored: Throwable) {}
+                        attempt++
+                    } catch (ignored: Throwable) {
+                        // mid-migration schema, unreadable WAL — best effort
+                        // only, never fatal
+                        break
                     }
-                } catch (ignored: Throwable) {
-                    // locked by the live cookie monster, mid-migration schema,
-                    // unreadable WAL — best effort only, never fatal
                 }
             }
         }
         return ArrayList(out)
+    }
+
+    /** The retry backoff for a locked jar (60/120/240 ms — bounded inside the
+     *  wipe flow's 600 ms head-start window; see the class header). */
+    private val LOCK_BACKOFF_MS = intArrayOf(60, 120, 240)
+
+    /** A busy jar: SQLiteDatabaseLockedException, or the SQLiteException
+     *  spellings some WebView builds throw for SQLITE_BUSY/SQLITE_LOCKED
+     *  ("database is locked" / "database table is locked"). */
+    private fun isLockError(t: Throwable): Boolean =
+            t is android.database.sqlite.SQLiteDatabaseLockedException ||
+                    (t.message?.contains("locked", ignoreCase = true) ?: false)
+
+    /** ONE read-only SELECT over a Cookies jar (open → query → close). Throws
+     *  through whatever SQLite said, so the caller's retry loop can see locks. */
+    private fun scanDb(db: File, family: Set<String>, out: HashSet<String>) {
+        val sql = android.database.sqlite.SQLiteDatabase.openDatabase(
+                db.absolutePath, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+        try {
+            // host_key carries a leading dot for Domain= cookies
+            // (".youtube.com"); top_frame_site_key is a serialized
+            // SchemefulSite ("https://www.youtube.com"). Empty
+            // top_frame_site_key = a plain non-partitioned cookie.
+            // has_cross_site_ancestor=0 keeps first-party (kSameSite)
+            // partitions only — the ones setCookie can address.
+            sql.rawQuery(
+                    "SELECT DISTINCT host_key, top_frame_site_key FROM cookies " +
+                    "WHERE top_frame_site_key != '' AND has_cross_site_ancestor = 0",
+                    null).use { c ->
+                while (c.moveToNext()) {
+                    val hostKey = c.getString(0) ?: continue
+                    val tfsk = c.getString(1) ?: continue
+                    val partHost = hostOfSite(tfsk) ?: continue
+                    if (!partHost.contains(".")) continue
+                    val cookieBase = Fx.baseDomain(Fx.hostOf(hostKey.trimStart('.')))
+                    val partBase = Fx.baseDomain(Fx.hostOf(partHost))
+                    if (cookieBase.isEmpty() || !family.contains(cookieBase)) continue
+                    if (partBase.isEmpty() || !family.contains(partBase)) continue
+                    out.add(partHost)
+                }
+            }
+        } finally {
+            try { sql.close() } catch (ignored: Throwable) {}
+        }
     }
 
     /** "https://www.youtube.com[/:port/…]" (a serialized SchemefulSite)
