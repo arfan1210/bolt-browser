@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.34 — grouped-settings section label (inflated by BaseListActivity
+     for rows that carry a section string). -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tv_row_section"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:textSize="14sp" android:fontFamily="sans-serif-medium"
+    android:textColor="?attr/colorTextDim"
+    android:paddingStart="6dp" android:paddingEnd="6dp"
+    android:paddingTop="18dp" android:paddingBottom="8dp"/>

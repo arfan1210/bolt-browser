@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.59 — Downloads redesign: the card-grid mode toggle icon
+     (Material "grid view"). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+<path android:fillColor="?attr/colorTint" android:pathData="M5,3h4v4H5zM10.5,3h3v4h-3zM15,3h4v4h-4zM5,8.5h4v4H5zM10.5,8.5h3v4h-3zM15,8.5h4v4h-4zM5,14h4v4H5zM10.5,14h3v4h-3zM15,14h4v4h-4zM5,19.5h4v1.5H5zM10.5,19.5h3v1.5h-3zM15,19.5h4v1.5h-4z"/>
+</vector>

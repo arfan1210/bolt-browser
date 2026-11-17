@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bolt Passkey Compat — Self Test</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: #58a6ff; border-bottom: 1px solid #21262d; padding-bottom: 4px; }
+  .sub { color: #8b949e; margin-bottom: 16px; }
+  .row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #161b22; flex-wrap: wrap; }
+  .k { color: #8b949e; min-width: 340px; }
+  .pass, .fail, .info { font-weight: 700; }
+  .pass { color: #3fb950; } .fail { color: #f85149; } .info { color: #d29922; }
+  code, pre { background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 1px 5px; font-size: 12px; }
+  pre { padding: 10px; overflow-x: auto; }
+  button { background: #238636; color: #fff; border: 1px solid #2ea043; border-radius: 6px; padding: 8px 14px; font-weight: 700; }
+  #summary { font-size: 16px; font-weight: 800; margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>Bolt Browser — Passkey Compatibility Self Test</h1>
+<div class="sub">Load this page in Bolt Browser (https or file). Green = API surface a relying party (GitHub/Google) will probe. The mock ceremony button additionally exercises the full create()/get() plumbing through a fake bridge.</div>
+
+<h2>Identity</h2><div id="identity"></div>
+<h2>API surface</h2><div id="surface"></div>
+<h2>Capability matrix (getClientCapabilities)</h2><div id="caps"></div>
+<h2>JSON serialization (WebAuthn L3)</h2><div id="json"></div>
+<h2>Ceremony plumbing (mock bridge)</h2>
+<div><button id="runMock">Run mock create + get</button></div>
+<div id="mock"></div>
+<div id="summary"></div>
+
+<script>
+(function () {
+  var pass = 0, fail = 0
+  function row (parent, label, ok, detail) {
+    var div = document.createElement('div'); div.className = 'row'
+    var k = document.createElement('span'); k.className = 'k'; k.textContent = label
+    var v = document.createElement('span')
+    v.className = ok === true ? 'pass' : (ok === false ? 'fail' : 'info')
+    v.textContent = ok === true ? 'PASS' : (ok === false ? 'FAIL' : (detail || '—'))
+    div.appendChild(k); div.appendChild(v)
+    if (detail && ok !== 'info') { var d = document.createElement('span'); d.textContent = detail; d.style.color = '#8b949e'; div.appendChild(d) }
+    document.getElementById(parent).appendChild(div)
+    if (ok === true) pass++; else if (ok === false) fail++
+  }
+
+  var compat = window.BoltWebAuthnCompat
+  var PKC = window.PublicKeyCredential
+
+  // ---- identity ----
+  row('identity', 'BoltWebAuthnCompat layer active', !!compat && compat.active !== false)
+  row('identity', 'navigator.userAgent', 'info', navigator.userAgent)
+  row('identity', 'navigator.platform', 'info', navigator.platform)
+  var uad = navigator.userAgentData
+  row('identity', 'navigator.userAgentData present', !!uad)
+  if (uad) {
+    row('identity', 'brands include "Google Chrome"', uad.brands.some(function (b) { return b.brand === 'Google Chrome' }))
+    row('identity', 'brands include "Chromium"', uad.brands.some(function (b) { return b.brand === 'Chromium' }))
+    row('identity', 'platform === "Android" / mobile === true', uad.platform === 'Android' && uad.mobile === true)
+    row('identity', 'brands', 'info', JSON.stringify(uad.brands))
+    uad.getHighEntropyValues(['platformVersion', 'model', 'uaFullVersion', 'fullVersionList', 'architecture', 'bitness']).then(function (hev) {
+      row('identity', 'platformVersion (Android claim)', 'info', hev.platformVersion)
+      row('identity', 'fullVersionList', 'info', JSON.stringify(hev.fullVersionList))
+      row('identity', 'model / arch / bitness', 'info', [hev.model, hev.architecture, hev.bitness].join(' / '))
+      row('identity', 'isSecureContext', 'info', String(window.isSecureContext))
+    }).catch(function () {})
+  }
+
+  // ---- surface ----
+  row('surface', 'window.PublicKeyCredential', typeof PKC === 'function')
+  var statics = ['getClientCapabilities', 'isConditionalMediationAvailable',
+    'isUserVerifyingPlatformAuthenticatorAvailable', 'isPasskeyPlatformAuthenticatorAvailable',
+    'parseCreationOptionsFromJSON', 'parseRequestOptionsFromJSON',
+    'signalAllAcceptedCredentials', 'signalCurrentUserDetails', 'signalUnknownCredential']
+  statics.forEach(function (name) {
+    row('surface', 'PublicKeyCredential.' + name + '()', !!(PKC && typeof PKC[name] === 'function'))
+  })
+  row('surface', 'navigator.credentials.create/get', !!(navigator.credentials && typeof navigator.credentials.create === 'function' && typeof navigator.credentials.get === 'function'))
+  if (PKC && PKC.isConditionalMediationAvailable) {
+    PKC.isConditionalMediationAvailable().then(function (v) { row('surface', 'isConditionalMediationAvailable() resolves', true, String(v)) })
+      .catch(function (e) { row('surface', 'isConditionalMediationAvailable() resolves', false, String(e)) })
+  }
+  if (PKC && PKC.isUserVerifyingPlatformAuthenticatorAvailable) {
+    PKC.isUserVerifyingPlatformAuthenticatorAvailable().then(function (v) { row('surface', 'isUserVerifyingPlatformAuthenticatorAvailable()', v === true, String(v)) })
+      .catch(function (e) { row('surface', 'isUserVerifyingPlatformAuthenticatorAvailable()', false, String(e)) })
+  }
+
+  // ---- capabilities ----
+  if (PKC && PKC.getClientCapabilities) {
+    PKC.getClientCapabilities().then(function (caps) {
+      Object.keys(caps).sort().forEach(function (k) {
+        row('caps', k, 'info', String(caps[k]))
+      })
+      window.__capsDone = true
+      var el = document.getElementById('summary')
+      el.textContent = pass + ' passed / ' + fail + ' failed' + (fail ? '  ← fix these first' : '  ← surface complete')
+      el.style.color = fail ? '#f85149' : '#3fb950'
+    })
+  }
+
+  // ---- JSON round trip ----
+  function b64u (buf) {
+    var bytes = new Uint8Array(buf), s = ''
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+  var challengeB64 = b64u(new TextEncoder().encode('selftest-challenge'))
+  if (PKC && PKC.parseCreationOptionsFromJSON && PKC.parseRequestOptionsFromJSON) {
+    try {
+      var creation = PKC.parseCreationOptionsFromJSON(JSON.stringify({
+        rp: { name: 'SelfTest', id: location.hostname || 'localhost' },
+        user: { id: b64u(new TextEncoder().encode('u1')), name: 'a', displayName: 'A' },
+        challenge: challengeB64,
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }]
+      }))
+      row('json', 'parseCreationOptionsFromJSON: challenge decoded', creation.challenge instanceof ArrayBuffer && b64u(creation.challenge) === challengeB64)
+      var request = PKC.parseRequestOptionsFromJSON(JSON.stringify({ challenge: challengeB64, rpId: location.hostname || 'localhost' }))
+      row('json', 'parseRequestOptionsFromJSON: challenge decoded', request.challenge instanceof ArrayBuffer && b64u(request.challenge) === challengeB64)
+    } catch (e) { row('json', 'JSON parsers threw', false, String(e)) }
+  }
+
+  // ---- mock ceremony ----
+  document.getElementById('runMock').addEventListener('click', function () {
+    var out = document.getElementById('mock'); out.textContent = ''
+    function line (txt, ok) {
+      var d = document.createElement('div'); d.className = 'row'
+      d.innerHTML = '<span class="k">' + txt + '</span><span class="' + (ok === true ? 'pass' : ok === false ? 'fail' : 'info') + '">' + (ok === true ? 'PASS' : ok === false ? 'FAIL' : 'info') + '</span>'
+      out.appendChild(d)
+    }
+    if (!compat || !compat.registerBridge) { line('compat layer not active', false); return }
+    var cdb = b64u(new TextEncoder().encode('{"type":"webauthn.create"}'))
+    compat.registerBridge({
+      create: function () {
+        return Promise.resolve({ rawId: challengeB64, response: { clientDataJSON: cdb, attestationObject: challengeB64 } })
+      },
+      get: function () {
+        return Promise.resolve({ rawId: challengeB64, response: { clientDataJSON: cdb, authenticatorData: challengeB64, signature: challengeB64, userHandle: null } })
+      }
+    })
+    var host = location.hostname
+    if (!host) { line('no hostname (file://) — serve over https to test ceremonies', 'info'); return }
+    var creation = PKC.parseCreationOptionsFromJSON(JSON.stringify({
+      rp: { name: 'SelfTest', id: host },
+      user: { id: b64u(new TextEncoder().encode('u1')), name: 'a', displayName: 'A' },
+      challenge: challengeB64,
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }]
+    }))
+    navigator.credentials.create({ publicKey: creation }).then(function (cred) {
+      line('create() resolved with credential', true)
+      line('rawId is ArrayBuffer', cred.rawId instanceof ArrayBuffer)
+      line('instanceof PublicKeyCredential', cred instanceof PublicKeyCredential)
+      // v1.3.26: the METHOD surface — github.com's bundled serializer derives
+      // its JSON from these method calls (properties alone crash it).
+      line('getClientExtensionResults() is a function', typeof cred.getClientExtensionResults === 'function')
+      line('getClientExtensionResults() returns an object', typeof cred.getClientExtensionResults() === 'object' && cred.getClientExtensionResults() !== null)
+      line('isUserVerifying() is a function returning true', typeof cred.isUserVerifying === 'function' && cred.isUserVerifying() === true)
+      line('response.getTransports() returns an array', typeof cred.response.getTransports === 'function' && Object.prototype.toString.call(cred.response.getTransports()) === '[object Array]')
+      line('response.getPublicKeyAlgorithm() === -7', typeof cred.response.getPublicKeyAlgorithm === 'function' && cred.response.getPublicKeyAlgorithm() === -7)
+      // github.com's EXACT derive pattern (zj-*.js): the transports derive is
+      // graceful, the clientExtensionResults derive is NOT — it was the
+      // "Passkey registration failed" crash.
+      try {
+        var ghJson = {
+          type: cred.type,
+          id: cred.id,
+          rawId: b64u(cred.rawId),
+          authenticatorAttachment: cred.authenticatorAttachment,
+          response: {
+            clientDataJSON: b64u(cred.response.clientDataJSON),
+            attestationObject: b64u(cred.response.attestationObject),
+            transports: (cred.response.getTransports ? cred.response.getTransports() : null) || []
+          },
+          clientExtensionResults: cred.getClientExtensionResults()
+        }
+        line('GitHub-style derive serializer completes', JSON.stringify(ghJson).length > 0)
+      } catch (e) {
+        line('GitHub-style derive serializer crashed: ' + e, false)
+      }
+      var j = cred.toJSON()
+      line('toJSON() returns base64url fields', typeof j.rawId === 'string' && /^[A-Za-z0-9_-]+$/.test(j.rawId))
+      line('toJSON() output', 'info')
+      var pre = document.createElement('pre'); pre.textContent = JSON.stringify(j, null, 2); out.appendChild(pre)
+      return navigator.credentials.get({ publicKey: PKC.parseRequestOptionsFromJSON(JSON.stringify({ challenge: challengeB64, rpId: host })) })
+    }).then(function (assertion) {
+      line('get() resolved with assertion', true)
+      line('assertion.getClientExtensionResults() is a function', typeof assertion.getClientExtensionResults === 'function')
+      line('assertion.toJSON().response.signature is base64url', /^[A-Za-z0-9_-]+$/.test(assertion.toJSON().response.signature))
+    }).catch(function (e) {
+      line('ceremony failed: ' + e.name + ' — ' + e.message, false)
+    })
+  })
+
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      var el = document.getElementById('summary')
+      el.textContent = pass + ' passed / ' + fail + ' failed' + (fail ? '  ← fix these first' : '  ← surface complete')
+      el.style.color = fail ? '#f85149' : '#3fb950'
+    }, 800)
+  })
+})()
+</script>
+</body>
+</html>

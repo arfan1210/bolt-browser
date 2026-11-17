@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="colorBg" format="color" />
+    <attr name="colorSurface" format="color" />
+    <attr name="colorSurface2" format="color" />
+    <attr name="colorText" format="color" />
+    <attr name="colorTextDim" format="color" />
+    <attr name="colorOutline" format="color" />
+    <attr name="colorAccent" format="color" />
+    <attr name="colorAccentSoft" format="color" />
+    <attr name="colorTint" format="color" />
+    <attr name="colorDanger" format="color" />
+    <!-- v1.3.33 skins: 0 = classic, 1 = Aura (translucent dark glass),
+         2 = Mono (true-black flat minimal), 3 = Origins (warm soft light),
+         4 = Pulse (vibrant dark). Read via Fx.skinStyle() to branch the
+         runtime glass/flat/soft treatments. -->
+    <attr name="skinStyle" format="integer" />
+</resources>

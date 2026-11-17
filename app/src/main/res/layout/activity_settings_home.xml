@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.40 — THE HYBRID SETTINGS SURFACE: destination CARDS as a
+     horizontally scrolling strip (ll_sh_strip), toggle+backup as LIST rows
+     (ll_sh_rows + card_backup), identity = the Workspaces card (Profiles +
+     Sessions merged). Search renders results via ll_sh_results. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="match_parent" android:background="?attr/colorBg">
+<ScrollView android:layout_width="match_parent" android:layout_height="0dp"
+    android:layout_weight="1" android:scrollbars="none">
+    <LinearLayout android:id="@+id/ll_sh_content" android:orientation="vertical" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:paddingStart="18dp" android:paddingEnd="18dp"
+        android:paddingTop="10dp" android:paddingBottom="28dp">
+        <!-- v1.3.40 — search reads as search on BOTH settings surfaces: 52dp
+             prominent field (matches the rebuilt deep-settings search), 22dp
+             leading glyph, full-width inset — clearly not a menu row. -->
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
+            android:layout_height="52dp" android:gravity="center_vertical"
+            android:background="@drawable/bg_urlbar" android:layout_marginTop="4dp"
+            android:layout_marginBottom="16dp"
+            android:paddingStart="14dp" android:paddingEnd="8dp">
+            <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                android:src="@drawable/ic_search" android:id="@+id/iv_sh_search"/>
+            <EditText android:id="@+id/et_sh_search" android:layout_width="0dp"
+                android:layout_height="match_parent" android:layout_weight="1"
+                android:background="@null" android:paddingStart="10dp" android:paddingEnd="10dp"
+                android:textSize="16sp" android:singleLine="true" android:imeOptions="actionSearch"
+                android:inputType="text" android:hint="@string/settings_search_hint"
+                android:textColor="?attr/colorText" android:textColorHint="?attr/colorTextDim"
+                android:importantForAutofill="no"/>
+            <ImageButton android:id="@+id/btn_sh_search_clear" android:layout_width="40dp"
+                android:layout_height="40dp" android:src="@drawable/ic_close"
+                android:background="?attr/selectableItemBackgroundBorderless" android:visibility="gone"
+                android:contentDescription="@string/clear"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/ll_sh_results" android:orientation="vertical"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:visibility="gone"/>
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:gravity="center_vertical"
+            android:layout_marginTop="8dp" android:layout_marginBottom="18dp">
+            <ImageView android:layout_width="44dp" android:layout_height="44dp" android:src="@mipmap/ic_launcher"/>
+            <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+                android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="14dp">
+                <TextView android:id="@+id/tv_sh_name" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Bolt"
+                    android:textColor="?attr/colorText" android:textSize="26sp"
+                    android:fontFamily="sans-serif-medium"/>
+                <TextView android:id="@+id/tv_sh_profile" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:textColor="?attr/colorTextDim" android:textSize="14sp"/>
+            </LinearLayout>
+            <ImageButton android:id="@+id/btn_sh_gear" android:layout_width="44dp" android:layout_height="44dp"
+                android:src="@drawable/ic_gear" android:background="@drawable/bg_item_round"/>
+            <ImageButton android:id="@+id/btn_sh_exit" android:layout_width="44dp" android:layout_height="44dp"
+                android:src="@drawable/ic_power" android:background="@drawable/bg_item_round"/>
+        </LinearLayout>
+        <!-- v1.3.40 — THE HYBRID SURFACE (field task 11: card tier + list
+             tier in the SAME surface): the four destination cards became a
+             horizontal card strip (ll_sh_strip, built at runtime), the
+             fullscreen/adblock toggle cards became list rows (ll_sh_rows,
+             runtime switch rows), and the identity card opens Workspaces
+             (Profiles + Sessions merged — field task 15). -->
+        <LinearLayout android:id="@+id/card_profile" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="@drawable/bg_card" android:padding="16dp" android:layout_marginBottom="12dp"
+            android:gravity="center_vertical">
+            <ImageView android:id="@+id/iv_sh_person" android:layout_width="42dp" android:layout_height="42dp"
+                android:src="@drawable/ic_person"/>
+            <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+                android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="@string/workspaces" android:textColor="?attr/colorText" android:textSize="17sp"
+                    android:fontFamily="sans-serif-medium"/>
+                <TextView android:id="@+id/tv_sh_ws_sub" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorTextDim" android:textSize="13sp"/>
+            </LinearLayout>
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_chevron"/>
+        </LinearLayout>
+        <!-- the CARD TIER: horizontally scrolling destination cards -->
+        <LinearLayout android:id="@+id/ll_sh_strip" android:orientation="vertical"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"/>
+        <!-- the LIST TIER: fullscreen + adblock switch rows (runtime) -->
+        <LinearLayout android:id="@+id/ll_sh_rows" android:orientation="vertical"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <LinearLayout android:id="@+id/card_backup" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="@drawable/bg_card" android:padding="16dp" android:layout_marginBottom="12dp"
+            android:gravity="center_vertical">
+            <ImageView android:id="@+id/iv_sh_backup" android:layout_width="42dp" android:layout_height="42dp"
+                android:src="@drawable/ic_backup"/>
+            <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+                android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="@string/backup_export" android:textColor="?attr/colorText" android:textSize="17sp"
+                    android:fontFamily="sans-serif-medium"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="@string/backup_desc" android:textColor="?attr/colorTextDim" android:textSize="13sp"/>
+            </LinearLayout>
+            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_chevron"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
+</LinearLayout>

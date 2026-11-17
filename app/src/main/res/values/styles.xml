@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v1.3.33: every theme also sets the android:textColor* family —
+         the v1.3.32 field report ("texts not visible in dark or light mode")
+         was largely THIS: the themes extended Theme.AppCompat.NoActionBar
+         (a DARK theme) without overriding text colors.
+
+         v1.3.35: EVERY SKIN now has a LIGHT and a DARK variant (field report:
+         "all of them don't have both a light and dark mode, and they don't
+         seem much different"). Ten activity themes + ten dialog themes.
+         Distinctness comes from palette + SIGNATURE accent (the XML default
+         AND the "Auto" runtime accent) + per-skin corner radii (Fx.radius):
+         Classic blue/16dp, Aura violet glass/20dp, Mono ink-on-paper/8dp,
+         Origins warm/24dp, Pulse teal/18dp.
+
+         v1.3.35 WHITE-ON-WHITE ROOT FIX: AlertDialog list items (every
+         Builder.setItems/setSingleChoiceItems/setMultiChoiceItems "random
+         popup menu") color their text with ?attr/textColorAlertDialogListItem,
+         which the DARK AppCompat dialog base sets to WHITE — our dialog
+         themes only overrode android:textColorPrimary, so light-mode menus
+         rendered white text on the white panel. Every BoltDialog.* now sets
+         textColorAlertDialogListItem (plus android:colorControl* for the
+         radio/checkbox tint) explicitly per lightness. -->
+    <style name="Theme.Bolt" parent="Theme.AppCompat.NoActionBar">
+        <item name="alertDialogTheme">@style/BoltDialog.Light</item>
+        <!-- v1.3.36 — the modern slide transitions (settings screens slide in
+             from the right, back mirrors it) applied once here so all ten
+             theme variants inherit them -->
+        <item name="android:windowAnimationStyle">@style/BoltWindowAnimations</item>
+        <item name="colorBg">@color/light_bg</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorSurface2">@color/light_surface2</item>
+        <item name="colorText">@color/light_text</item>
+        <item name="colorTextDim">@color/light_text_dim</item>
+        <item name="colorOutline">@color/light_outline</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorAccentSoft">#1F3E8BFF</item>
+        <item name="colorTint">#5A5A66</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">0</item>
+        <item name="android:textColorPrimary">@color/light_text</item>
+        <item name="android:textColorSecondary">@color/light_text_dim</item>
+        <item name="android:textColorHint">@color/light_text_dim</item>
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="android:windowBackground">?attr/colorBg</item>
+        <item name="android:statusBarColor">?attr/colorBg</item>
+        <item name="android:navigationBarColor">?attr/colorBg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- v1.3.81 — isLightTheme is what WebView's algorithmic darkening
+             (API 33+) reads to decide whether the app theme is dark. Without
+             it the dark skins below only LOOKED dark (swapped colors) and
+             setAlgorithmicDarkeningAllowed(true) was a permanent no-op —
+             the "force dark site does nothing" field report. -->
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <style name="Theme.Bolt.Light">
+        <item name="alertDialogTheme">@style/BoltDialog.Light</item>
+        <item name="colorBg">@color/light_bg</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorSurface2">@color/light_surface2</item>
+        <item name="colorText">@color/light_text</item>
+        <item name="colorTextDim">@color/light_text_dim</item>
+        <item name="colorOutline">@color/light_outline</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorAccentSoft">#1F3E8BFF</item>
+        <item name="colorTint">#5A5A66</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">0</item>
+        <item name="android:textColorPrimary">@color/light_text</item>
+        <item name="android:textColorSecondary">@color/light_text_dim</item>
+        <item name="android:textColorHint">@color/light_text_dim</item>
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <style name="Theme.Bolt.Dark">
+        <item name="alertDialogTheme">@style/BoltDialog.Dark</item>
+        <item name="colorBg">@color/dark_bg</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorSurface2">@color/dark_surface2</item>
+        <item name="colorText">@color/dark_text</item>
+        <item name="colorTextDim">@color/dark_text_dim</item>
+        <item name="colorOutline">@color/dark_outline</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorAccentSoft">#333E8BFF</item>
+        <item name="colorTint">#CFCFD8</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">0</item>
+        <item name="android:textColorPrimary">@color/dark_text</item>
+        <item name="android:textColorSecondary">@color/dark_text_dim</item>
+        <item name="android:textColorHint">@color/dark_text_dim</item>
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:isLightTheme">false</item>
+    </style>
+
+    <!-- ============ AURA — translucent glass ============ -->
+    <style name="Theme.Bolt.Aura.Dark" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Aura.Dark</item>
+        <item name="colorBg">@color/aura_bg</item>
+        <item name="colorSurface">@color/aura_surface</item>
+        <item name="colorSurface2">@color/aura_surface2</item>
+        <item name="colorText">@color/aura_text</item>
+        <item name="colorTextDim">@color/aura_text_dim</item>
+        <item name="colorOutline">@color/aura_outline</item>
+        <item name="colorAccent">@color/aura_accent</item>
+        <item name="colorAccentSoft">@color/aura_accent_soft</item>
+        <item name="colorTint">@color/aura_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">1</item>
+        <item name="android:textColorPrimary">@color/aura_text</item>
+        <item name="android:textColorSecondary">@color/aura_text_dim</item>
+        <item name="android:textColorHint">@color/aura_text_dim</item>
+        <item name="colorPrimary">@color/aura_accent</item>
+        <item name="colorControlActivated">@color/aura_accent</item>
+        <item name="android:statusBarColor">@color/aura_bar</item>
+        <item name="android:navigationBarColor">@color/aura_bar</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:isLightTheme">false</item>
+    </style>
+
+    <!-- v1.3.35 — Aura LIGHT ("morning frost"): white glass surfaces with a
+         dark hairline rim; the floating bars + API-31+ backdrop blur read as
+         bright frosted glass over the page. -->
+    <style name="Theme.Bolt.Aura.Light" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Aura.Light</item>
+        <item name="colorBg">@color/aura_light_bg</item>
+        <item name="colorSurface">@color/aura_light_surface</item>
+        <item name="colorSurface2">@color/aura_light_surface2</item>
+        <item name="colorText">@color/aura_light_text</item>
+        <item name="colorTextDim">@color/aura_light_text_dim</item>
+        <item name="colorOutline">@color/aura_light_outline</item>
+        <item name="colorAccent">@color/aura_light_accent</item>
+        <item name="colorAccentSoft">@color/aura_light_accent_soft</item>
+        <item name="colorTint">@color/aura_light_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">1</item>
+        <item name="android:textColorPrimary">@color/aura_light_text</item>
+        <item name="android:textColorSecondary">@color/aura_light_text_dim</item>
+        <item name="android:textColorHint">@color/aura_light_text_dim</item>
+        <item name="colorPrimary">@color/aura_light_accent</item>
+        <item name="colorControlActivated">@color/aura_light_accent</item>
+        <item name="android:statusBarColor">@color/aura_light_bar</item>
+        <item name="android:navigationBarColor">@color/aura_light_bar</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <!-- ============ MONO — flat, sharp, monochrome ============ -->
+    <style name="Theme.Bolt.Mono.Dark" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Mono.Dark</item>
+        <item name="colorBg">@color/mono_bg</item>
+        <item name="colorSurface">@color/mono_surface</item>
+        <item name="colorSurface2">@color/mono_surface2</item>
+        <item name="colorText">@color/mono_text</item>
+        <item name="colorTextDim">@color/mono_text_dim</item>
+        <item name="colorOutline">@color/mono_outline</item>
+        <item name="colorAccent">@color/mono_accent</item>
+        <item name="colorAccentSoft">@color/mono_accent_soft</item>
+        <item name="colorTint">@color/mono_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">2</item>
+        <item name="android:textColorPrimary">@color/mono_text</item>
+        <item name="android:textColorSecondary">@color/mono_text_dim</item>
+        <item name="android:textColorHint">@color/mono_text_dim</item>
+        <item name="colorPrimary">@color/mono_accent</item>
+        <item name="colorControlActivated">@color/mono_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:isLightTheme">false</item>
+    </style>
+
+    <!-- v1.3.35 — Mono LIGHT ("paper & ink"): white, flat, ink-black accent. -->
+    <style name="Theme.Bolt.Mono.Light" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Mono.Light</item>
+        <item name="colorBg">@color/mono_light_bg</item>
+        <item name="colorSurface">@color/mono_light_surface</item>
+        <item name="colorSurface2">@color/mono_light_surface2</item>
+        <item name="colorText">@color/mono_light_text</item>
+        <item name="colorTextDim">@color/mono_light_text_dim</item>
+        <item name="colorOutline">@color/mono_light_outline</item>
+        <item name="colorAccent">@color/mono_light_accent</item>
+        <item name="colorAccentSoft">@color/mono_light_accent_soft</item>
+        <item name="colorTint">@color/mono_light_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">2</item>
+        <item name="android:textColorPrimary">@color/mono_light_text</item>
+        <item name="android:textColorSecondary">@color/mono_light_text_dim</item>
+        <item name="android:textColorHint">@color/mono_light_text_dim</item>
+        <item name="colorPrimary">@color/mono_light_accent</item>
+        <item name="colorControlActivated">@color/mono_light_accent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <!-- ============ ORIGINS — warm, soft, tactile ============ -->
+    <style name="Theme.Bolt.Origins.Light" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Origins.Light</item>
+        <item name="colorBg">@color/origins_bg</item>
+        <item name="colorSurface">@color/origins_surface</item>
+        <item name="colorSurface2">@color/origins_surface2</item>
+        <item name="colorText">@color/origins_text</item>
+        <item name="colorTextDim">@color/origins_text_dim</item>
+        <item name="colorOutline">@color/origins_outline</item>
+        <item name="colorAccent">@color/origins_accent</item>
+        <item name="colorAccentSoft">@color/origins_accent_soft</item>
+        <item name="colorTint">@color/origins_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">3</item>
+        <item name="android:textColorPrimary">@color/origins_text</item>
+        <item name="android:textColorSecondary">@color/origins_text_dim</item>
+        <item name="android:textColorHint">@color/origins_text_dim</item>
+        <item name="colorPrimary">@color/origins_accent</item>
+        <item name="colorControlActivated">@color/origins_accent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <!-- v1.3.35 — Origins DARK ("hearth"): warm umber dark mode. -->
+    <style name="Theme.Bolt.Origins.Dark" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Origins.Dark</item>
+        <item name="colorBg">@color/origins_dark_bg</item>
+        <item name="colorSurface">@color/origins_dark_surface</item>
+        <item name="colorSurface2">@color/origins_dark_surface2</item>
+        <item name="colorText">@color/origins_dark_text</item>
+        <item name="colorTextDim">@color/origins_dark_text_dim</item>
+        <item name="colorOutline">@color/origins_dark_outline</item>
+        <item name="colorAccent">@color/origins_dark_accent</item>
+        <item name="colorAccentSoft">@color/origins_dark_accent_soft</item>
+        <item name="colorTint">@color/origins_dark_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">3</item>
+        <item name="android:textColorPrimary">@color/origins_dark_text</item>
+        <item name="android:textColorSecondary">@color/origins_dark_text_dim</item>
+        <item name="android:textColorHint">@color/origins_dark_text_dim</item>
+        <item name="colorPrimary">@color/origins_dark_accent</item>
+        <item name="colorControlActivated">@color/origins_dark_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:isLightTheme">false</item>
+    </style>
+
+    <!-- ============ PULSE — vibrant, expressive ============ -->
+    <style name="Theme.Bolt.Pulse.Dark" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Pulse.Dark</item>
+        <item name="colorBg">@color/pulse_bg</item>
+        <item name="colorSurface">@color/pulse_surface</item>
+        <item name="colorSurface2">@color/pulse_surface2</item>
+        <item name="colorText">@color/pulse_text</item>
+        <item name="colorTextDim">@color/pulse_text_dim</item>
+        <item name="colorOutline">@color/pulse_outline</item>
+        <item name="colorAccent">@color/pulse_accent</item>
+        <item name="colorAccentSoft">@color/pulse_accent_soft</item>
+        <item name="colorTint">@color/pulse_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">4</item>
+        <item name="android:textColorPrimary">@color/pulse_text</item>
+        <item name="android:textColorSecondary">@color/pulse_text_dim</item>
+        <item name="android:textColorHint">@color/pulse_text_dim</item>
+        <item name="colorPrimary">@color/pulse_accent</item>
+        <item name="colorControlActivated">@color/pulse_accent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:isLightTheme">false</item>
+    </style>
+
+    <!-- v1.3.35 — Pulse LIGHT ("electric daylight"): bright with lavender chips. -->
+    <style name="Theme.Bolt.Pulse.Light" parent="Theme.Bolt">
+        <item name="alertDialogTheme">@style/BoltDialog.Pulse.Light</item>
+        <item name="colorBg">@color/pulse_light_bg</item>
+        <item name="colorSurface">@color/pulse_light_surface</item>
+        <item name="colorSurface2">@color/pulse_light_surface2</item>
+        <item name="colorText">@color/pulse_light_text</item>
+        <item name="colorTextDim">@color/pulse_light_text_dim</item>
+        <item name="colorOutline">@color/pulse_light_outline</item>
+        <item name="colorAccent">@color/pulse_light_accent</item>
+        <item name="colorAccentSoft">@color/pulse_light_accent_soft</item>
+        <item name="colorTint">@color/pulse_light_tint</item>
+        <item name="colorDanger">@color/danger</item>
+        <item name="skinStyle">4</item>
+        <item name="android:textColorPrimary">@color/pulse_light_text</item>
+        <item name="android:textColorSecondary">@color/pulse_light_text_dim</item>
+        <item name="android:textColorHint">@color/pulse_light_text_dim</item>
+        <item name="colorPrimary">@color/pulse_light_accent</item>
+        <item name="colorControlActivated">@color/pulse_light_accent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <!-- v1.3.36 — the slide transitions every activity shares (set once on
+         Theme.Bolt via android:windowAnimationStyle): open = new screen
+         slides in from the right, the old one eases left and dims; close =
+         the exact mirror, so back feels like pulling the screen back. -->
+    <style name="BoltWindowAnimations" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/bolt_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/bolt_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/bolt_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/bolt_close_exit</item>
+    </style>
+
+    <style name="BoltText" parent="@android:style/TextAppearance.Material">
+        <item name="android:textColor">?attr/colorText</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="BoltTextDim" parent="@android:style/TextAppearance.Material">
+        <item name="android:textColor">?attr/colorTextDim</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="BoltTitle" parent="@android:style/TextAppearance.Material">
+        <item name="android:textColor">?attr/colorText</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
+    <style name="BoltIcon">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+    </style>
+
+    <!-- ============ v1.3.34/35 — modern dialogs ============ -->
+    <!-- Every AlertDialog gets a rounded 24dp panel (bg_dialog resolves
+         ?attr/colorSurface against the DIALOG's theme, so each skin+lightness
+         needs its own dialog theme carrying the palette). Buttons: medium
+         weight, sentence case, comfortable padding. v1.3.35: each variant now
+         ALSO sets textColorAlertDialogListItem (the attr AlertDialog list
+         items actually use — see the styles.xml header note: the AppCompat
+         dialog base is DARK and left it white) and the android:colorControl*
+         pair so radios/checkmarks tint with the accent.
+         Per-skin corner radius: bg_dialog 24dp (classic/aura/pulse),
+         bg_dialog_sharp 10dp (mono), bg_dialog_round 28dp (origins).
+         NOTE: dialogs use the SKIN-SIGNATURE accent (XML can't see the
+         runtime accent picker) — same accepted tradeoff as before. -->
+    <style name="Widget.Bolt.DialogButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">normal</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">16dp</item>
+    </style>
+
+    <style name="BoltDialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="buttonBarButtonStyle">@style/Widget.Bolt.DialogButton</item>
+    </style>
+
+    <style name="BoltDialog.Light">
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="android:colorControlActivated">@color/accent_blue</item>
+        <item name="android:colorControlNormal">@color/light_text_dim</item>
+        <item name="android:textColorPrimary">@color/light_text</item>
+        <item name="android:textColorSecondary">@color/light_text_dim</item>
+        <item name="android:textColorHint">@color/light_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/light_text</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorOutline">@color/light_outline</item>
+    </style>
+
+    <style name="BoltDialog.Dark">
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="android:colorControlActivated">@color/accent_blue</item>
+        <item name="android:colorControlNormal">@color/dark_text_dim</item>
+        <item name="android:textColorPrimary">@color/dark_text</item>
+        <item name="android:textColorSecondary">@color/dark_text_dim</item>
+        <item name="android:textColorHint">@color/dark_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/dark_text</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorOutline">@color/dark_outline</item>
+    </style>
+
+    <style name="BoltDialog.Aura.Dark" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="colorAccent">@color/aura_accent</item>
+        <item name="colorControlActivated">@color/aura_accent</item>
+        <item name="android:colorControlActivated">@color/aura_accent</item>
+        <item name="android:colorControlNormal">@color/aura_text_dim</item>
+        <item name="android:textColorPrimary">@color/aura_text</item>
+        <item name="android:textColorSecondary">@color/aura_text_dim</item>
+        <item name="android:textColorHint">@color/aura_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/aura_text</item>
+        <item name="colorSurface">@color/aura_surface</item>
+        <item name="colorOutline">@color/aura_outline</item>
+    </style>
+
+    <style name="BoltDialog.Aura.Light" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="colorAccent">@color/aura_light_accent</item>
+        <item name="colorControlActivated">@color/aura_light_accent</item>
+        <item name="android:colorControlActivated">@color/aura_light_accent</item>
+        <item name="android:colorControlNormal">@color/aura_light_text_dim</item>
+        <item name="android:textColorPrimary">@color/aura_light_text</item>
+        <item name="android:textColorSecondary">@color/aura_light_text_dim</item>
+        <item name="android:textColorHint">@color/aura_light_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/aura_light_text</item>
+        <item name="colorSurface">@color/aura_light_surface</item>
+        <item name="colorOutline">@color/aura_light_outline</item>
+    </style>
+
+    <style name="BoltDialog.Mono.Dark" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog_sharp</item>
+        <item name="colorAccent">@color/mono_accent</item>
+        <item name="colorControlActivated">@color/mono_accent</item>
+        <item name="android:colorControlActivated">@color/mono_accent</item>
+        <item name="android:colorControlNormal">@color/mono_text_dim</item>
+        <item name="android:textColorPrimary">@color/mono_text</item>
+        <item name="android:textColorSecondary">@color/mono_text_dim</item>
+        <item name="android:textColorHint">@color/mono_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/mono_text</item>
+        <item name="colorSurface">@color/mono_surface</item>
+        <item name="colorOutline">@color/mono_outline</item>
+    </style>
+
+    <style name="BoltDialog.Mono.Light" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog_sharp</item>
+        <item name="colorAccent">@color/mono_light_accent</item>
+        <item name="colorControlActivated">@color/mono_light_accent</item>
+        <item name="android:colorControlActivated">@color/mono_light_accent</item>
+        <item name="android:colorControlNormal">@color/mono_light_text_dim</item>
+        <item name="android:textColorPrimary">@color/mono_light_text</item>
+        <item name="android:textColorSecondary">@color/mono_light_text_dim</item>
+        <item name="android:textColorHint">@color/mono_light_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/mono_light_text</item>
+        <item name="colorSurface">@color/mono_light_surface</item>
+        <item name="colorOutline">@color/mono_light_outline</item>
+    </style>
+
+    <style name="BoltDialog.Origins.Light" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog_round</item>
+        <item name="colorAccent">@color/origins_accent</item>
+        <item name="colorControlActivated">@color/origins_accent</item>
+        <item name="android:colorControlActivated">@color/origins_accent</item>
+        <item name="android:colorControlNormal">@color/origins_text_dim</item>
+        <item name="android:textColorPrimary">@color/origins_text</item>
+        <item name="android:textColorSecondary">@color/origins_text_dim</item>
+        <item name="android:textColorHint">@color/origins_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/origins_text</item>
+        <item name="colorSurface">@color/origins_surface</item>
+        <item name="colorOutline">@color/origins_outline</item>
+    </style>
+
+    <style name="BoltDialog.Origins.Dark" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog_round</item>
+        <item name="colorAccent">@color/origins_dark_accent</item>
+        <item name="colorControlActivated">@color/origins_dark_accent</item>
+        <item name="android:colorControlActivated">@color/origins_dark_accent</item>
+        <item name="android:colorControlNormal">@color/origins_dark_text_dim</item>
+        <item name="android:textColorPrimary">@color/origins_dark_text</item>
+        <item name="android:textColorSecondary">@color/origins_dark_text_dim</item>
+        <item name="android:textColorHint">@color/origins_dark_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/origins_dark_text</item>
+        <item name="colorSurface">@color/origins_dark_surface</item>
+        <item name="colorOutline">@color/origins_dark_outline</item>
+    </style>
+
+    <style name="BoltDialog.Pulse.Dark" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="colorAccent">@color/pulse_accent</item>
+        <item name="colorControlActivated">@color/pulse_accent</item>
+        <item name="android:colorControlActivated">@color/pulse_accent</item>
+        <item name="android:colorControlNormal">@color/pulse_text_dim</item>
+        <item name="android:textColorPrimary">@color/pulse_text</item>
+        <item name="android:textColorSecondary">@color/pulse_text_dim</item>
+        <item name="android:textColorHint">@color/pulse_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/pulse_text</item>
+        <item name="colorSurface">@color/pulse_surface</item>
+        <item name="colorOutline">@color/pulse_outline</item>
+    </style>
+
+    <style name="BoltDialog.Pulse.Light" parent="BoltDialog">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="colorAccent">@color/pulse_light_accent</item>
+        <item name="colorControlActivated">@color/pulse_light_accent</item>
+        <item name="android:colorControlActivated">@color/pulse_light_accent</item>
+        <item name="android:colorControlNormal">@color/pulse_light_text_dim</item>
+        <item name="android:textColorPrimary">@color/pulse_light_text</item>
+        <item name="android:textColorSecondary">@color/pulse_light_text_dim</item>
+        <item name="android:textColorHint">@color/pulse_light_text_dim</item>
+        <item name="textColorAlertDialogListItem">@color/pulse_light_text</item>
+        <item name="colorSurface">@color/pulse_light_surface</item>
+        <item name="colorOutline">@color/pulse_light_outline</item>
+    </style>
+</resources>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.33 — OVERLAY CHROME. The content pane now fills the whole window
+     and the bars float OVER it (backgrounds painted at runtime by
+     applySkinBars(): translucent glass for Aura, opaque colorBg otherwise).
+     Scrolling the page slides the bars away (showBars/hideBars), giving
+     fullscreen content — the standard Chrome/Vivaldi mobile behavior and
+     the only way "translucent glass" can actually show the page through
+     the chrome. findbar/ttsbar ride with the top overlay so they never
+     reflow the page. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/fl_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="?attr/colorBg">
+
+    <com.bolt.browser.ui.MediaAwareContent android:id="@+id/fl_content"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:background="?attr/colorBg"/>
+
+    <!-- floating chrome: top group (bar + progress + find + tts) and bottom
+         bar overlay the content; the stretch of empty Space between them is
+         not touchable, so page touches fall through to the WebView. -->
+    <LinearLayout android:orientation="vertical"
+        android:layout_width="match_parent" android:layout_height="match_parent">
+
+        <LinearLayout android:id="@+id/top_group" android:orientation="vertical"
+            android:layout_width="match_parent" android:layout_height="wrap_content">
+
+        <LinearLayout android:id="@+id/topbar" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="58dp"
+            android:gravity="center_vertical" android:paddingStart="4dp" android:paddingEnd="4dp">
+            <ImageButton android:id="@+id/btn_site_settings"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:src="@drawable/ic_tune" android:background="@drawable/bg_item"
+                android:contentDescription="@string/site_settings"/>
+            <FrameLayout
+                android:layout_width="0dp" android:layout_height="44dp"
+                android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp">
+                <LinearLayout android:orientation="horizontal" android:background="@drawable/bg_urlbar"
+                    android:layout_width="match_parent" android:layout_height="match_parent"
+                    android:gravity="center_vertical">
+                    <ImageView android:id="@+id/iv_lock"
+                        android:layout_width="15dp" android:layout_height="15dp"
+                        android:src="@drawable/ic_lock" android:layout_marginStart="10dp"/>
+                    <TextView android:id="@+id/tv_url"
+                        android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:singleLine="true" android:ellipsize="start"
+                        android:paddingStart="8dp" android:paddingEnd="8dp" android:textSize="15sp"
+                        android:textColor="?attr/colorText" android:gravity="center_vertical"/>
+                </LinearLayout>
+            </FrameLayout>
+            <ImageButton android:id="@+id/btn_reload"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:src="@drawable/ic_reload" android:background="@drawable/bg_item"
+                android:contentDescription="@string/reload"/>
+            <ImageButton android:id="@+id/btn_more"
+                android:layout_width="46dp" android:layout_height="46dp"
+                android:src="@drawable/ic_more" android:background="@drawable/bg_item"
+                android:contentDescription="@string/more_options"/>
+        </LinearLayout>
+
+        <FrameLayout android:layout_width="match_parent" android:layout_height="2.5dp"
+            android:layout_marginTop="-2.5dp">
+            <View android:id="@+id/v_progress" android:layout_width="0dp"
+                android:layout_height="match_parent" android:background="@drawable/bg_progress"/>
+        </FrameLayout>
+
+        <LinearLayout android:id="@+id/findbar" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:visibility="gone" android:gravity="center_vertical"
+            android:background="@drawable/bg_urlbar" android:layout_margin="6dp"
+            android:padding="6dp">
+            <EditText android:id="@+id/et_find"
+                android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1"
+                android:singleLine="true" android:imeOptions="actionSearch"
+                android:hint="@string/find_in_page" android:textSize="15sp"
+                android:background="@drawable/bg_urlbar" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+            <TextView android:id="@+id/tv_find_count"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="?attr/colorTextDim" android:textSize="13sp"
+                android:layout_marginStart="8dp"/>
+            <ImageButton android:id="@+id/btn_find_prev" android:layout_width="38dp" android:layout_height="38dp"
+                android:src="@drawable/ic_arrow_up" android:background="@drawable/bg_item"/>
+            <ImageButton android:id="@+id/btn_find_next" android:layout_width="38dp" android:layout_height="38dp"
+                android:src="@drawable/ic_arrow_down" android:background="@drawable/bg_item"/>
+            <ImageButton android:id="@+id/btn_find_close" android:layout_width="38dp" android:layout_height="38dp"
+                android:src="@drawable/ic_close" android:background="@drawable/bg_item"/>
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/ttsbar" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:visibility="gone" android:gravity="center_vertical"
+            android:background="@drawable/bg_urlbar" android:layout_margin="6dp"
+            android:padding="8dp">
+            <ImageButton android:id="@+id/btn_tts_play" android:layout_width="40dp" android:layout_height="40dp"
+                android:src="@drawable/ic_pause" android:background="@drawable/bg_item"/>
+            <TextView android:id="@+id/tv_tts_status"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="@string/tts_playing" android:textColor="?attr/colorText"
+                android:layout_marginStart="12dp" android:textSize="14sp"/>
+            <ImageButton android:id="@+id/btn_tts_stop" android:layout_width="40dp" android:layout_height="40dp"
+                android:src="@drawable/ic_close" android:background="@drawable/bg_item"/>
+        </LinearLayout>
+        </LinearLayout>
+
+        <Space android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+
+        <!-- v1.3.40 — DOWNLOAD SHELF (round-4 #8): Chrome-style strip of
+             running/recent downloads. Sits between the filler Space and the
+             bottom-most bar row (applyChromeLayout re-places it when the URL
+             bar is docked at bottom). Background painted at runtime with the
+             same bar treatment in applySkinChrome(); hidden by default. -->
+        <HorizontalScrollView android:id="@+id/dl_shelf"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:scrollbars="none" android:visibility="gone"
+            android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="6dp" android:paddingBottom="6dp">
+            <LinearLayout android:id="@+id/ll_shelf_items"
+                android:orientation="horizontal" android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
+        </HorizontalScrollView>
+
+        <LinearLayout android:id="@+id/bottombar" android:orientation="horizontal"
+            android:layout_width="match_parent" android:layout_height="54dp">
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageButton android:id="@+id/btn_back"
+                    android:layout_width="46dp" android:layout_height="46dp"
+                    android:layout_gravity="center" android:src="@drawable/ic_back"
+                    android:background="@drawable/bg_item" android:contentDescription="@string/back"/>
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageButton android:id="@+id/btn_forward"
+                    android:layout_width="46dp" android:layout_height="46dp"
+                    android:layout_gravity="center" android:src="@drawable/ic_forward"
+                    android:background="@drawable/bg_item" android:contentDescription="@string/forward"/>
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageButton android:id="@+id/btn_home"
+                    android:layout_width="46dp" android:layout_height="46dp"
+                    android:layout_gravity="center" android:src="@drawable/ic_home"
+                    android:background="@drawable/bg_item" android:contentDescription="@string/home"/>
+            </FrameLayout>
+            <FrameLayout android:id="@+id/btn_tabs"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:clickable="true" android:focusable="true"
+                android:foreground="@drawable/bg_item">
+                <!-- v1.3.35 — the tabs button IS the count square: a tinted
+                     outline box with the open-tab number centered inside
+                     (bg_tabcount). No more number-over-icon overlap; the box
+                     widens for two digits and caps at 99+.
+                     v1.3.78 — THE CELL IS THE BUTTON: the square itself is a
+                     22x24dp target — a tap on the cell around it fell through
+                     the overlay to the page ("the tabs menu don't open when I
+                     click on the number in the tab square" — the field
+                     report). The full-height cell owns the click now; the
+                     square is the VISUAL only, centered like every other
+                     bar icon (46dp-class touch target, zero dead zone). -->
+                <TextView android:id="@+id/tv_tab_count"
+                    android:layout_width="wrap_content" android:layout_height="24dp"
+                    android:layout_gravity="center" android:gravity="center"
+                    android:minWidth="22dp" android:paddingStart="3dp" android:paddingEnd="3dp"
+                    android:background="@drawable/bg_tabcount"
+                    android:textColor="?attr/colorText" android:textSize="13sp"
+                    android:fontFamily="sans-serif-medium" android:clickable="false"
+                    android:contentDescription="@string/tabs"/>
+            </FrameLayout>
+            <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+                <ImageButton android:id="@+id/btn_menu"
+                    android:layout_width="46dp" android:layout_height="46dp"
+                    android:layout_gravity="center" android:src="@drawable/ic_menu"
+                    android:background="@drawable/bg_item" android:contentDescription="@string/menu"/>
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <ImageButton android:id="@+id/fab_media"
+        android:layout_width="46dp" android:layout_height="46dp"
+        android:layout_gravity="bottom|end" android:layout_margin="14dp"
+        android:translationY="-140dp" android:src="@drawable/ic_volume"
+        android:background="@drawable/bg_fab" android:visibility="gone"
+        android:contentDescription="@string/media_controls"/>
+</FrameLayout>

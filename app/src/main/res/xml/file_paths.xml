@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-path name="downloads" path="Download/" />
+    <external-files-path name="app_downloads" path="Download/" />
+    <files-path name="offline" path="offline/" />
+    <!-- v1.3.38: the share-as-QR png before it leaves through ACTION_SEND -->
+    <files-path name="shared" path="shared/" />
+</paths>

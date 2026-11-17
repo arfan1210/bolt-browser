@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.81 — NEON: the synthwave launcher face ("similar some other
+     popular theme"). A fat translucent cyan halo around the bolt, the
+     crisp bolt itself fading cyan-to-magenta — an 80s neon sign on a
+     midnight panel. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- the glow halo: same bolt, blown out and translucent -->
+    <path
+        android:fillColor="#3322D3EE"
+        android:strokeColor="#2622D3EE" android:strokeWidth="7"
+        android:pathData="M60,22L38,60h13l-5,26 22,-38h-13z"/>
+    <!-- the crisp bolt, neon gradient -->
+    <path android:pathData="M60,22L38,60h13l-5,26 22,-38h-13z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="34" android:startY="88"
+                android:endX="80" android:endY="20"
+                android:startColor="#FF22D3EE" android:endColor="#FFE879F9"/>
+        </aapt:attr>
+    </path>
+</vector>

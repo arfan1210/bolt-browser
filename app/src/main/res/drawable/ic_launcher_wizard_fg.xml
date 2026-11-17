@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.81 — WIZARD: the Harry-Potter-style launcher face ("harry porters
+     font style lightning"). A slender angular scar-bolt in gold on a deep
+     night-sky navy. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFF5C518"
+        android:pathData="M60,18 L40,56 H52 L44,90 L72,44 H58 Z"/>
+</vector>

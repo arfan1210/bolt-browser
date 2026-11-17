@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LibreTube-inspired palette; accent runtime-switchable -->
+    <color name="accent">#3E8BFF</color>
+    <color name="accent_blue">#3E8BFF</color>
+    <color name="accent_green">#22C55E</color>
+    <color name="accent_pink">#EC4899</color>
+    <color name="accent_orange">#F97316</color>
+    <color name="accent_mono">#9E9E9E</color>
+
+    <color name="light_bg">#FAFAFD</color>
+    <color name="light_surface">#FFFFFF</color>
+    <color name="light_surface2">#EDEDF4</color>
+    <color name="light_text">#1B1B20</color>
+    <color name="light_text_dim">#6E6E7A</color>
+    <color name="light_outline">#DCDCE6</color>
+
+    <color name="dark_bg">#0E0E13</color>
+    <color name="dark_surface">#1A1A22</color>
+    <color name="dark_surface2">#26262F</color>
+    <color name="dark_text">#EDEDF2</color>
+    <color name="dark_text_dim">#9A9AA8</color>
+    <color name="dark_outline">#33333E</color>
+
+    <!-- ============ v1.3.33 skins ============ -->
+
+    <!-- AURA — translucent dark glass. Surfaces carry alpha so panels/dim
+         layers read as smoked glass; hairline outlines (#29FFFFFF) are the
+         glass rim. Window bg stays opaque (translucent activity windows are
+         a mess across OEMs); the GLASS effect lives on overlay surfaces:
+         the browser bars (which float over the page since v1.3.33),
+         dialogs, sheets and menus. -->
+    <color name="aura_bg">#0C0A1E</color>
+    <color name="aura_surface">#E6161430</color>
+    <color name="aura_surface2">#B3262447</color>
+    <color name="aura_text">#F2EFFF</color>
+    <!-- v1.3.45 (field: "in dark glass, make the icons WHITE instead of
+         darkish"): the icon tint is now pure white and the dim lavender
+         (used by menu/sheet icons + secondary text) was lifted a full step —
+         v1.3.44's #E8E8F2/#A295D6 still read as grey-on-purple over the
+         smoked glass. -->
+    <color name="aura_text_dim">#C6B9F5</color>
+    <color name="aura_outline">#33FFFFFF</color>
+    <color name="aura_tint">#FFFFFF</color>
+    <color name="aura_accent">#9A7BFF</color>
+    <color name="aura_accent_soft">#339A7BFF</color>
+    <!-- bar glass: what the toolbar/bottombar are painted with (over the page) -->
+    <color name="aura_bar">#C60E0E1A</color>
+
+    <!-- MONO — true-black flat minimal. High contrast, no decoration.
+         v1.3.35: signature accent = PAPER WHITE (the Auto default) — a
+         monochrome UI where switches/FAB/segments go white-on-black. -->
+    <color name="mono_bg">#000000</color>
+    <color name="mono_surface">#0A0A0A</color>
+    <color name="mono_surface2">#181818</color>
+    <color name="mono_text">#FFFFFF</color>
+    <color name="mono_text_dim">#8F8F8F</color>
+    <color name="mono_outline">#242424</color>
+    <color name="mono_tint">#EDEDED</color>
+    <color name="mono_accent">#EDEDED</color>
+    <color name="mono_accent_soft">#33EDEDED</color>
+
+    <!-- ORIGINS — warm, soft, light. Cream/putty surfaces, tactile strokes.
+         v1.3.39 DIVERSITY PASS: pushed warmer + darker-text so it can never
+         read as "Classic with a filter" — cream bg, cocoa text, terracotta
+         accent (was sage). -->
+    <color name="origins_bg">#F0E9DB</color>
+    <color name="origins_surface">#FAF5EA</color>
+    <color name="origins_surface2">#E5DCC8</color>
+    <color name="origins_text">#3D3223</color>
+    <color name="origins_text_dim">#8C7F65</color>
+    <color name="origins_outline">#D8CBAD</color>
+    <color name="origins_tint">#6B5D44</color>
+    <color name="origins_accent">#C96F4A</color>
+    <color name="origins_accent_soft">#2AC96F4A</color>
+
+    <!-- PULSE — vibrant dark, expressive color.
+         v1.3.39 DIVERSITY PASS: deep INDIGO base + electric TEAL + violet
+         secondary — unmistakable next to Aura's glass or Classic's neutral. -->
+    <color name="pulse_bg">#131033</color>
+    <color name="pulse_surface">#201B4E</color>
+    <color name="pulse_surface2">#322A66</color>
+    <color name="pulse_text">#F0EDFF</color>
+    <color name="pulse_text_dim">#9B93E8</color>
+    <color name="pulse_outline">#463B7E</color>
+    <color name="pulse_tint">#D4CCFF</color>
+    <color name="pulse_accent">#00E5C0</color>
+    <color name="pulse_accent_soft">#3300E5C0</color>
+
+    <!-- ============ v1.3.35 — every skin gains BOTH lightness variants ============
+         Field report on v1.3.34: "the different themes don't seem much
+         different and all of them don't have both a light and dark mode."
+         Each skin now has a paired light/dark palette + a SIGNATURE accent
+         (used by the "Auto" accent and the skin's XML default) so switching
+         skins changes the whole personality, not the shade of gray. -->
+
+    <!-- AURA light — "morning frost": bright frosted white glass.
+         v1.3.39: lilac-tinted frost (matches the violet dark twin). -->
+    <color name="aura_light_bg">#F4F1FD</color>
+    <color name="aura_light_surface">#E6F9F6FF</color>
+    <color name="aura_light_surface2">#B3ECE5FF</color>
+    <color name="aura_light_text">#221A3E</color>
+    <color name="aura_light_text_dim">#6F6793</color>
+    <color name="aura_light_outline">#29221A3E</color>
+    <color name="aura_light_tint">#55506F</color>
+    <color name="aura_light_accent">#7B5CFF</color>
+    <color name="aura_light_accent_soft">#247B5CFF</color>
+    <color name="aura_light_bar">#C6F4F5FB</color>
+
+    <!-- MONO light — "paper & ink": white, flat, near-black ink accent. -->
+    <color name="mono_light_bg">#FFFFFF</color>
+    <color name="mono_light_surface">#FFFFFF</color>
+    <color name="mono_light_surface2">#F1F1F1</color>
+    <color name="mono_light_text">#0A0A0A</color>
+    <color name="mono_light_text_dim">#767676</color>
+    <color name="mono_light_outline">#E4E4E4</color>
+    <color name="mono_light_tint">#2B2B2B</color>
+    <color name="mono_light_accent">#111111</color>
+    <color name="mono_light_accent_soft">#15111111</color>
+
+    <!-- ORIGINS dark — "hearth": warm umber dark mode for the cream skin.
+         v1.3.39: deeper ember-brown base + warm amber accent. -->
+    <color name="origins_dark_bg">#1B150E</color>
+    <color name="origins_dark_surface">#281F15</color>
+    <color name="origins_dark_surface2">#362A1C</color>
+    <color name="origins_dark_text">#F2E8D6</color>
+    <color name="origins_dark_text_dim">#B09C77</color>
+    <color name="origins_dark_outline">#44351F</color>
+    <color name="origins_dark_tint">#E0CFA9</color>
+    <color name="origins_dark_accent">#F0A05A</color>
+    <color name="origins_dark_accent_soft">#2EF0A05A</color>
+
+    <!-- PULSE light — "electric daylight": bright with lavender-tinted chips.
+         v1.3.39: warmer violet-tinted daylight to match the indigo twin. -->
+    <color name="pulse_light_bg">#F1EFFE</color>
+    <color name="pulse_light_surface">#FFFFFF</color>
+    <color name="pulse_light_surface2">#E6E2FF</color>
+    <color name="pulse_light_text">#221B47</color>
+    <color name="pulse_light_text_dim">#6F6A9C</color>
+    <color name="pulse_light_outline">#DFD9F6</color>
+    <color name="pulse_light_tint">#5A5484</color>
+    <color name="pulse_light_accent">#00A878</color>
+    <color name="pulse_light_accent_soft">#2600A878</color>
+
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="danger">#EF4444</color>
+    <color name="group_red">#EF5350</color>
+    <color name="group_orange">#FFA726</color>
+    <color name="group_yellow">#FFCA28</color>
+    <color name="group_green">#66BB6A</color>
+    <color name="group_teal">#26A69A</color>
+    <color name="group_blue">#42A5F5</color>
+    <color name="group_purple">#AB47BC</color>
+    <color name="group_pink">#EC407A</color>
+    <color name="translucent_scrim">#B3000000</color>
+    <!-- v1.3.81 themed launcher aliases (see AppIconSwitch; the solid
+         backgrounds — Volt/Neon gradients live in their bg drawables) -->
+    <color name="launcher_pika">#FFCB05</color>
+    <color name="launcher_wiz">#101A38</color>
+</resources>

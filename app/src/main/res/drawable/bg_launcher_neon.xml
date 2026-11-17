@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.81 — NEON background: midnight panel with a violet undertow -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:angle="270"
+        android:startColor="#0B0F1C" android:endColor="#191036"/>
+</shape>

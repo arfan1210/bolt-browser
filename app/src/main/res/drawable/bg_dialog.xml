@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.34 — modern dialog panel: 24dp rounded surface; resolves theme
+     attrs so each skin's dialog theme colors it (Light/Dark/Aura/Mono/
+     Origins/Pulse dialog themes set the attrs in styles.xml). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="?attr/colorSurface"/>
+    <corners android:radius="24dp"/>
+</shape>

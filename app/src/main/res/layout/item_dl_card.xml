@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.59 — THE DOWNLOAD CARD (redesign): one grid cell — a square
+     preview tile (image thumbnail / video frame / APK icon when
+     decodable, else the file-type glyph over its brand tint), the name on
+     two lines, and a dense size·time caption. Active items draw the
+     progress strip along the tile's bottom edge. Tap = primary action,
+     long-press = the action sheet. The media frame is squared at bind
+     time (height pinned to the measured cell width). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:layout_marginStart="3dp"
+    android:layout_marginEnd="3dp" android:background="@drawable/bg_card">
+    <FrameLayout android:id="@+id/fl_dl_media" android:layout_width="match_parent"
+        android:layout_height="140dp">
+        <ImageView android:id="@+id/iv_dl_thumb" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:scaleType="centerCrop"/>
+        <ImageView android:id="@+id/iv_dl_icon" android:layout_width="34dp"
+            android:layout_height="34dp" android:layout_gravity="center"
+            android:scaleType="centerInside"/>
+        <ProgressBar android:id="@+id/pb_dl"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent" android:layout_height="4dp"
+            android:layout_gravity="bottom" android:layout_marginTop="0dp"
+            android:progressDrawable="@drawable/dl_progress"
+            android:max="100" android:visibility="gone"/>
+    </FrameLayout>
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:paddingStart="9dp"
+        android:paddingEnd="9dp" android:paddingTop="7dp" android:paddingBottom="8dp">
+        <TextView android:id="@+id/tv_dl_title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorText"
+            android:textSize="12sp" android:maxLines="2" android:ellipsize="end"
+            android:fontFamily="sans-serif-medium" android:lineSpacingExtra="1dp"/>
+        <TextView android:id="@+id/tv_dl_sub" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorTextDim"
+            android:textSize="11sp" android:singleLine="true"
+            android:ellipsize="end" android:layout_marginTop="2dp"/>
+    </LinearLayout>
+</LinearLayout>

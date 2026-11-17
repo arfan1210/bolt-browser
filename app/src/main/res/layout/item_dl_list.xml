@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.59 — THE COMPACT DOWNLOAD ROW (redesign). Field report: the old
+     row "takes too much space for too little information" — one tall card
+     per file with three trailing buttons. New shape: ONE 64-ish-dp line —
+     a rounded 46dp preview tile (file-type glyph over its brand tint, or
+     the decoded image thumbnail), name + a single dense status line, one
+     trailing primary-action button, and a hairline 3dp progress strip that
+     only exists while the item is active. Long-press opens the action
+     sheet; the old 3-button block is gone. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:background="@drawable/bg_card">
+    <LinearLayout android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:paddingStart="8dp" android:paddingEnd="4dp"
+        android:paddingTop="8dp" android:paddingBottom="8dp">
+        <FrameLayout android:id="@+id/fl_dl_icon" android:layout_width="46dp"
+            android:layout_height="46dp">
+            <ImageView android:id="@+id/iv_dl_thumb" android:layout_width="match_parent"
+                android:layout_height="match_parent" android:scaleType="centerCrop"/>
+            <ImageView android:id="@+id/iv_dl_icon" android:layout_width="22dp"
+                android:layout_height="22dp" android:layout_gravity="center"
+                android:scaleType="centerInside"/>
+        </FrameLayout>
+        <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="12dp" android:layout_marginEnd="6dp">
+            <TextView android:id="@+id/tv_dl_title" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:textColor="?attr/colorText"
+                android:textSize="14sp" android:singleLine="true"
+                android:ellipsize="middle" android:fontFamily="sans-serif-medium"/>
+            <TextView android:id="@+id/tv_dl_sub" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:textColor="?attr/colorTextDim"
+                android:textSize="12sp" android:singleLine="true"
+                android:ellipsize="end" android:layout_marginTop="1dp"/>
+        </LinearLayout>
+        <ImageButton android:id="@+id/btn_dl_act" android:layout_width="40dp"
+            android:layout_height="40dp" android:background="@drawable/bg_item_round"
+            android:scaleType="centerInside" android:padding="8dp"/>
+    </LinearLayout>
+    <ProgressBar android:id="@+id/pb_dl"
+        style="@android:style/Widget.Material.ProgressBar.Horizontal"
+        android:layout_width="match_parent" android:layout_height="4dp"
+        android:layout_marginTop="6dp" android:progressDrawable="@drawable/dl_progress"
+        android:max="100" android:visibility="gone"/>
+</LinearLayout>

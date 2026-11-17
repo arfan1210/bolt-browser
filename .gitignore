@@ -1,0 +1,15 @@
+# build outputs
+.gradle/
+build/
+app/build/
+
+# signing & machine-local config — never commit these
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store

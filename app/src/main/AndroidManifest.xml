@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- v1.3.27 background survival: sideloaded APK (GitHub releases) — the
+         Play-policy restrictions on requesting this exemption do not apply.
+         Lets the media service ask the user directly for the battery
+         optimization whitelist (the single strongest defense against
+         OEM/lmkd killing backgrounded playback). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- v1.3.78 — APK "Open" after download must reach the package
+         installer: Android 8+ refuses ACTION_VIEW install intents from
+         apps without this grant ("apks downloaded don't open when I click
+         open after downloading and have to open it from file manager to
+         install"). Sideloaded-from-GitHub app; the Play-policy question
+         does not apply. The user still confirms the per-app switch once
+         (deep-linked from the downloads screen). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:name=".BoltApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.Bolt">
+
+        <!-- v1.3.83 — THE ACTIVITY IS DEMOTED. It must NEVER carry the
+             MAIN/LAUNCHER (or VIEW) filter again: v1.3.79/80's icon picker
+             left an EXPLICIT DISABLE persisted on this exact component
+             (com.bolt.browser.ui.BrowserActivity), that state SURVIVES every
+             future update (component-enabled state is persistent device
+             state, and MY_PACKAGE_REPLACED is NOT delivered to stopped /
+             never-started apps — the v1.3.82 receiver could never fire on
+             the stranded field device), so any manifest filter here is a
+             filter on a component the field can never enable again. The
+             launcher contract now lives on .ui.IconDefault below, a name
+             that NEVER existed in any earlier APK — a brand-new component
+             carries NO persisted state, so it ships enabled (as declared
+             here) the moment v1.3.83 installs: the icon REAPPEARS at
+             install time, zero code execution, even in the stopped state.
+             Field-proven safe: v1.3.80 ran fine with this activity
+             explicitly disabled while the Midnight alias fronted it — an
+             enabled alias launches its target regardless of the target's
+             own enabled state. -->
+        <activity
+            android:name=".ui.BrowserActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode|density"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:exported="true" />
+
+        <!-- v1.3.83 — THE DEFAULT FACE, IMMORTAL. THE RESURRECTION ALIAS:
+             the launcher contract moved OFF the real activity (whose
+             persisted DISABLE stranded the field device through v1.3.81
+             AND v1.3.82) onto this NEW component name. Rules that must
+             hold forever:
+               - android:enabled="true" IN THE PACKAGED MANIFEST — this is
+                 the one launcher face whose DEFAULT is on, so a fresh
+                 install, and every stranded device get an icon with NO
+                 code execution at all;
+               - NEVER rename, remove, or disable-by-default this alias in
+                 any future release — a new APK may flip its RUNTIME state,
+                 but this declaration is the install-time guarantee;
+               - if a future release must retire a THEMED alias, this
+                 default (plus LauncherGuard) is the guaranteed fallback —
+                 rotating THIS name is the absolute last resort (a rename
+                 resurrects stranded devices the same way this release
+                 does, but it costs every healthy user their home-screen
+                 placement once). -->
+        <activity-alias
+            android:name=".ui.IconDefault"
+            android:targetActivity=".ui.BrowserActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- v1.3.79 — APP ICON OPTIONS ("add option to change the logo of the
+             app itself with few options given"): launcher-presence aliases
+             over the SAME BrowserActivity. Exactly one of {the default
+             alias, the four themed aliases} is enabled at a time
+             (Appearance -> App icon flips them with
+             PackageManager.setComponentEnabledSetting); every alias
+             carries the launcher AND the http/https VIEW filter so link
+             opening works no matter which face is active. Default off —
+             IconDefault owns the icon until the user picks a theme.
+             API 26+ renders the adaptive variants; 24-25 fall back to the
+             generated PNGs (solid colorway squares with the bolt glyph). -->
+        <activity-alias
+            android:name=".ui.IconPika"
+            android:targetActivity=".ui.BrowserActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_pika"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.IconWizard"
+            android:targetActivity=".ui.BrowserActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_wizard"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.IconVolt"
+            android:targetActivity=".ui.BrowserActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_volt"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.IconNeon"
+            android:targetActivity=".ui.BrowserActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_neon"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- True separate-process incognito: its own WebView data dir + own process -->
+        <activity
+            android:name=".ui.IncognitoActivity"
+            android:process=":incognito"
+            android:taskAffinity="com.bolt.browser.incognito"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode|density"
+            android:windowSoftInputMode="adjustResize"
+            android:supportsPictureInPicture="true"
+            android:exported="false" />
+
+        <activity android:name=".ui.TabsActivity" android:exported="false" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+        <activity android:name=".ui.TabsIncognitoActivity" android:process=":incognito" android:taskAffinity="com.bolt.browser.incognito" android:exported="false" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+        <!-- v1.3.31 — the built-in TOTP authenticator (main process only;
+             identity data stays out of the incognito process) -->
+        <activity android:name=".ui.AuthenticatorActivity" android:exported="false" />
+        <!-- v1.3.39 round-3 feature screens (Kotlin) -->
+        <activity android:name=".ui.ReaderActivity" android:exported="false" />
+        <activity android:name=".ui.EnginesActivity" android:exported="false" />
+        <activity android:name=".ui.TabTrashActivity" android:exported="false" />
+        <activity android:name=".ui.SessionsActivity" android:exported="false" />
+        <activity android:name=".ui.ProfilesActivity" android:exported="false" />
+        <!-- v1.3.40 — Workspaces (Profiles + Sessions merged, Chrome-style) -->
+        <activity android:name=".ui.WorkspacesActivity" android:exported="false" />
+        <!-- v1.3.40 — per-site dark exceptions manager (round-4 #12) -->
+        <activity android:name=".ui.SiteDarkActivity" android:exported="false" />
+        <!-- v1.4.0 — ABOUT + the update checker (the version-milestone ask) -->
+        <activity android:name=".ui.AboutActivity" android:exported="false" />
+        <!-- v1.4.1 — the About easter egg: Bolt Dash, the 7-tap offline game -->
+        <activity android:name=".ui.BoltEggActivity" android:exported="false" />
+        <activity android:name=".ui.SettingsHomeActivity" android:exported="false" />
+        <activity android:name=".ui.DeepSettingsActivity" android:exported="false" />
+        <activity android:name=".ui.SettingsItemsActivity" android:exported="false" />
+        <activity android:name=".ui.FilterListsActivity" android:exported="false" />
+        <activity android:name=".ui.DownloadsActivity" android:exported="false" />
+        <activity android:name=".ui.HistoryActivity" android:exported="false" />
+        <activity android:name=".ui.BookmarksActivity" android:exported="false" />
+        <activity android:name=".ui.OfflinePagesActivity" android:exported="false" />
+        <activity android:name=".ui.AppearanceActivity" android:exported="false" />
+        <!-- v1.3.37 — live QR scanner (camera2 + the existing ZXing core).
+             Runs in the caller's task; no process attr so both the normal and
+             the incognito browser can start it and get the text back. -->
+        <activity android:name=".ui.QrScanActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+        <activity android:name=".ui.BackupActivity" android:exported="false" />
+        <activity android:name=".scripts.UserscriptsActivity" android:exported="false" />
+        <!-- v1.3.38 new-feature screens (all Kotlin): the wallpaper adjust
+             studio, the quick-actions remapper, the password vault, the watch
+             later queue, and the app-lock gate (translucent scrim + device
+             credential sheet). -->
+        <activity android:name=".ui.WallpaperAdjustActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+        <activity android:name=".ui.QuickActionsActivity" android:exported="false" />
+        <activity android:name=".ui.PasswordVaultActivity" android:exported="false" />
+        <activity android:name=".ui.WatchLaterActivity" android:exported="false" />
+        <activity android:name=".ui.LockActivity" android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+
+        <service
+            android:name=".media.MediaControlService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- v1.3.28: alarm watchdog — fires in a fresh process when the OS/OEM
+             killer stopped Bolt while playing (alarms survive the process;
+             only force-stop wipes them) and posts the one-tap resume
+             notification. -->
+        <receiver
+            android:name=".media.MediaWatchdog"
+            android:exported="false" />
+
+        <service
+            android:name=".core.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- v1.3.79 — THE HOME-SCREEN SEARCH WIDGET: long-press the launcher
+             -> Widgets -> Bolt search; tap opens Bolt with the omnibox up. -->
+        <receiver
+            android:name=".ui.BoltSearchWidget"
+            android:exported="true"
+            android:label="@string/widget_search_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bolt_search_widget_info" />
+        </receiver>
+
+        <!-- v1.3.82 — THE UPDATE SELF-HEAL. MY_PACKAGE_REPLACED is the only
+             code that can run while the app is UN-OPENABLE (the v1.3.81
+             trap: the colorway-alias removal left ZERO launcher components
+             enabled — the component-enabled DISABLE of the main activity
+             survived the update — so the app vanished from the launcher
+             and from Settings' Open button). The receiver runs
+             LauncherGuard.heal (default face back), the OCR model diet
+             (the legacy filesDir/ocrfast tree), and CacheGuard.exit (the
+             close-out sweep — "the size is still 50mb, it did not reduce
+             after updating": an APK install ran no Bolt code before this).
+             exported=false is fine — the system is the only sender. -->
+        <receiver
+            android:name=".util.UpdateHealReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.bolt.browser.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:padding="12dp"
+    android:background="@drawable/bg_item" android:gravity="center_vertical">
+    <ImageView android:id="@+id/iv_sug_icon" android:layout_width="20dp" android:layout_height="20dp"/>
+    <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp">
+        <TextView android:id="@+id/tv_sug_title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorText"
+            android:textSize="15sp" android:singleLine="true" android:ellipsize="end"/>
+        <TextView android:id="@+id/tv_sug_sub" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorTextDim"
+            android:textSize="12sp" android:singleLine="true" android:ellipsize="end"/>
+    </LinearLayout>
+    <!-- v1.3.95 — THE FILL BUTTON (the field: "I type how to, click the
+         button to fill the history to the search bar and edit that
+         instead of retyping the whole thing"): on history/bookmark/tab
+         rows it puts the row's text (a past search's QUERY when the URL
+         resolves to one, the URL otherwise) into the omnibox field for
+         editing; the chevron stays for rows that carry nothing to fill
+         (the search row, instant answers). -->
+    <ImageButton android:id="@+id/btn_sug_fill"
+        android:layout_width="38dp" android:layout_height="38dp"
+        android:layout_marginStart="4dp" android:src="@drawable/ic_edit"
+        android:scaleType="centerInside" android:padding="9dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/fill_from_history"/>
+    <ImageView android:id="@+id/iv_sug_chevron" android:layout_width="16dp"
+        android:layout_height="16dp" android:src="@drawable/ic_chevron"/>
+</LinearLayout>

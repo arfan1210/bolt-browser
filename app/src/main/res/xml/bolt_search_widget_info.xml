@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.79 — THE HOME-SCREEN SEARCH WIDGET ("add a search bar widget
+     support as well that I will add to homescreen later"): a resizable
+     4x1 bar; one tap opens Bolt with the omnibox ready. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/widget_search"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_search_hint"/>

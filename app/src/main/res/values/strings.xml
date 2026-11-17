@@ -1,0 +1,629 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bolt</string>
+    <string name="search_hint">Search or enter address</string>
+    <string name="home">Home</string>
+    <string name="tabs">Tabs</string>
+    <string name="tab">Tab</string>
+    <string name="menu">Menu</string>
+    <string name="reload">Reload</string>
+    <string name="stop">Stop</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="settings">Settings</string>
+    <string name="site_settings">Site settings</string>
+    <string name="more_options">More options</string>
+
+    <!-- 3-dot menu -->
+    <string name="share">Share</string>
+    <string name="save_page">Save page</string>
+    <string name="save_pdf">Save as PDF</string>
+    <string name="save_html">Save as HTML (single file)</string>
+    <string name="print_pdf">Print to PDF</string>
+    <string name="add_bookmark">Add bookmark</string>
+    <string name="add_shortcut">Add to home screen</string>
+    <string name="find_in_page">Find in page</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="translate_page">Translate page</string>
+    <string name="translate_screen">Translate screen</string>
+    <string name="dev_tools">Developer tools</string>
+    <string name="inspect_elements">Inspect elements</string>
+    <string name="text_to_speech">Read page aloud</string>
+    <string name="active_scripts">Active scripts</string>
+    <string name="ad_blocking">Ad blocking</string>
+    <string name="new_tab">New tab</string>
+    <string name="new_incognito_tab">New incognito tab</string>
+    <string name="close_tab">Close tab</string>
+    <string name="close_all">Close all</string>
+    <string name="bookmark_added">Bookmark added</string>
+    <string name="shortcut_added">Shortcut added</string>
+    <string name="copied">Copied</string>
+    <string name="fill_from_history">Fill the search bar with this text</string>
+    <string name="save_ai_response">Save AI response (PDF / image)</string>
+    <string name="copying">Copying…</string>
+    <string name="copy_slow_hint">Copy did not reach the page — try the system Copy</string>
+    <string name="saved_offline">Saved offline</string>
+
+    <!-- site settings sheet -->
+    <string name="ads_and_trackers">Block ads &amp; trackers</string>
+    <string name="no_ads_here">Do not block ads on this site</string>
+    <string name="custom_filters">Custom filters</string>
+    <string name="clear_site_data">Delete site data &amp; cookies</string>
+    <string name="site_data_cleared">Site data, cookies and storage wiped</string>
+    <string name="user_agent">User agent</string>
+    <string name="ua_default">Default (mobile)</string>
+    <string name="ua_desktop">Desktop</string>
+    <string name="always_desktop">Always open desktop site</string>
+    <string name="block_3rd_party">Block opening 3rd-party sites</string>
+    <string name="block_cookies">Block cookies</string>
+    <string name="block_javascript">Block JavaScript</string>
+    <string name="disable_userscripts">Disable userscripts</string>
+    <string name="disable_bg_play">Disable background play</string>
+    <string name="disable_camera">Block camera</string>
+    <string name="disable_mic">Block microphone</string>
+    <string name="block_external">Block launching external apps</string>
+    <string name="reset_site">Reset site settings</string>
+
+    <!-- media -->
+    <string name="media_controls">Media controls</string>
+    <string name="volume_boost">Volume boost</string>
+    <string name="vocal_filter">Vocal boost</string>
+    <string name="vocal_filter_desc">Boosts speech frequencies for clearer voices</string>
+    <string name="speed">Speed</string>
+    <string name="boost_unavailable">Boost unavailable for this video</string>
+    <string name="notification_channel_media">Media controls</string>
+    <string name="notification_channel_alert">Playback alerts</string>
+    <string name="media_recovery_title">Playback interrupted</string>
+    <string name="media_recovery_text">Bolt was stopped by the system while playing. Tap to reopen Bolt and resume where it left off.</string>
+    <string name="media_notification_desc">Browser media playback</string>
+
+    <!-- tabs -->
+    <string name="tab_groups">Tab groups</string>
+    <string name="normal">Normal</string>
+    <string name="incognito">Incognito</string>
+    <string name="new_group">New group</string>
+    <string name="group_name">Group name</string>
+    <string name="add_to_group">Add to group</string>
+    <string name="ungrouped">Ungrouped</string>
+    <string name="group_color">Group color</string>
+    <string name="rename_group">Rename group</string>
+    <string name="delete_group">Delete group</string>
+    <string name="move_to_group">Move to group</string>
+    <string name="remove_from_group">Remove from group</string>
+    <string name="drag_hint">Drag to reorder - hold still on a tab to group - hold on a group row to add</string>
+    <!-- v1.3.41 field bug 3: the drag affordances the v1.3.40 report asked
+         for - an explicit badge naming the pending action while a merge
+         arms, and a sort-aware hint (reorder only works in Manual).
+         v1.3.43: "drop on a group row to add" is GONE - an unarmed drop on
+         a folder is a no-op now; the HOLD (progress chip) is the only join
+         gesture, matching what the switcher itself teaches. -->
+    <string name="drag_hint_sorted">Reordering needs Manual sort - hold still on a tab to group - hold on a group row to add</string>
+    <string name="create_group_hint">Create group</string>
+    <string name="join_group_hint">Join group</string>
+    <string name="add_to_group_hint">Add to group</string>
+    <!-- v1.3.43: the dwell-charging chip texts - shown while the hold
+         accumulates, before the action arms. -->
+    <string name="hold_to_group_hint">Hold to group</string>
+    <string name="hold_to_add_hint">Hold to add</string>
+    <string name="no_tabs">No tabs open</string>
+    <string name="tab_closed">Tab closed</string>
+
+    <!-- settings home -->
+    <string name="exit_browser">Exit browser</string>
+    <string name="profile">Profile</string>
+    <string name="profile_desc">Login name for backups</string>
+    <!-- v1.3.40 — the Profiles + Sessions merge (field task 15) -->
+    <string name="workspaces">Workspaces</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="history">History</string>
+    <string name="downloads">Downloads</string>
+    <string name="offline_pages">Offline pages</string>
+    <string name="appearance">Appearance</string>
+    <string name="appearance_desc">Theme, accent, dark mode</string>
+    <string name="adblock">Ad blocking</string>
+    <string name="backup_export">Backup &amp; export</string>
+    <!-- v1.3.40 — richer subtitle: the card now says what the screen offers
+         (choosing components), not just "export/import" (discoverability) -->
+    <string name="backup_desc">Export, import &amp; choose what\'s backed up</string>
+    <string name="deep_settings">All settings</string>
+
+    <!-- deep settings categories -->
+    <string name="cat_general">General</string>
+    <string name="cat_general_desc">Home page, search engine, tabs</string>
+    <string name="cat_appearance">Appearance</string>
+    <string name="cat_appearance_desc">Theme, accent, dark mode, font size</string>
+    <string name="cat_privacy">Privacy &amp; security</string>
+    <string name="cat_privacy_desc">Ad blocking, trackers, cookies, clear data</string>
+    <string name="cat_media">Media</string>
+    <string name="cat_media_desc">Background play, volume boost, vocal boost</string>
+    <string name="cat_scripts">Userscripts</string>
+    <string name="cat_scripts_desc">Tampermonkey-style userscripts</string>
+    <string name="cat_advanced">Advanced</string>
+    <string name="cat_advanced_desc">User agent, debug, data storage</string>
+
+    <!-- general -->
+    <string name="search_engine">Search engine</string>
+    <string name="homepage">Home page</string>
+    <string name="new_tab_background">Open new tabs in background</string>
+    <string name="confirm_tab_close">Confirm before closing tabs</string>
+    <string name="landscape">Landscape lock</string>
+    <string name="fullscreen_video">Fullscreen video auto-rotate</string>
+
+    <!-- appearance -->
+    <string name="theme">Theme</string>
+    <string name="theme_style">Theme style</string>
+    <string name="mode">Mode</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_system">Follow system</string>
+    <string name="accent_color">Accent color</string>
+    <string name="accent_auto">Auto</string>
+    <string name="accent_wallpaper">Wallpaper</string>
+    <string name="interaction">Interaction</string>
+    <string name="pull_to_refresh">Pull to refresh</string>
+    <string name="pull_to_refresh_desc">Pull down at the top of a page to reload it</string>
+    <string name="url_bar_bottom">Address bar at bottom</string>
+    <string name="url_bar_bottom_desc">Dock the address bar under your thumb (Opera-style)</string>
+    <string name="edge_swipe">Edge swipe navigation</string>
+    <string name="edge_swipe_desc">Swipe from the screen edges to go back or forward</string>
+    <string name="hide_bars_scroll">Hide bars when scrolling</string>
+    <string name="hide_bars_scroll_desc">Slide the toolbars away as you scroll down; they return on the first upward flick</string>
+    <string name="haptics">Haptic feedback</string>
+    <string name="haptics_desc">Light ticks on switches, tab closes and menu picks</string>
+    <string name="dark_web_pages">Darken websites</string>
+    <string name="dark_web_desc">Applies dark rendering to all pages</string>
+    <string name="font_size">Font size</string>
+
+    <!-- v1.3.35 empty states -->
+    <string name="empty_tabs_title">No tabs open</string>
+    <string name="empty_tabs_sub">Tap the + button to open a new tab</string>
+    <string name="empty_bookmarks_title">No bookmarks yet</string>
+    <string name="empty_bookmarks_sub">Star a page to find it here later</string>
+    <string name="empty_history_title">No history yet</string>
+    <string name="empty_history_sub">Pages you visit will appear here</string>
+    <string name="empty_downloads_title">No downloads</string>
+    <string name="empty_downloads_sub">Files you download will show up here</string>
+    <string name="empty_offline_title">No saved pages</string>
+    <string name="empty_offline_sub">Save a page from the menu to read it offline</string>
+    <string name="empty_filters_title">No filter lists</string>
+    <string name="empty_filters_sub">Pick filter lists to start blocking</string>
+    <string name="empty_userscripts_title">No userscripts</string>
+    <string name="empty_userscripts_sub">Install a .user.js to customize sites</string>
+    <string name="empty_auth_title">No 2FA accounts</string>
+    <string name="empty_auth_sub">Add a setup key or import from Google Authenticator</string>
+
+    <!-- privacy -->
+    <string name="adblock_master">Block ads</string>
+    <string name="filter_lists">Filter lists</string>
+    <string name="filter_lists_desc">Choose which lists to use</string>
+    <string name="block_trackers_desc">EasyPrivacy blocks hidden trackers</string>
+    <string name="popup_blocker">Block popups</string>
+    <string name="shorts_blocker">Block YouTube Shorts</string>
+    <string name="shorts_desc">Removes Shorts from home, search and suggestions</string>
+    <string name="block_adult">Block adult content</string>
+    <string name="block_adult_desc">Blocks known 18+ sites</string>
+    <string name="do_not_track">Send do-not-track</string>
+    <string name="clear_browsing_data">Clear browsing data</string>
+    <string name="clear_on_exit">Clear on exit</string>
+    <string name="clear_cache">Cache</string>
+    <string name="clear_history">History</string>
+    <string name="clear_cookies">Cookies &amp; logins</string>
+    <string name="clear_storage">Site storage</string>
+    <string name="clear_passwords">Saved forms</string>
+    <string name="clear_what">Clear the following</string>
+    <string name="cleared">Data cleared</string>
+
+    <!-- media -->
+    <string name="background_play">Background playback</string>
+    <string name="bg_desc">Keep playing audio when you switch apps</string>
+    <string name="media_notification">Media notification controls</string>
+    <string name="vocal_boost">Vocal boost EQ</string>
+    <string name="max_volume">Max volume boost</string>
+    <string name="background_survival">Background playback survival</string>
+
+    <!-- scripts -->
+    <string name="userscripts">Userscripts</string>
+    <string name="add_script">Install from URL</string>
+    <string name="new_script">New script</string>
+    <string name="no_scripts">No userscripts installed.\nInstall from Greasy Fork URLs or create your own.</string>
+    <string name="scripts_enabled">Userscripts enabled</string>
+
+    <!-- advanced -->
+    <string name="global_ua">Global user agent</string>
+    <string name="data_storage">Data storage location</string>
+    <string name="keep_screen_on">Keep screen on while reading</string>
+    <string name="restore_tabs">Restore tabs on start</string>
+
+    <!-- omnibox -->
+    <string name="search_with">Search with %s</string>
+    <string name="open_url">Open URL</string>
+
+    <!-- misc -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="done">Done</string>
+    <string name="edit">Edit</string>
+    <string name="saved">Saved</string>
+    <string name="save">Save</string>
+    <string name="update">Update</string>
+    <string name="update_all">Update all lists</string>
+    <string name="add">Add</string>
+    <string name="allow">Allow</string>
+    <string name="block">Block</string>
+    <string name="always_allow">Always allow</string>
+    <string name="popup_title">Popup blocked</string>
+    <string name="popup_msg">This site tried to open %s</string>
+    <string name="not_found">Not found</string>
+    <string name="empty">Nothing here yet</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="incognito_hint">You are incognito. History, cookies and site data are wiped when you close all incognito tabs.</string>
+    <string name="translate_to">Translate to</string>
+    <string name="tts_playing">Reading page…</string>
+    <string name="stop_tts">Stop reading</string>
+    <string name="inspector_on">Inspector: tap any element</string>
+    <string name="inspector_off">Inspector off</string>
+    <string name="zap_element">Hide this element always</string>
+    <string name="remove_once">Remove once</string>
+    <string name="copy_html">Copy HTML</string>
+    <string name="search">Search</string>
+    <string name="paste">Paste</string>
+    <string name="copy">Copy</string>
+    <string name="clear">Clear</string>
+    <string name="exit_warning">Exit the browser? Your open tabs will be kept and restored next time.</string>
+    <string name="quick_settings">Quick settings</string>
+    <string name="choose_save_location">Choose where to save</string>
+    <string name="saved_to">Saved to</string>
+    <string name="images">Images</string>
+    <string name="saved_offline_as">Page saved</string>
+
+    <!-- downloads / save dialogs -->
+    <string name="download_file">Download file</string>
+    <string name="download">Download</string>
+    <string name="download_started">Download started</string>
+    <string name="save_to">Save to:</string>
+    <string name="downloads_public">Downloads (system)</string>
+    <string name="change">Change</string>
+    <string name="reset">Reset</string>
+    <string name="download_folder_set">Download folder set</string>
+    <string name="saved_pages_folder_set">Saved pages folder set</string>
+    <string name="save_page_offline">Save page offline</string>
+    <string name="offline_in_app">Offline pages (in app)</string>
+    <string name="notification_channel_downloads">Downloads</string>
+    <string name="downloading">Downloading</string>
+    <string name="download_complete">Download complete</string>
+    <string name="download_failed">Download failed</string>
+    <string name="download_paused">Paused</string>
+    <string name="clear_finished_q">Remove finished downloads from the list?</string>
+    <string name="download_queued">Queued</string>
+    <string name="retry">Retry</string>
+    <string name="cancel_all">Cancel all</string>
+    <string name="pause_dl">Pause</string>
+    <string name="resume_dl">Resume</string>
+    <string name="open_file">Open file</string>
+    <string name="delete_entry">Delete from list</string>
+    <!-- v1.3.59 — the Downloads redesign (day sections, cards, action sheet) -->
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="active_downloads">Active</string>
+    <string name="share_file">Share file</string>
+    <string name="dl_link_copied">Link copied</string>
+
+    <!-- long-press context menu -->
+    <string name="open_in_new_tab">Open in new tab</string>
+    <string name="copy_link">Copy link address</string>
+    <string name="share_link">Share link</string>
+    <string name="download_link">Download link</string>
+    <string name="download_image">Download image</string>
+    <string name="open_image_new_tab">Open image in new tab</string>
+    <string name="copy_image_url">Copy image address</string>
+    <string name="share_image_url">Share image address</string>
+
+    <!-- userscripts -->
+    <string name="install_script">Install userscript?</string>
+    <string name="script_installed">Script installed</string>
+    <string name="manage_scripts">Manage scripts</string>
+    <string name="import_script">Import from file</string>
+    <string name="script_requires">Requires: %s</string>
+    <string name="run_at_start">Runs at document start</string>
+    <string name="run_at_end">Runs at page load</string>
+    <string name="run_at_idle">Runs after page settles</string>
+
+    <!-- home screen shortcuts -->
+    <string name="add_shortcut2">Add shortcut</string>
+    <string name="name">Name</string>
+    <string name="open">Open</string>
+    <string name="rename">Rename</string>
+    <string name="grouped">Grouped</string>
+    <string name="release_to_group">Release to group</string>
+    <string name="shortcut_removed">Shortcut removed</string>
+    <string name="remove_shortcut">Remove shortcut…</string>
+    <string name="ungroup">Ungroup</string>
+    <!-- v1.4.0 — the launcher folder window + the folder edit menu -->
+    <string name="shortcuts">shortcuts</string>
+    <string name="folder_empty_hint">Empty folder — drag a shortcut onto it to fill it</string>
+    <string name="remove_from_folder">Remove from folder</string>
+    <string name="folder_deleted">Folder deleted</string>
+    <!-- v1.4.6 — the undo family (an undo for deleting anything) -->
+    <string name="bookmark_removed">Bookmark removed</string>
+    <string name="page_deleted">Saved page deleted</string>
+    <string name="watchlater_removed">Removed from Watch later</string>
+    <string name="restore_failed">Could not restore</string>
+    <string name="group_orphans_healed">%1$d tab(s) returned: their group was lost by an old bug</string>
+    <string name="group_moved">Group moved</string>
+
+    <!-- v1.4.0 — about + update checker -->
+    <string name="about_bolt">About Bolt</string>
+    <string name="about_tagline">A fast, private, Android-first browser — no trackers, no bloat.</string>
+    <string name="check_for_updates">Check for updates</string>
+    <string name="checking">Checking…</string>
+    <string name="up_to_date">Bolt is up to date</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="get_update">Open download page</string>
+    <string name="update_check_failed">Could not check — try again later</string>
+    <string name="view_source">View source on GitHub</string>
+    <string name="engine_version">Engine</string>
+
+    <!-- v1.4.1 — about: the simplified changelog + the easter egg -->
+    <string name="recent_updates">Recent updates</string>
+    <string name="changelog_hint">One line per recent release. The full notes live on the releases page below.</string>
+    <string name="egg_taps_left">Keep tapping — %1$d more…</string>
+    <string name="egg_found">You found it</string>
+    <string name="egg_game_name">Bolt Dash</string>
+    <string name="egg_tap_to_start">Tap to start</string>
+    <string name="egg_tap_to_retry">Tap to retry</string>
+    <string name="egg_best">Best: %1$d</string>
+
+    <!-- v1.4.2 — local-first search suggestions -->
+    <string name="suggest_local_first">Suggest bookmarks &amp; shortcuts first</string>
+    <string name="home_shortcut">Home shortcut</string>
+    <string name="shortcut_in">Shortcut in %1$s</string>
+    <!-- one line per recent version (newest first), "version|summary";
+         the About screen parses the pipe — keep entries single-line -->
+    <string-array name="about_changelog">
+    <item>1.4.9|Dropping a tab group beside another group lands exactly beside it (the invisible \"teleport to the bottom\" corpse: a stale position memory sent drops to the wrong end of the list, and the settle wrote the wrong side); the top-right menu is grouped into labelled sections; every tab inside a tab group and every shortcut inside a home folder gets its own visible \"\u22ef\" menu — edit name and link, de-group, delete — no hold gesture needed.</item>
+        <item>1.4.8|Empty tab groups settle exactly where you leave them (a neighbour-anchored position memory replaces the shifting row index) and tabs can finally sit right beside an empty group; the shortcut flow asks for the folder only after you choose Add to browser home; folders grow from their own window and edit sheet (a + tile and an Add shortcut row); site settings are chunked into labelled groups.</item>
+        <item>1.4.7|Only the tab group you actually hold moves (empty groups stop travelling with their neighbours — and drag themselves at last); background playback survives rotating the phone to landscape; the add-shortcut dialog can file a site straight into a home folder.</item>
+        <item>1.4.6|The home folder window\'s icons finally drag (a listener-eating corpse under every gate); empty tab groups keep their top spot when switching to follow-tab-order; every delete in the app — tab, shortcut, folder, bookmark, saved page, watch-later — gets a 3.5-second Undo.</item>
+        <item>1.4.5|Switching groups-on-top to follow-tab-order keeps the layout exactly where it was (then drag anything anywhere); the in-folder tab drag and the folder-window icon drag actually work on device (a scroll-stealing corpse); tabs and folders no longer vanish on the switch (atomic saves, no stale cross-process rewrites, duplicate-folder heal).</item>
+        <item>1.4.4|The hidden game paces itself (floatier jumps, slower bars, wider gaps); tabs rearrange freely beside folders in follow-order and inside the folder rows; folder-window icons rearrange by dragging; saved passwords fill every account of a site (with a picker) and two-step sign-ins remember the username.</item>
+        <item>1.4.3|The hidden game survives a failure (tap to retry works); switching group placements never moves your folders; password saving actually writes the vault (and autofill finally has something to fill).</item>
+        <item>1.4.2|The hidden game actually launches (a spawn-loop hang froze it on a black screen); empty folders no longer vanish in follow-tab-order; About lives in deep settings; bookmarks and shortcuts can rank above history while typing.</item>
+        <item>1.4.1|The folder window lays its icons out as a proper matrix; About gains this changelog and a hidden game; one tab order across both group placements.</item>
+        <item>1.4.0|The launcher folder window, the draggable tab groups, the disappearing-folder fix and this About screen with the update checker.</item>
+        <item>1.3.100|The grouping dwell takes a full second to fill; sign-in-with-GitHub round-trips ride one stable identity (the qwen connect fix).</item>
+        <item>1.3.99|The version agreement: the UA and the client-hints claim the same Chrome version (the grok gate).</item>
+        <item>1.3.98|The home drag vs. page-swipe clash fixed; the desktop site survives back-navigation.</item>
+        <item>1.3.97|No more phantom home refresh on early drags; the icon menu is quicker and fully iconified.</item>
+        <item>1.3.96|The home-drag crash fixed; save-AI-response and the whole-page PDF work.</item>
+        <item>1.3.95|The new-tab crash fixed; the search-history fill button; the unhurried home menu.</item>
+        <item>1.3.94|The home-screen crash loop fixed; the honest backup import; the ask-first dark pipeline.</item>
+    </string-array>
+
+    <!-- bookmarks folders -->
+    <string name="folder">Folder:</string>
+    <string name="root_folder">Root</string>
+    <string name="new_folder">New folder…</string>
+    <string name="move_to_folder">Move to folder</string>
+    <string name="delete_folder">Delete folder</string>
+    <string name="added_to_folder">Added to %1$s</string>
+
+    <!-- tabs -->
+    <string name="duplicate_tab">Duplicate tab</string>
+
+    <!-- add to home / groups -->
+    <string name="add_to_browser_home">Add to browser home</string>
+    <string name="add_to_launcher">Add to launcher</string>
+    <!-- v1.4.8: the folder choice appears AFTER "Add to browser home" -->
+    <string name="choose_folder">Choose folder</string>
+    <string name="add_shortcut_to_folder">Add shortcut to %1$s</string>
+    <string name="shortcut_url_hint">https://…</string>
+    <string name="group_created">Group created</string>
+    <string name="moved_to_group">Moved to group</string>
+    <string name="added_to_group">Added to group</string>
+    <string name="drop_to_group">Release to group</string>
+    <string name="media_booster">In-page media booster</string>
+    <string name="media_booster_desc">Volume / vocal EQ and speed enforcement inside pages. Turn this OFF when a userscript (like a YouTube audio booster) controls audio - two boosters clash and blink.</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="select_all">Select all (%1$d)</string>
+    <string name="deselect_all">Deselect all</string>
+    <string name="group_selected">Create group (%1$d)</string>
+    <string name="close_selected">Close %1$d selected tabs</string>
+    <string name="select_hint">Tap tabs to select</string>
+    <!-- v1.3.40 — tabs 3-dot menu entries (select + close-all relocated
+         from the congested six-button switcher header) -->
+    <string name="select_tabs">Select tabs</string>
+    <string name="close_all_tabs">Close all tabs</string>
+    <string name="exit_selection">Exit selection</string>
+
+    <!-- v1.3.31 file upload -->
+    <string name="pick_files">Select files</string>
+    <string name="no_file_picker">No file picker available on this device</string>
+
+    <!-- v1.3.31 tabs switcher options -->
+    <string name="tabs_options">Tabs options</string>
+    <string name="sort_by">Sort tabs</string>
+    <string name="sort_by_list">Sort by</string>
+    <string name="sort_newest_first">Newest first</string>
+    <string name="sort_oldest_first">Oldest first</string>
+    <string name="sort_name_az">Name A–Z</string>
+    <string name="sort_name_za">Name Z–A</string>
+    <string name="sort_largest_first">Largest first</string>
+    <string name="sort_smallest_first">Smallest first</string>
+    <string name="sorted_by_name">Sorted by name</string>
+    <string name="sort_manual">Manual order</string>
+    <string name="sort_newest">Newest opened first</string>
+    <string name="sort_last_visited">Last visited first</string>
+    <string name="groups_position">Groups position</string>
+    <string name="groups_on_top">Always on top</string>
+    <string name="groups_in_order">Follow tab order</string>
+    <string name="tab_view">Tab view</string>
+    <string name="view_cards">Cards</string>
+    <string name="view_list">List</string>
+    <string name="cat_tabs">Tabs</string>
+    <string name="cat_tabs_desc">Sort order, groups, card or list view</string>
+
+    <!-- v1.3.31 built-in authenticator -->
+    <string name="authenticator">Authenticator</string>
+    <string name="cat_security">Security</string>
+    <string name="cat_security_desc">Passkeys and the built-in authenticator</string>
+    <string name="auth_empty">No accounts yet — tap + to add one (paste a setup key, or import your accounts from Google Authenticator)</string>
+    <string name="auth_add">Add account</string>
+    <string name="auth_secret">Secret key (or paste a full otpauth:// link)</string>
+    <string name="auth_issuer">Issuer (e.g. Google)</string>
+    <string name="auth_account">Account (e.g. your.name@gmail.com)</string>
+    <string name="auth_added">Added to the Bolt authenticator</string>
+    <string name="auth_bad_secret">That does not look like a valid secret key</string>
+    <string name="auth_code_copied">Code copied to clipboard</string>
+    <string name="auth_delete_confirm">Remove %1$s from the authenticator?</string>
+    <string name="auth_fill_chip">Fill %1$s code</string>
+    <string name="auth_add_q">Add %1$s to the Bolt authenticator?</string>
+    <string name="auth_hint_seconds">%1$s · %2$ds</string>
+
+    <!-- v1.3.32 authenticator: Google Authenticator transfer -->
+    <string name="auth_add_key">Paste a key or otpauth:// link</string>
+    <string name="auth_import_ga">Import from Google Authenticator</string>
+    <string name="auth_import_pick">Pick the QR screenshot or photo</string>
+    <string name="auth_reading_qr">Reading the QR code…</string>
+    <string name="auth_no_qr">No QR code found in that image</string>
+    <string name="auth_no_picker">No image picker available</string>
+    <string name="auth_import_title">Add these accounts?</string>
+    <string name="auth_import_add">Add %1$d accounts</string>
+    <string name="auth_import_added">Added %1$d accounts from Google Authenticator</string>
+    <string name="auth_import_exists">already in Bolt</string>
+    <string name="auth_import_none_new">All accounts in this QR are already in Bolt</string>
+    <string name="auth_skipped_hotp">Skipped %1$d counter-based (HOTP) accounts — Bolt generates time-based codes only</string>
+    <string name="auth_skipped_bad">Skipped %1$d unusable entries</string>
+    <string name="auth_bad_migration">That QR is not a readable Google Authenticator export</string>
+    <string name="auth_batch_more">That was QR %1$d of %2$d. Google Authenticator shows one QR per 10 accounts — tap Next there and import the remaining QR(s) the same way.</string>
+    <string name="auth_show_qr">Show QR code</string>
+    <string name="auth_copy_link">Copy otpauth:// link</string>
+    <string name="auth_link_copied">otpauth:// link copied</string>
+    <string name="auth_delete">Delete</string>
+    <string name="auth_qr_hint">Scan this with Google Authenticator (or any authenticator app) to add the account there</string>
+    <string name="auth_qr_link">Copy otpauth:// link</string>
+    <string name="auth_help_title">Moving accounts in and out</string>
+    <string name="auth_help">Live sync between Bolt and Google Authenticator is not possible — Google keeps that data locked to its own app (end-to-end encrypted, no API). QR transfer is the sanctioned way in both directions:\n\n● Google Authenticator → Bolt: in the Google app open the ⋮ menu → Transfer accounts → Export accounts, screenshot the QR code, then here: + → Import from Google Authenticator and pick the screenshot. With more than 10 accounts Google shows several QR codes — import each one.\n\n● Bolt → Google Authenticator: long-press an account here → Show QR code, then in the Google app tap + → Scan a QR code.\n\nBolt never sends your secrets anywhere — decoding and code generation happen on this device.</string>
+    <!-- v1.3.36 -->
+    <string name="settings_search_hint">Search settings</string>
+    <string name="no_settings_found">No matching settings</string>
+    <string name="search_tabs_hint">Search open tabs</string>
+    <string name="no_tabs_found">No matching tabs</string>
+    <string name="no_tabs_found_sub">Try another word from the title or address</string>
+    <string name="undo">Undo</string>
+    <string name="switch_to_tab">Switch to tab</string>
+    <string name="suggested_sites">Suggested sites</string>
+    <string name="added_to_home">Added to the start page</string>
+
+    <!-- v1.3.37 — QR scanner -->
+    <string name="scan_qr">Scan QR code</string>
+    <string name="scan_qr_desc">Point the camera at a QR code</string>
+    <string name="qr_from_gallery">Pick from gallery</string>
+    <string name="qr_camera_denied">Camera permission denied — pick an image with a QR code instead</string>
+    <string name="qr_camera_failed">This camera could not be opened — pick an image with a QR code instead</string>
+    <string name="qr_not_found">No QR code found in that image</string>
+    <string name="qr_scanned">QR code scanned</string>
+    <string name="open_here">Open here</string>
+    <string name="search_for_this">Search for this</string>
+    <string name="torch">Flashlight</string>
+
+    <!-- v1.3.37 — toolbar gestures + long-press quick actions -->
+    <string name="toolbar_swipe">Swipe toolbar to switch tabs</string>
+    <string name="toolbar_swipe_desc">Swipe the address or nav bar sideways to jump between tabs</string>
+    <string name="long_press_actions">Long-press toolbar buttons</string>
+    <string name="long_press_actions_desc">Choose what holding each button does</string>
+    <string name="lp_back">Back button</string>
+    <string name="lp_forward">Forward button</string>
+    <string name="lp_home">Home button</string>
+    <string name="lp_tabs">Tabs button</string>
+    <string name="lp_menu">Settings button</string>
+    <string name="lp_more">Page menu button</string>
+    <string name="lp_reload">Reload button</string>
+    <string name="qa_none">Nothing</string>
+    <string name="qa_new_tab">New tab</string>
+    <string name="qa_close_tab">Close tab</string>
+    <string name="qa_tab_history">Tab history</string>
+    <string name="qa_tabs">Tab switcher</string>
+    <string name="qa_home">Home page</string>
+    <string name="qa_bookmarks">Bookmarks</string>
+    <string name="qa_history">Browsing history</string>
+    <string name="qa_downloads">Downloads</string>
+    <string name="qa_appearance">Appearance</string>
+    <string name="qa_share">Share page</string>
+    <string name="qa_find">Find in page</string>
+    <string name="qa_hard_reload">Hard reload</string>
+    <string name="qa_qr">Scan QR code</string>
+    <string name="current_tab_entry">This page</string>
+
+    <!-- v1.3.37 — homepage wallpaper -->
+    <string name="start_page">Start page</string>
+    <string name="wallpaper">Wallpaper</string>
+    <string name="wallpaper_desc">Set a photo as the background of the start page</string>
+    <string name="wallpaper_default">Default background</string>
+    <string name="wallpaper_choose">Choose image…</string>
+    <string name="wallpaper_set">Start page wallpaper set</string>
+    <string name="wallpaper_removed">Start page wallpaper removed</string>
+    <string name="wallpaper_pick_failed">That image could not be read</string>
+    <string name="customize_home">Customize start page</string>
+    <!-- v1.3.38 -->
+    <string name="qa_watch_later">Watch later</string>
+    <string name="qa_voice">Voice search</string>
+    <string name="qa_share_qr">Share as QR</string>
+    <string name="qa_sleep">Sleep other tabs</string>
+    <string name="qa_pip">Picture-in-picture</string>
+    <string name="wallpaper_adjust">Adjust (crop, blur, dim)…</string>
+    <string name="save_password">Save password</string>
+    <string name="not_now">Not now</string>
+    <string name="never_for_this_site">Never for this site</string>
+    <string name="pw_fill_chip">Fill saved login · %s</string>
+    <!-- v1.4.4 — the multi-account chip + its account picker -->
+    <string name="pw_fill_multi">Saved logins · %1$d</string>
+    <string name="pw_pick_account">Choose a saved login</string>
+    <!-- ============ v1.3.39 ============ -->
+    <string name="fullscreen_mode">Fullscreen browsing</string>
+    <string name="reader_view">Reader view</string>
+    <string name="open_page">Open page</string>
+    <string name="remove">Remove</string>
+    <string name="search_settings">Search settings</string>
+    <!-- v1.3.79 -->
+    <string name="skip_silence">Skip silence</string>
+    <!-- v1.3.87 — the four hysteresis knobs are settings now (the report:
+         "relative 4x is a bit too fast … give control options for all
+         these settings"); the factor default dropped to 3x -->
+    <string name="skip_silence_desc">Fast-forward through silent stretches at a multiple of your current speed (default 3x; speed, start delay, release timing and short-pause handling are tunable below), back to normal the moment audio returns</string>
+    <string name="skip_silence_on_toast">Skipping silence at %1$dx your current speed</string>
+    <!-- v1.3.87 — the tuning sheet (shared by the media sheet and Settings) -->
+    <string name="skip_tune_title">Skip silence tuning</string>
+    <string name="skip_tune_desc">How the skipper engages and releases. Defaults match LibreTube-style smooth speedup; lower the start delay to catch silence sooner, raise the rewind if speech starts sound clipped.</string>
+    <string name="skip_tune_speed">Skip speed (relative)</string>
+    <string name="skip_tune_start">Start after silence of</string>
+    <string name="skip_tune_stop">Rewind before speech</string>
+    <string name="skip_tune_min">Ignore silences under</string>
+    <string name="skip_tune_off">Off</string>
+    <string name="skip_tune_row">Tune skip silence (speed, timing)</string>
+    <!-- v1.3.85 — the zai 401 upload decoder: guests can chat but not
+         upload; the honest hint beats two releases of "uploads broken" -->
+    <string name="upload_auth_hint">Site rejected the request (401) — you may need to sign in on this site and retry</string>
+    <string name="deep_clean_exit">Deep clean on close</string>
+    <string name="deep_clean_exit_desc">Clears site storage when you close Bolt — frees the most space; cookies and login tokens (site storage under 8 MB) are kept so sign-ins survive</string>
+    <string name="home_logo">Start page logo</string>
+    <string name="home_logo_default">Bolt mark</string>
+    <string name="home_logo_blank">Blank (no logo)</string>
+    <string name="home_logo_custom">Pick an image…</string>
+    <string name="app_icon">App icon</string>
+    <string name="edit_shortcut">Edit shortcut</string>
+    <string name="delete_shortcut">Delete shortcut</string>
+    <!-- v1.4.9 — the in-group item menus: a shortcut inside a home folder
+         can be EDITED and DE-GROUPED (moved to the home grid) from its own
+         ⋯ menu, not just removed; a tab inside a tab group can be edited
+         (name + link) the same way -->
+    <string name="edit_tab">Edit tab</string>
+    <string name="move_to_home">Move to home</string>
+    <string name="tab_menu">Tab options</string>
+    <string name="move_shortcut">Move (drag to place)</string>
+    <string name="title_label">Name</string>
+    <string name="url_label">Address</string>
+    <string name="widget_search_label">Bolt search</string>
+    <string name="widget_search_hint">Search the web with Bolt</string>
+</resources>

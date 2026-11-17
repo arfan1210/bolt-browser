@@ -1,0 +1,30 @@
+pluginManagement {
+    repositories {
+        // v1.3.92: dl.google.com FIRST — the sandbox's fastest, most reliable
+        // repo (verified 200 @ 60ms while aliyun 502'd and mavenCentral 429'd
+        // on the same artifact in the same minute). Repo order matters more
+        // than it looks: Gradle DISABLES a repository for the whole build on
+        // a hard error (502), so a dead mirror listed first poisons every
+        // resolution even when the official repo would serve the artifact.
+        // aliyun stays as a fallback (it has carried whole sessions when the
+        // official repos were the rate-limited ones — v1.3.31's lesson, now
+        // symmetric): the environment flips which repo is healthy, the
+        // fallback chain serves either way.
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+    }
+}
+rootProject.name = "Bolt"
+include ':app'

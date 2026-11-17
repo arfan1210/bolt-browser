@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.35 — the tabs button: a simple square OUTLINE with the open-tab
+     COUNT centered inside (Chrome-style tab counter). Field report on
+     v1.3.34: "change the tabs logo to a simple square with a number inside,
+     the number showing number of open tabs. Currently the number overlaps
+     with the borders and is illegible." The old design overlaid a tiny
+     TextView on top of the 4-square icon; this drawable IS the button — the
+     stroke is the box, the TextView text sits centered with room to spare,
+     and the box grows for 2-digit counts. Stroke = colorTint (readable on
+     every skin's bar), number = colorText. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <stroke android:width="1.5dp" android:color="?attr/colorTint"/>
+    <corners android:radius="7dp"/>
+</shape>

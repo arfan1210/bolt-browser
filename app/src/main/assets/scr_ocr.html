@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>bolt ocr</title>
+</head>
+<body>
+<!-- Bolt screen-translate OCR host (v1.3.73).
+
+  WHY THIS PAGE EXISTS: v1.3.72 shipped ML Kit's bundled OCR models and
+  the APK jumped 2.5 MB -> 23.4 MB; the budget law is 5-6 MB (user-set).
+  So the heavy part moved OUT of the APK: this page runs tesseract.js
+  (LSTM-only wasm core ~3.9 MB + tessdata_fast language models) inside
+  a headless 1x1 WebView that ScreenTranslate.kt owns. Everything is
+  fetched ONCE and cached; the APK carries only this ~4 KB page.
+
+  Data flow (never the network):
+    Kotlin pushes a base64 JPEG in ~200 KB chunks via window.__push,
+    then calls window.__ocr('<langs>'). Language models are served by
+    Kotlin's shouldInterceptRequest from local storage at
+    https://bolt.ocr/tess/<lang>.traineddata. The ONLY real-network
+    fetch is the pinned cdn.jsdelivr.net engine itself (lib + wasm,
+    immutable-cached by the WebView). The recognized text goes back
+    through the BoltOcr JavascriptInterface bridge.
+
+  Engine facts (verified against tesseract.js 5.1.1 dist):
+    - createWorker(langs, 1, ...) — OEM 1 (LSTM_ONLY) also selects the
+      smaller tesseract-core-simd-lstm.wasm.js core automatically.
+    - langs may be '+ '-combined; the worker splits and fetches each
+      ${langPath}/${lang}.traineddata (gzip:false keeps the URL clean;
+      gunzip is auto-detected by magic bytes either way).
+    - recognize(img, {}, {blocks:true}) returns block->paragraph->line
+      with bbox {x0,y0,x1,y1}; we flatten to paragraph units (union of
+      line boxes) — the same granularity ML Kit's textBlocks gave.
+-->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(function () {
+  var chunks = [];
+  var worker = null;
+  var workerLangs = '';
+
+  function B() { return window.BoltOcr; }
+
+  window.__push = function (s) { chunks.push(s); };
+
+  window.__ocr = function (langs) {
+    var b64 = chunks.join(''); chunks = [];
+    if (!window.Tesseract) { try { B().fail('no-lib'); } catch (e) {} return; }
+    var p;
+    if (worker && workerLangs === langs) {
+      p = Promise.resolve(worker);
+    } else {
+      if (worker) { try { worker.terminate(); } catch (e) {} worker = null; workerLangs = ''; }
+      p = Tesseract.createWorker(langs, 1, {
+        langPath: 'https://bolt.ocr/tess',
+        gzip: false,
+        cacheMethod: 'none',
+        logger: function (m) {
+          try { B().progress(String(m && m.status || ''), Math.round((m && m.progress || 0) * 100)); } catch (e) {}
+        }
+      }).then(function (w) { worker = w; workerLangs = langs; return w; });
+    }
+    p.then(function (w) {
+      // PSM 3 (AUTO page segmentation) — NOT tesseract.js's default PSM 6
+      // (single horizontal block): auto is what detects VERTICAL text with
+      // the jpn_vert model (live-verified: PSM 6 reads manga columns as
+      // latin rows; PSM 11 sparse reads garbage) and handles mixed real
+      // screen layouts.
+      return w.recognize('data:image/jpeg;base64,' + b64,
+        { tessedit_pageseg_mode: '3' },
+        { text: true, blocks: true, hocr: false, tsv: false });
+    }).then(function (r) {
+      // LINE-level units (not paragraph unions): PSM 3's auto layout
+      // merges nearby lines into big paragraphs (live-verified: three
+      // stacked languages came back as one giant box), and lines map
+      // 1:1 to overlay cards in BOTH directions — a horizontal row on
+      // web screens, a vertical COLUMN with jpn_vert manga models.
+      var out = [];
+      var bs = (r && r.data && r.data.blocks) || [];
+      for (var i = 0; i < bs.length; i++) {
+        var ps = bs[i].paragraphs || [];
+        for (var q = 0; q < ps.length; q++) {
+          var ls = ps[q].lines || [];
+          for (var l = 0; l < ls.length; l++) {
+            var t = String(ls[l].text || '').replace(/\s+/g, ' ').trim();
+            var b = ls[l].bbox;
+            if (!t || !b) continue;
+            if (b.x1 <= b.x0 || b.y1 <= b.y0) continue;
+            out.push([b.x0, b.y0, b.x1, b.y1, t]);
+          }
+        }
+      }
+      try { B().done(JSON.stringify(out)); } catch (e) {}
+    }).catch(function (e) {
+      worker = null; workerLangs = '';
+      try { B().fail(String(e && e.message || e)); } catch (x) {}
+    });
+  };
+
+  window.addEventListener('error', function (e) {
+    try { B().fail('page: ' + (e && e.message || 'script error')); } catch (x) {}
+  });
+
+  try { B().ready(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

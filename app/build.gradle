@@ -1,0 +1,137 @@
+plugins {
+    id 'com.android.application'
+    // v1.3.20: Kotlin (WebAuthnHelper.kt — passkey/WebAuthn engine toggle)
+    id 'org.jetbrains.kotlin.android'
+}
+
+// public migration: flipped true inside signingConfigs when release creds are
+// found — drives the debug buildType's fallback to the standard debug key.
+def boltHasCreds = false
+
+android {
+    namespace 'com.bolt.browser'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.bolt.browser"
+        minSdk 24
+        targetSdk 34
+        versionCode 123
+        versionName "1.4.9"
+        // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
+        // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
+        // hit 23.4 MB — that is out of budget. OCR is now on-demand
+        // (tesseract.js in a headless WebView, models fetched once into
+        // filesDir), so there is NO native code and NO bundled model left:
+        // universal APK, no abiFilters, release.sh hard-fails > 6,000,000 B.
+    }
+
+    // v1.3.30: VERSION_CODE gates the persisted concealment latch
+    // (one concealment re-test per app version — a WebView update can flip
+    // the behavior either way). AGP 8 defaults buildConfig OFF.
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            // PUBLIC-SOURCE SIGNING RULES (the public migration): the release
+            // signing key NEVER lives in this or any repository. Credentials
+            // are read ONLY from a gitignored local.properties:
+            //   bolt.storeFile=/abs/path/to/your.keystore
+            //   bolt.storePassword=...
+            //   bolt.keyAlias=...
+            //   bolt.keyPassword=...
+            // or env vars BOLT_STORE_FILE / BOLT_STORE_PASSWORD / BOLT_KEY_ALIAS
+            // / BOLT_KEY_PASSWORD. When absent: assembleDebug falls back to the
+            // standard Android debug key (a fresh clone of this repo builds
+            // with zero secret files present); assembleRelease yields an
+            // UNSIGNED apk — the release script fails loudly on it, never ship
+            // an unsigned build.
+            def lp = rootProject.file('local.properties')
+            def sp = new Properties()
+            if (lp.exists()) { lp.withInputStream { sp.load(it) } }
+            def sf = System.getenv('BOLT_STORE_FILE') ?: sp.getProperty('bolt.storeFile')
+            def pw = System.getenv('BOLT_STORE_PASSWORD') ?: sp.getProperty('bolt.storePassword')
+            def ka = System.getenv('BOLT_KEY_ALIAS') ?: sp.getProperty('bolt.keyAlias')
+            def kp = System.getenv('BOLT_KEY_PASSWORD') ?: sp.getProperty('bolt.keyPassword')
+            if (pw != null && sf != null && file(sf).exists()) {
+                storeFile file(sf)
+                storePassword pw
+                keyAlias ka
+                keyPassword kp
+                boltHasCreds = true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // v1.3.41 (field bug 6): R8 + resource shrinking ON. The 1.3.40
+            // APK was 4.85 MB with classes.dex at 2.94 MB compressed (61%,
+            // zero shrinking since v1.0). Keep rules for the WebView JS
+            // bridge and crash line numbers live in proguard-rules.pro —
+            // follow the "R8 verification" steps in README after any change.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        debug {
+            // creds present -> same key as releases (debug installs update
+            // over release installs); absent -> the standard Android debug
+            // key, so a fresh public clone assemblesDebug with zero secret
+            // files present
+            signingConfig (boltHasCreds ? signingConfigs.release : signingConfigs.debug)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // v1.3.20: Kotlin jvm target must match the Java compile target above
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    // v1.3.92: the home shortcut matrix — 6x7 pages swiped horizontally
+    // (the v1.3.91 field spec). Pure pager: no fragments, no material,
+    // recyclerview is already a dependency (~60 KB of dex).
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
+    implementation 'androidx.media:media:1.7.0'
+    implementation 'androidx.annotation:annotation:1.8.0'
+    // v1.3.20: WebAuthn/passkeys in WebView — setWebAuthenticationSupport(
+    // WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER). 1.12.0 is the API floor; every
+    // newer stable works.
+    implementation 'androidx.webkit:webkit:1.14.0'
+    // v1.3.32: QR decode/encode for the authenticator's Google-transfer
+    // flow (screenshot import + per-account export QR). Pure-Java core
+    // module only — no camera, no Activity, ~500 KB.
+    implementation 'com.google.zxing:core:3.5.3'
+    // v1.3.73: NO ML Kit — the bundled OCR models cost +20.9 MB of APK
+    // (17.8 MB native .so across ARM ABIs + 3.5 MB model assets) and the
+    // budget law is ≤ 6 MB. Translate screen now OCRs through tesseract.js
+    // 5.1.1 in a headless WebView (assets/scr_ocr.html): the engine +
+    // tessdata_fast models download ONCE on demand (pinned jsDelivr
+    // URLs, cached in filesDir) and the APK carries only a ~4 KB page.
+    // No Google Play Services, works on any WebAssembly-capable WebView.
+    // force kotlin-stdlib jdk7/jdk8 variants to match -> avoids duplicate-class errors
+    constraints {
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24') { because('align kotlin versions') }
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24') { because('align kotlin versions') }
+    }
+}

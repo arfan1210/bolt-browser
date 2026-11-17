@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.34 — the modern settings row: a rounded-card container (bg_row:
+     surface + hairline outline + ripple) with a 40dp icon-container slot
+     (BaseListActivity fills it with the tinted container), 15sp regular
+     title + 12sp dim sub, and an end slot for the modern switch / value
+     chip / chevron. Comfortable 56dp minimum touch height. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:minHeight="50dp"
+    android:paddingStart="12dp" android:paddingEnd="12dp"
+    android:paddingTop="7dp" android:paddingBottom="7dp"
+    android:background="@drawable/bg_row" android:gravity="center_vertical"
+    android:id="@+id/ll_row">
+    <FrameLayout android:id="@+id/fl_row_icon" android:layout_width="34dp"
+        android:layout_height="34dp">
+        <ImageView android:id="@+id/iv_row_icon" android:layout_width="20dp"
+            android:layout_height="20dp" android:layout_gravity="center"/>
+    </FrameLayout>
+    <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp">
+        <TextView android:id="@+id/tv_row_title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorText"
+            android:textSize="15sp" android:singleLine="true" android:ellipsize="end"
+            android:fontFamily="sans-serif"/>
+        <TextView android:id="@+id/tv_row_sub" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorTextDim"
+            android:textSize="13sp" android:maxLines="2" android:ellipsize="end"
+            android:visibility="gone" android:layout_marginTop="2dp"/>
+    </LinearLayout>
+    <FrameLayout android:id="@+id/fl_row_end" android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+        <ImageView android:id="@+id/iv_row_chevron" android:layout_width="18dp" android:layout_height="18dp"
+            android:src="@drawable/ic_chevron" android:layout_gravity="center_vertical|end"/>
+    </FrameLayout>
+</LinearLayout>

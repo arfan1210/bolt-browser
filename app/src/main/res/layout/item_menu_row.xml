@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.34 — the modern sheet-menu row: rounded-card row with a 40dp
+     NEUTRAL icon container (surface2 + tint icon — menus stay calm; the
+     colorful accent containers are for settings), 16sp title, 13sp sub,
+     value pill / modern switch slot at the end.
+     v1.3.40 DE-CONGESTION (field task: "too cramped to read comfortably"):
+     58dp minHeight (was 54), 14dp side / 11dp vertical padding (was 12/9)
+     — same row DNA, one more notch of breathing room everywhere menus
+     render (3-dot sheet, site settings, deep-settings rows). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal" android:layout_width="match_parent"
+    android:layout_height="wrap_content" android:minHeight="58dp"
+    android:paddingStart="14dp" android:paddingEnd="14dp"
+    android:paddingTop="11dp" android:paddingBottom="11dp"
+    android:background="@drawable/bg_item" android:gravity="center_vertical"
+    android:id="@+id/ll_menu_row">
+    <FrameLayout android:id="@+id/fl_menu_icon" android:layout_width="40dp"
+        android:layout_height="40dp">
+        <ImageView android:id="@+id/iv_menu_icon" android:layout_width="22dp"
+            android:layout_height="22dp" android:layout_gravity="center"/>
+    </FrameLayout>
+    <LinearLayout android:orientation="vertical" android:layout_width="0dp"
+        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="14dp">
+        <TextView android:id="@+id/tv_menu_title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorText"
+            android:textSize="16sp" android:fontFamily="sans-serif"/>
+        <TextView android:id="@+id/tv_menu_sub" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textColor="?attr/colorTextDim"
+            android:textSize="13sp" android:visibility="gone" android:layout_marginTop="2dp"/>
+    </LinearLayout>
+    <TextView android:id="@+id/tv_menu_value" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:textColor="?attr/colorAccent"
+        android:textSize="14sp" android:visibility="gone"/>
+    <ImageView android:id="@+id/iv_menu_switch_slot" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:visibility="gone"/>
+</LinearLayout>

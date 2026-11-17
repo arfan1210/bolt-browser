@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="search_engine_names">
+        <item>Google</item>
+        <item>DuckDuckGo</item>
+        <item>Bing</item>
+        <item>Brave Search</item>
+        <item>Startpage</item>
+    </string-array>
+    <string-array name="search_engine_urls">
+        <item>https://www.google.com/search?q=%s</item>
+        <item>https://duckduckgo.com/?q=%s</item>
+        <item>https://www.bing.com/search?q=%s</item>
+        <item>https://search.brave.com/search?q=%s</item>
+        <item>https://www.startpage.com/sp/search?query=%s</item>
+    </string-array>
+    <string-array name="ua_names">
+        <item>Default (mobile)</item>
+        <item>Chrome desktop</item>
+        <item>Firefox desktop</item>
+        <item>Safari iOS</item>
+        <item>Safari macOS</item>
+    </string-array>
+    <string-array name="ua_values">
+        <item></item>
+        <item>Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36</item>
+        <item>Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0</item>
+        <item>Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1</item>
+        <item>Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15</item>
+    </string-array>
+    <string-array name="translate_langs">
+        <item>English</item><item>Bengali (বাংলা)</item><item>Hindi</item><item>Spanish</item>
+        <item>Arabic</item><item>French</item><item>German</item><item>Portuguese</item>
+        <item>Russian</item><item>Chinese</item><item>Japanese</item><item>Korean</item>
+        <item>Indonesian</item><item>Turkish</item><item>Urdu</item><item>Vietnamese</item>
+    </string-array>
+    <string-array name="translate_codes">
+        <item>en</item><item>bn</item><item>hi</item><item>es</item>
+        <item>ar</item><item>fr</item><item>de</item><item>pt</item>
+        <item>ru</item><item>zh-CN</item><item>ja</item><item>ko</item>
+        <item>id</item><item>tr</item><item>ur</item><item>vi</item>
+    </string-array>
+    <string-array name="theme_names">
+        <item>Light</item><item>Dark</item><item>Follow system</item>
+    </string-array>
+    <string-array name="accent_names">
+        <item>Purple</item><item>Blue</item><item>Green</item><item>Pink</item><item>Orange</item><item>Monochrome</item>
+    </string-array>
+    <string-array name="group_color_names">
+        <item>Red</item><item>Orange</item><item>Yellow</item><item>Green</item>
+        <item>Teal</item><item>Blue</item><item>Purple</item><item>Pink</item>
+    </string-array>
+</resources>

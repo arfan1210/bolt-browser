@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.3.36 — modern activity transitions (the LibreTube slide): a new
+     screen slides in from the right edge while the one behind eases a
+     little way left. Going back mirrors it exactly. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quint">
+    <translate android:fromXDelta="100%" android:toXDelta="0"
+        android:duration="260"/>
+</set>

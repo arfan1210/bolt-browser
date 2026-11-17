@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?android:attr/colorControlNormal">
+    <!-- v1.3.91 — the classic three-line sort glyph (arrows + bars) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,5h13l-3.5,-3.5L14,0l6,6l-6,6l-1.5,-1.5L16,7H3V5zM21,17H8l3.5,3.5L10,22l-6,-6l6,-6l1.5,1.5L8,15h13V17z"/>
+</vector>
