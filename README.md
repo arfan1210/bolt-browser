@@ -779,14 +779,149 @@ relay, 2026-11-18):
     transcriptions of the 0KB corpse cleanup, the mid-drag reload
     deferral, and the strict extension law).
 
-**Known-good numbers** (v1.4.16, release build): APK 2,764,681 B (budget
-6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-all 40 release-pipeline gate commands green (the new v1416 gate among
-them); filter rule census unchanged from v1.4.9
+**v1.4.17 — the polish seven-pack** (the eleventh session of this relay,
+2026-11-18):
+
+1. *The span-void law.* Moving a tab into a group via either move-to-group
+   door left a void in the grid: the move changes the SPAN a position
+   occupies, and the layout pass after a plain notifyDataSetChanged can
+   lay the OLD span shapes onto the NEW positions — worst exactly when a
+   settle animation races the swap. Both handlers now run
+   reloadGridNoVoid(): stopScroll() BEFORE the data swap, then the
+   span-cache invalidation + requestLayout() after. ONE API-NAME LAW
+   worth the memory: the report named
+   glm.invalidateSpanAssignments() — a support-lib-era method that DOES
+   NOT EXIST on androidx recyclerview 1.3.2 (the first build failed on
+   it; javap on the cached AAR is the proof tool). The public
+   invalidation door on this dependency is
+   SpanSizeLookup.invalidateSpanIndexCache() (+ invalidateSpanGroupIndex
+   Cache()); with the lookup's cache disabled (this app never enables
+   it) the invalidation is belt-and-suspenders and the operative cures
+   are the scroll stop + the forced relayout. Learning: a report that
+   names an API is still a hypothesis — the compiler and javap are the
+   truth, and a named-but-absent method is a diagnosis of MECHANISM,
+   not of spelling.
+2. *The sheet-active highlight + the rim inset law.* The group sheet
+   bound every member identically (the v1.4.16 grouped-ACTIVE fix taught
+   the switcher's group ROW, but the sheet never learned). The member
+   that is tm.active now wears the accent rim + accent title. And every
+   accent rim (loose card, group row, sheet row) drew its 2dp stroke AT
+   the view bounds — setForeground straddles the edge, half the stroke
+   eating the card's own corner geometry. All three rims now ride an
+   InsetDrawable with a 2dp inset: concentric with bg_card's 16dp corners
+   (rim radius 14 = 16 - 2, the original author's intent completed),
+   clear of the 4dp-margin buttons. Learning: a foreground stroke is
+   centered on the BOUNDS by definition — the fix is never "move the
+   content", it is "inset the drawable", because the drawable is the
+   only thing whose geometry you own.
+3. *The fidelity pass.* The visual-search grey-image report named three
+   legs; HEAD already carried two of them (bilinear filter=true, strict
+   CRLF multipart) and the third was real (q85 → q90, the knee where
+   fine text stops smearing). The pins now say so explicitly —
+   FilterQuality in the report's vocabulary is the SDK's filter boolean,
+   and naming the mapping in the code keeps the next report honest.
+4. *The white-flash fix (the honest leg).* The report asked for
+   setForceDark(FORCE_DARK_ON) + setAlgorithmicDarkeningAllowed(true) —
+   the exact pair retired in v1.3.81/v1.3.91 (a no-op at target 34; the
+   double-invert corpse). The flash was real: the dark chain ran only at
+   onPageFinished, so a light site painted white from first paint until
+   the last subresource. Three honest legs shipped: the chain
+   (probe → ask → invert) moved to onPageCommitVisible (render-blocking
+   CSS is parsed there, so askDarkJs is honest that early); the
+   finish-time pass became a run-token-guarded BACKSTOP — a second
+   unguarded run would probe the ALREADY-INVERTED page, read it as
+   painted-dark, and clear Bolt's own inversion (the probe cannot tell
+   site-dark from bolt-dark — an idempotence trap worth remembering:
+   "run the same code twice" is only safe when the code cannot observe
+   its own effects); and the unpainted canvas is the skin dark base
+   (Fx.webBgDark) whenever the site-dark engine is on for the tab's
+   domain, re-applied at onPageStarted for each new domain. Learning:
+   when a report's prescription contradicts documented field history,
+   cure the SYMPTOM with the architecture that already exists — the
+   commit hook (v1.3.80's cosmetic pass) was sitting right there.
+5. *The evidence channel.* "Provider error" is the 5xx bucket, but the
+   toast hid the exact HTTP shape. shortErr now mirrors the raw provider
+   response to logcat (Log.e "AiBridge", capped 2000 chars). The model
+   chain was already current (gemini-3.5-flash-lite, verified
+   2026-11-08) — the report's gemini-1.0 diagnosis predates the v1.3.75
+   chain move. Learning (the v1.4.13 law, again): when the diagnosis
+   and HEAD disagree, ship the missing OBSERVABILITY, not the named
+   code change — the next field report arrives with its own evidence
+   attached.
+6. *The Material Symbols pass.* The nine core glyphs (search, close,
+   more, copy, paste, open-new/duplicate, camera, mic, drop-down) are
+   now Google's official Material Symbols Rounded weight-400 paths (the
+   2px stroke at 24dp). Conversion law: the published SVG viewBox is
+   "0 -960 960 960" — keep the path data byte-identical and re-base it
+   with a <group android:translateY="960"> inside a 960x960 viewport
+   (provenance beats hand-massaging coordinates), fillColor stays
+   ?attr/colorTint (the theme-tint law; the widget ImageView applies its
+   own explicit tint over it, which keeps working). The official SVGs
+   are fetched from fonts.gstatic.com (materialsymbolsrounded/<name>/
+   default/24px.svg) — the fetch script lives in the workspace
+   (scripts/material_symbols_1417.py).
+7. *The incognito search face.* PROCESS_TEXT/WEB_SEARCH/SEND lived only
+   on the BrowserActivity launcher aliases, so a selection search in a
+   private tab routed through the MAIN process — the user landed in
+   normal mode with the normal cookie jar. A new SearchIncognito
+   activity-alias registers the same three actions against
+   IncognitoActivity (the :incognito process), with its own "Search in
+   Bolt (Incognito)" label so the OS offers both rows. TWO manifest
+   laws: the alias carries NO android:process (process placement is a
+   property of the TARGET activity — an alias cannot override it, and
+   the target's placement is exactly what makes the face private); and
+   the alias must be declared AFTER the activity it targets. Learning:
+   a filter set that exists on only one process's faces is a routing
+   hole by construction — every PROCESS entry point needs its own face,
+   and "the OS shows both" is the feature, not the clutter.
+8. *The standing sweep, v1.4.17 edition.* 35 prior gates re-pinned
+   131/1.4.17 with dated notes (workspace scripts/repin_gates_1417.py —
+   SINGLE-RUN, both pin form families, generic pairs BEFORE surgical
+   slides, slides DESCENDING so a slid pin can never re-match); the
+   About-changelog index slides (+1 on every index pin ≥1, len-guards
+   riding the same descending order); FIVE behavioral re-points where
+   this release legitimately moved pinned forms: v1381 (the dark chain
+   moved into runWebDarkPass), v1412+v1413 (the manifest grew a sixth
+   alias — action counts 5→6, text/plain mimes 10→12; the
+   search_in_bolt LABEL count stays 5 because the incognito face rides
+   its own _incognito string), v1414 (JPEG 85→90), v1416 (the rim
+   InsetDrawable law). THE v1.4.15 ESCAPED-FORM LAW REPEATED ITSELF on
+   the first pass: the regex-form pairs were written r"...\"1\.4\.16\""
+   — in a RAW string \" is backslash+quote, so the pairs hunted text
+   that does not exist while the plain-form pairs moved the LABELS;
+   14 gates failed with labels saying 131 and regexes still hunting
+   130. The recovery (scripts/repin_1417_recovery.py) spells the
+   escaped pairs as single-quoted raw strings — and the law hardens:
+   every escaped-form pair must be TESTED for a hit before the repin
+   is believed (a pair that matches nothing is a bug, not a no-op).
+   TWO more recovery re-points the first pass missed: v1397's vector
+   parse (ic_open_new is a 960-viewport Material Symbols glyph now),
+   and v1416's own-line word loop (entries[0] slid to [1] — a gate
+   written when its release was NEWEST checks its own line at [0],
+   and every later release must slide it). Suite after the recovery:
+   41/41 version gates green.
+
+**Known-good numbers** (v1.4.17, release build): APK
+2,767,561 B (budget 6,000,000); signature verifies (v2 scheme) against
+the pinned cert; suite: all 41 release-pipeline gate commands green (the
+new v1417 gate among them — its compiled probe runs transcriptions of
+the span-void law, the dark-pass run token, and the rim inset geometry);
+filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
 **Plans / candidates for future versions:**
+- The ungroup path (`remove_from_group`) can dissolve a full-width group
+  row into span-1 cards — the same span-change class v1.4.17's
+  reloadGridNoVoid() cures for move-to-group, but the report only named
+  the move door. Sweep it the day a field report names a void on
+  ungroup (the helper is one call away).
+- The commit-time dark pass (v1.4.17) inverts a no-declared-dark page at
+  first paint; a site that ships its dark mode through ASYNC CSS with no
+  render-blocking declaration would invert, then get pulled back by the
+  2.5 s late re-probe — a brief double-dark on that rare class. If a
+  field report ever names it, the ask can gain a second look at finish
+  before the first invert.
 - v1.4.13's NetSuggest endpoints are best-knowledge URLs — Startpage's
   `suggestions?format=json` is the least certain (never field-verified);
   a dead endpoint degrades to no rows by design, and the map is ONE

@@ -4,6 +4,108 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.17] — 2026-11-18
+
+**The polish seven-pack: the move-to-group span-void law, the group-sheet
+active highlight + the rim inset law, the visual-search fidelity pass, the
+commit-time dark pass + dark canvas (the white-flash fix), the AI
+raw-response evidence channel, the Material Symbols pass, and the
+incognito search face.**
+
+### Fixed — MOVING A TAB TO A GROUP LEAVES NO GRID VOID
+- A move-into-group changes the SPAN a position occupies (a loose span-1
+  card becomes part of a full-width group row), and the layout pass after
+  the data swap can lay the OLD span shapes onto the NEW positions — a
+  void renders where the moved tab's slot was, exactly when a settle
+  animation races the swap. Both `move_to_group` handlers (the card 3-dot
+  menu and the group-sheet member menu) now run `reloadGridNoVoid()`:
+  `stopScroll()` (the settle is the shape that keeps the stale layout
+  alive) → `adapter.reload()` → the span-cache invalidation +
+  `requestLayout()`. One API-name note: the report named
+  `glm.invalidateSpanAssignments()` — a support-lib-era method that does
+  NOT exist on androidx recyclerview 1.3.2 (the compiler proof); the
+  public invalidation door on this dependency is
+  `SpanSizeLookup.invalidateSpanIndexCache()` (+ the group-index twin),
+  which is what ships.
+
+### Fixed — THE GROUP SHEET KNOWS YOUR ACTIVE TAB; RIMS STOP EATING CONTENT
+- The group sheet listed every member identically — the tab you were
+  actually reading was indistinguishable from its sleeping siblings. The
+  member that is `tm.active` now wears the accent rim and an accent
+  title, exactly like a loose card in the switcher (rebind-safe: an
+  inactive row returns to the plain text color).
+- Every accent rim (loose-card selection, the v1.4.16 group-row rim, and
+  the new sheet rim) used `setForeground()` at the view bounds, so the
+  2dp stroke straddled the card edge and ate into the corner geometry.
+  All three now ride an `InsetDrawable` with a 2dp inset: the outline is
+  concentric with `bg_card`'s 16dp corners (rim radius 14), the ⋯/close
+  buttons (4dp margins) stay clear, and the bottom strip keeps its own
+  band.
+
+### Fixed — VISUAL SEARCH SENDS A FAITHFUL IMAGE
+- The "grey / broken image on Google visual search" report named the
+  payload path. The upload JPEG quality rises 85 → 90 (the fidelity
+  knee; the matcher reads fine structure), the fine scale is pinned to
+  `createScaledBitmap`'s bilinear `filter=true` (nearest-sample aliasing
+  is what smears text into grey blocks), and the multipart boundary stays
+  strict-CRLF — all three legs of the report's diagnosis, pinned.
+
+### Fixed — DARK MODE DOES NOT FLASH WHITE
+- The report's proposed cure — `setForceDark(FORCE_DARK_ON)` +
+  `setAlgorithmicDarkeningAllowed(true)` — is the exact pair this codebase
+  retired in v1.3.81/v1.3.91: `setForceDark` is ignored outright for apps
+  targeting API 33+ (Bolt targets 34), and the algorithmic darkener has
+  no already-dark detection (it double-darkens sites with their own dark
+  mode and inverts images — the documented field corpses). The white
+  flash was real, though, and the honest legs are:
+  - **The dark decision chain (probe → ask → invert) moved to
+    `onPageCommitVisible`** — the earliest moment the new document exists
+    with its render-blocking CSS parsed. A light site under the dark-web
+    engine used to paint white from first paint until the last
+    subresource landed; now the inversion lands at first paint.
+  - **The finish-time pass is a guarded backstop**: a per-tab run token
+    (`Tab.darkPassUrl`) records that the chain has spoken for this URL —
+    an unguarded second run would probe the ALREADY-INVERTED page, read
+    it as painted-dark, and clear Bolt's own inversion.
+  - **The unpainted canvas is dark while the dark engine is on**: a new
+    `Fx.webBgDark` (the skin dark base, independent of the app theme)
+    colors the blank loading surface whenever the per-site/global dark
+    decision is on for the tab's domain, and `onPageStarted` re-applies
+    it for each new domain (a light-themed app with one dark-flagged site
+    used to open that site on a white canvas).
+
+### Fixed — AI TRANSLATE ERRORS LEAVE EVIDENCE
+- "Provider error" is the 5xx bucket of `shortErr`, but the toast-safe
+    message hid the exact HTTP shape. Every AI error path now mirrors the
+  raw provider response to logcat (`Log.e("AiBridge", "Raw Response: …")`,
+  capped at 2000 chars) — the only evidence that separates "model shut
+  down" from "key invalid" from "quota" in a field report. The model
+  chain itself was already current (gemini-3.5-flash-lite + fallbacks,
+  verified against aistudio 2026-11-08); the missing piece was the
+  evidence channel, not a newer model name.
+
+### Changed — MATERIAL SYMBOLS ICONS
+- The nine core glyphs (search, close, more, copy, paste, open-in-new /
+  duplicate, camera, mic, the engine drop-down) are now Google's official
+  **Material Symbols Rounded**, weight 400 (the 2px stroke at 24dp):
+  consistent 24dp geometry (16dp for the drop-down), the published path
+  data kept byte-identical inside a `translateY(960)` group (the SVG
+  viewBox re-base), and `?attr/colorTint` fills so light/dark themes tint
+  every glyph (the search widget applies its own explicit tint, as
+  before).
+
+### Added — SEARCH IN BOLT (INCOGNITO)
+- The `PROCESS_TEXT` / `WEB_SEARCH` / `SEND` filters existed only on the
+  `BrowserActivity` launcher aliases, so selecting text in an incognito
+  tab and tapping Search routed the query into the MAIN process — the
+  user landed in normal mode with the normal cookie jar. A new
+  `SearchIncognito` activity-alias registers the same three actions
+  against `IncognitoActivity` (which runs in `:incognito`): the OS now
+  offers BOTH rows in the floating toolbar, and the "(Incognito)" row
+  runs the query through the same `handleIntent` → `openQueryInNewTab`
+  path, in the private process. The alias deliberately carries no
+  `android:process` — process placement belongs to the target activity.
+
 ## [1.4.16] — 2026-11-18
 
 **The reliability nine-pack: the 0KB/duplicate/.bin download law, the

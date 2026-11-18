@@ -2579,6 +2579,55 @@ public class BrowserActivity extends AppCompatActivity {
         }, attempt == 0 ? 1200 : 1800);
     }
 
+    /** v1.4.17 — THE COMMIT-TIME DARK PASS (the dark-web white-flash fix).
+     * The dark decision chain (probe -> ask -> invert) used to run only at
+     * onPageFinished, so a light site under the dark-web engine painted
+     * WHITE from first paint until the last subresource landed — on a slow
+     * page that is seconds of white between two dark pages, which reads as
+     * a flash even though every probe was honest. The chain now runs at
+     * onPageCommitVisible — the earliest moment the new document exists
+     * with its render-blocking CSS parsed — and this method is the one
+     * body both callbacks share. The guard law lives in the callers: the
+     * per-tab run token (Tab.darkPassUrl) records that the chain has
+     * spoken for THIS url, because an unguarded second run would probe
+     * the ALREADY-INVERTED page, read it as painted-dark, and clear
+     * Bolt's own inversion — the probe cannot tell site-dark from
+     * bolt-dark. Native force-dark stays retired (see Tab.applyWebDark:
+     * a no-op at target 34, and the v1.3.91 double-inversion corpse). */
+    protected void runWebDarkPass(final WebView view, final String url) {
+        try {
+            final String host = Fx.hostOf(url);
+            String base = Fx.baseDomain(host);
+            if (!siteDarkNow(base)) return;
+            Tab t = tabOf(view);
+            if (t != null) t.darkPassUrl = url;
+            view.evaluateJavascript(MediaHook.darkProbeJs(), res -> {
+                try {
+                    boolean nativeDark = "1".equals(
+                            res == null ? "0" : res.replace("\"", ""));
+                    if (nativeDark) {
+                        view.evaluateJavascript(
+                                MediaHook.darkClearJs(), null);
+                        com.bolt.browser.util.Diag.log(getApplicationContext(),
+                                "dark native-site " + host);
+                    } else {
+                        view.evaluateJavascript(MediaHook.askDarkJs(), ask -> {
+                            try {
+                                boolean declares = "1".equals(
+                                        ask == null ? "0" : ask.replace("\"", ""));
+                                if (declares) {
+                                    darkAwaitSelfDark(view, host, 0);
+                                } else {
+                                    darkInvertNow(view, host);
+                                }
+                            } catch (Throwable ignored) {}
+                        });
+                    }
+                } catch (Throwable ignored) {}
+            });
+        } catch (Throwable ignored) {}
+    }
+
     /** toggle this site's dark override + reload (page-menu chip). */
     protected void toggleSiteDark() {
         final String base = curDomain();
@@ -5586,6 +5635,13 @@ public class BrowserActivity extends AppCompatActivity {
             if (t != null) {
                 t.url = url;
                 t.isHome = false;
+                // v1.4.17 — THE DARK CANVAS FOLLOWS THE NEW DOMAIN: the
+                // site-dark decision is per-base-domain, and the navigation
+                // may be crossing from a dark-engine site to a light one
+                // (or back) — applyWebDark re-reads the (just-assigned) url
+                // and repaints the unpainted canvas before the first paint
+                // of the new document (the white-flash fix's canvas leg).
+                try { t.applyWebDark(BrowserActivity.this, view); } catch (Throwable ignored) {}
                 // v1.3.98 — THE UA HEAL, START HALF (see Tab.applyUaFor): this
                 // is the ONLY hook that sees BACK/FORWARD navigations
                 // (shouldOverrideUrlLoading fires for neither) — the path
@@ -5665,6 +5721,14 @@ public class BrowserActivity extends AppCompatActivity {
             // cssInjectOnce replaces the same style element at finish, and
             // the procedural pass carries its own __boltProc guard.
             injectAdblockCosmetic(view, url);
+            // v1.4.17 — THE WHITE-FLASH KILL: the dark decision chain
+            // (probe -> ask -> invert) runs HERE, at the earliest moment
+            // the new document exists with its render-blocking CSS parsed,
+            // instead of waiting for onPageFinished — a light site under
+            // the dark-web engine used to paint white from this moment
+            // until the last subresource landed (seconds on a slow page).
+            // The chain body + the run-token guard law: runWebDarkPass.
+            runWebDarkPass(view, url);
             if (!incognito) injectUserscripts(view, url, "start");
         }
 
@@ -5896,48 +5960,18 @@ public class BrowserActivity extends AppCompatActivity {
                 // that already paints dark — the v1.3.91 "blind inversion"
                 // report: dark greys stay dark, white-on-dark stays white,
                 // only genuinely light surfaces flip).
-                if (siteDarkNow(base)) {
-                    // v1.3.94 — ASK FIRST, INVERT LAST (the field spec: "If
-                    // browser is in dark mode, make bolt ask the website to
-                    // turn on the websites designed dark mode it self. If
-                    // there is no dark mode designed by the website, then
-                    // fall back to manual smart inversion"). The ASKING is
-                    // the dark scheme the dark skins already report
-                    // (android:isLightTheme=false → prefers-color-scheme:
-                    // dark since WebView 93); the ORDER is new: probe
-                    // (painted dark? → keep the site's own colors) → ASK
-                    // (does it declare a dark mode? → HOLD the inversion and
-                    // wait for its own dark, bounded) → only a page with no
-                    // declared dark mode gets the smart inversion right
-                    // away. The v1.3.93 corpse this kills: scheme-aware
-                    // sites (github, vscode.dev in the field log) painted
-                    // light at onLoad, got inverted, self-darkened a beat
-                    // later and were pulled 2.5 s after — a white flash +
-                    // flip on EVERY page view.
-                    view.evaluateJavascript(MediaHook.darkProbeJs(), res -> {
-                        try {
-                            boolean nativeDark = "1".equals(
-                                    res == null ? "0" : res.replace("\"", ""));
-                            if (nativeDark) {
-                                view.evaluateJavascript(
-                                        MediaHook.darkClearJs(), null);
-                                com.bolt.browser.util.Diag.log(getApplicationContext(),
-                                        "dark native-site " + host);
-                            } else {
-                                view.evaluateJavascript(MediaHook.askDarkJs(), ask -> {
-                                    try {
-                                        boolean declares = "1".equals(
-                                                ask == null ? "0" : ask.replace("\"", ""));
-                                        if (declares) {
-                                            darkAwaitSelfDark(view, host, 0);
-                                        } else {
-                                            darkInvertNow(view, host);
-                                        }
-                                    } catch (Throwable ignored) {}
-                                });
-                            }
-                        } catch (Throwable ignored) {}
-                    });
+                // v1.4.17 — THE FINISH-TIME BACKSTOP: the dark decision
+                // chain moved to onPageCommitVisible (runWebDarkPass — the
+                // white-flash fix; the full v1.3.94 ASK-FIRST order and its
+                // field history live there and in Tab.applyWebDark). This
+                // site now re-runs the chain ONLY when the commit pass never
+                // fired for THIS url (an exotic WebView that skips commit),
+                // guarded by the per-tab run token: an unguarded second run
+                // would probe the already-inverted page, read it as painted
+                // dark, and clear Bolt's own inversion.
+                Tab dt = tabOf(view);
+                if (dt == null || !url.equals(dt.darkPassUrl)) {
+                    runWebDarkPass(view, url);
                 }
                 String proc = adblockProcFor(host, base);
                 if (!proc.isEmpty()) view.evaluateJavascript(proc, null);

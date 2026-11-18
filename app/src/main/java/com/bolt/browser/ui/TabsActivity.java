@@ -3314,7 +3314,11 @@ public class TabsActivity extends AppCompatActivity {
                         rim.setCornerRadius(Fx.dp(TabsActivity.this, 14));
                         rim.setStroke(Math.max(2, Fx.dp(TabsActivity.this, 2)),
                                 Fx.accent(TabsActivity.this));
-                        gh.itemView.setForeground(rim);
+                        // v1.4.17 — same rim inset law as applySelVisuals:
+                        // the group row's rim draws 2dp inside its bounds so
+                        // the stroke never covers the row content.
+                        gh.itemView.setForeground(new android.graphics.drawable.InsetDrawable(
+                                rim, Fx.dp(TabsActivity.this, 2)));
                     } else {
                         gh.itemView.setForeground(null);
                     }
@@ -3393,11 +3397,22 @@ public class TabsActivity extends AppCompatActivity {
                 boolean active = !selMode && tm.tabs.indexOf(t) == tm.active;
                 v.setAlpha(selMode ? (sel ? 1f : 0.45f) : 1f);
                 if (sel || active) {
+                    // v1.4.17 — THE RIM INSET LAW: the rim used to ride
+                    // setForeground() at the view bounds, so the 2dp stroke
+                    // straddled the card edge and ate into the corner
+                    // geometry (the "rim overlaps the card content" report).
+                    // An InsetDrawable pulls the stroke 2dp INSIDE the
+                    // bounds — with the rim radius at 14dp the inset outline
+                    // is concentric with bg_card's 16dp corners, the ⋯/close
+                    // buttons (4dp margins) stay clear of it, and the bottom
+                    // strip keeps its own 3dp band. Same accent, same
+                    // stroke width, drawn where it cannot cover content.
                     GradientDrawable g = new GradientDrawable();
                     g.setCornerRadius(Fx.dp(TabsActivity.this, 14));
                     g.setStroke(Math.max(2, Fx.dp(TabsActivity.this, 2)),
                             Fx.accent(TabsActivity.this));
-                    v.setForeground(g);
+                    v.setForeground(new android.graphics.drawable.InsetDrawable(
+                            g, Fx.dp(TabsActivity.this, 2)));
                 } else {
                     v.setForeground(null);
                 }
@@ -3431,6 +3446,34 @@ public class TabsActivity extends AppCompatActivity {
             if (idx >= 0) tm.close(idx);
             adapter.reload();
         }
+    }
+
+    /** v1.4.17 — THE SPAN-VOID LAW (the "moving a tab to a group leaves a
+     *  void" corpse). Moving a tab into a group changes the SPAN a position
+     *  occupies (a loose span-1 card becomes a member of a full-width group
+     *  row), and the layout pass after the data swap can lay the OLD span
+     *  shapes onto the NEW positions — a void renders where the moved tab's
+     *  slot was, exactly when a settle animation races the swap. The cure:
+     *  stopScroll() first (the settle is the shape that keeps the stale
+     *  layout alive), adapter.reload() (the data swap itself), then the
+     *  span-cache invalidation + requestLayout() so the next pass re-derives
+     *  every span from the fresh adapter state. NOTE the API-name law: the
+     *  report named glm.invalidateSpanAssignments() — a support-lib-era
+     *  method that DOES NOT EXIST on androidx recyclerview 1.3.2 (javap
+     *  proof); the public invalidation door on this dependency is
+     *  SpanSizeLookup.invalidateSpanIndexCache() (+ the group-index twin).
+     *  With the lookup's cache disabled (this app never enables it) the
+     *  invalidation is a belt-and-suspenders no-op — the operative cures
+     *  are the scroll stop and the forced relayout, and the invalidation
+     *  guards the day the cache ever turns on. */
+    protected void reloadGridNoVoid() {
+        try { rv.stopScroll(); } catch (Throwable ignored) {}
+        adapter.reload();
+        try {
+            glm.getSpanSizeLookup().invalidateSpanIndexCache();
+            glm.getSpanSizeLookup().invalidateSpanGroupIndexCache();
+            glm.requestLayout();
+        } catch (Throwable ignored) {}
     }
 
     /** per-card 3-dot menu: duplicate tab, move to group, ungroup, close */
@@ -3497,7 +3540,7 @@ public class TabsActivity extends AppCompatActivity {
                                     .setItems(names, (d2, w2) -> {
                                         t.groupId = groups.get(w2).optLong("id");
                                         tm.save();
-                                        adapter.reload();
+                                        reloadGridNoVoid();   // v1.4.17 span-void law
                                     })
                                     .show();
                         }
@@ -3575,7 +3618,7 @@ public class TabsActivity extends AppCompatActivity {
                                 .setItems(names, (d2, w2) -> {
                                     t.groupId = groups.get(w2).optLong("id");
                                     tm.save();
-                                    adapter.reload();
+                                    reloadGridNoVoid();   // v1.4.17 span-void law
                                 })
                                 .show();
                     } else if (w == 3) {
@@ -3954,6 +3997,30 @@ public class TabsActivity extends AppCompatActivity {
             h.title.setText(tab.isHome ? getString(R.string.home)
                     : (tab.title == null || tab.title.isEmpty() ? tab.url : tab.title));
             h.dom.setText(tab.isHome ? "" : Fx.hostOf(tab.url));
+            // v1.4.17 — THE SHEET-ACTIVE HIGHLIGHT: the group sheet listed
+            // every member identically, so the tab you are actually reading
+            // (tm.active) was indistinguishable from its sleeping siblings —
+            // the switcher's LOOSE cards have carried the accent law since
+            // v1.3.38, but the sheet never learned it. The active member now
+            // wears the same accent rim (2dp inset law, see applySelVisuals)
+            // and its title paints in the accent color, so a folder open on
+            // the screen you came from reads at a glance. selMode keeps the
+            // row neutral — the multi-select dimming owns the sheet then.
+            try {
+                boolean activeMember = !selMode && tm.tabs.indexOf(tab) == tm.active;
+                if (activeMember) {
+                    GradientDrawable rim = new GradientDrawable();
+                    rim.setCornerRadius(Fx.dp(TabsActivity.this, 12));
+                    rim.setStroke(Math.max(2, Fx.dp(TabsActivity.this, 2)),
+                            Fx.accent(TabsActivity.this));
+                    h.itemView.setForeground(new android.graphics.drawable.InsetDrawable(
+                            rim, Fx.dp(TabsActivity.this, 2)));
+                    h.title.setTextColor(Fx.accent(TabsActivity.this));
+                } else {
+                    h.itemView.setForeground(null);
+                    h.title.setTextColor(Fx.txt(TabsActivity.this));
+                }
+            } catch (Throwable ignored) {}
             h.more.setOnClickListener(v -> {
                 Ui.tap(v);
                 try { if (groupSheet != null) groupSheet.dismiss(); }

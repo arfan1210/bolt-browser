@@ -374,6 +374,53 @@
             android:supportsPictureInPicture="true"
             android:exported="false" />
 
+        <!-- v1.4.17 — THE INCOGNITO SEARCH FACE (the "selection search in an
+             incognito tab bounces to normal mode" report). The PROCESS_TEXT /
+             WEB_SEARCH / SEND filters lived ONLY on the BrowserActivity
+             launcher aliases, so the OS could only ever resolve a selection
+             search into the MAIN process — selecting text in a private tab
+             and tapping Search threw the user back into normal mode with the
+             normal cookie jar. This alias registers the SAME three actions
+             against IncognitoActivity: the OS now offers BOTH rows in the
+             floating toolbar ("Search in Bolt" from the enabled launcher
+             alias, "Search in Bolt (Incognito)" from this one), and the
+             incognito row routes the query into the :incognito process —
+             IncognitoActivity extends BrowserActivity, so handleIntent()
+             funnels EXTRA_PROCESS_TEXT / SearchManager.QUERY / EXTRA_TEXT
+             through openQueryInNewTab() exactly like the main-process face,
+             but in the private session. NOTE the alias itself carries NO
+             android:process: process placement is a property of the TARGET
+             activity (IncognitoActivity declares :incognito above), and an
+             alias cannot override it — the target's process placement is
+             precisely what makes this face private. Always-enabled (it is a
+             search entry, not a launcher face; the icon switcher never
+             touches it). -->
+        <activity-alias
+            android:name=".ui.SearchIncognito"
+            android:targetActivity=".ui.IncognitoActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/search_in_bolt_incognito">
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- the filter's OWN label is what the text-selection toolbar
+                 renders (the v1.4.13 law) — the distinct "(Incognito)"
+                 suffix is what makes the OS show both rows side by side -->
+            <intent-filter android:label="@string/search_in_bolt_incognito">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
+
+
         <activity android:name=".ui.TabsActivity" android:exported="false" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
         <activity android:name=".ui.TabsIncognitoActivity" android:process=":incognito" android:taskAffinity="com.bolt.browser.incognito" android:exported="false" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
         <!-- v1.3.31 — the built-in TOTP authenticator (main process only;

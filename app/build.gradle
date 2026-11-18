@@ -16,13 +16,14 @@ android {
         applicationId "com.bolt.browser"
         minSdk 24
         targetSdk 34
-        // v1.4.16 (2026-11-18): the reliability nine-pack — the 0KB/dup/.
-        // bin download law, the mid-drag reload deferral, the group-sheet row
-        // width, the race-proof incognito flag, the grouped-active highlight,
-        // the two-row omnibox, the find-bar bleed-over, the omnibox dialog
-        // sweep, the ghost sweep.
-        versionCode 130
-        versionName "1.4.16"
+        // v1.4.17 (2026-11-18): the polish seven-pack — the span-void law
+        // (move-to-group), the group-sheet active highlight + the rim inset
+        // law, the visual-search fidelity pass, the commit-time dark pass +
+        // the dark canvas (the white-flash fix), the AI raw-response
+        // evidence channel, the Material Symbols pass, the incognito search
+        // face.
+        versionCode 131
+        versionName "1.4.17"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

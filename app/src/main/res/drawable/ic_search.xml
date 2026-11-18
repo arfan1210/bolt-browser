@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.17 — Material Symbols Rounded (weight 400, the 2px stroke).
+     Source: fonts.gstatic.com Material Symbols Rounded "search",
+     weight 400. The SVG viewBox is "0 -960 960 960": the group below
+     re-bases y into the Android 960x960 viewport so the official path
+     data stays byte-identical to the published glyph. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-<path android:fillColor="?attr/colorTint" android:pathData="M15.5,14h-0.79l-0.28,-0.27a6.5,6.5 0,0 0,1.48 -5.34c-0.47,-2.78 -2.79,-5 -5.59,-5.34a6.505,6.505 0,0 0,-7.27 7.27c0.34,2.8 2.56,5.12 5.34,5.59a6.5,6.5 0,0 0,5.34 -1.48l0.27,0.28v0.79l4.25,4.25c0.41,0.41 1.08,0.41 1.49,0 0.41,-0.41 0.41,-1.08 0,-1.49L15.5,14zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/>
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="?attr/colorTint" android:pathData="M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z"/>
+    </group>
 </vector>

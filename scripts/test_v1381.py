@@ -77,8 +77,8 @@ need("setAlgorithmicDarkeningAllowed(false)" in tab,
      "v1.3.91: applyWebDark must keep the 33+ native darkener OFF (the CSS engine owns web dark)")
 need(re.search(r"setForceDark\(WebSettings\.FORCE_DARK_OFF", tab),
      "the 29-32 legacy force-dark stays OFF")
-need("if (siteDarkNow(base)) {" in act
-     and "SDK_INT < 33" not in act.split("if (siteDarkNow(base)) {")[1][:400],
+need("if (!siteDarkNow(base)) return;" in act
+     and "SDK_INT < 33" not in act.split("protected void runWebDarkPass(")[1][:700],  # v1.4.17 re-point (2026-11-18): the v1.3.91 chain moved into runWebDarkPass (commit-time, the white-flash fix); the gate now pins the siteDarkNow gate + no SDK carve-out
      "v1.3.91: the probe+CSS path runs on every SDK/theme (no carve-out)")
 
 print("D2 — the ghost kill sequencing")

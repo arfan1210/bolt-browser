@@ -115,6 +115,19 @@ public class Tab {
      *  session's memory). */
     public String pageText = "";
 
+    /** v1.4.17 — THE DARK-PASS RUN TOKEN (the white-flash fix): the web-dark
+     *  decision chain (probe -> ask -> invert) now runs at onPageCommitVisible
+     *  — the earliest moment the document exists — instead of waiting for
+     *  onPageFinished, so a light site under the dark-web engine no longer
+     *  paints white for the whole subresource tail. This field holds the URL
+     *  the chain last ran FOR on this tab; onPageFinished re-runs the chain
+     *  only when its URL differs (the backstop for a commit that never
+     *  fired), because a second unguarded run would probe the ALREADY
+     *  INVERTED page, read it as "painted dark", and clear Bolt's own
+     *  inversion — the probe cannot tell site-dark from bolt-dark. UI-thread
+     *  only (every caller is a WebView callback). */
+    public String darkPassUrl = null;
+
     /** v1.4.8 — THE TAB ID (the empty-group anchor law): a stable identity
      *  for a tab ROW, distinct from every other live tab and stable across
      *  restarts (persisted as "tid"). createdAt cannot serve (a restore
@@ -551,6 +564,36 @@ public class Tab {
                 w.getSettings().setForceDark(WebSettings.FORCE_DARK_OFF);
             } catch (Throwable ignored) {}
         }
+        // v1.4.17 — THE DARK CANVAS (the white-flash report's native leg).
+        // The report's proposed cure — setForceDark(FORCE_DARK_ON) plus
+        // setAlgorithmicDarkeningAllowed(true) — is the exact pair this
+        // method has retired since v1.3.81/v1.3.91, for documented
+        // reasons: setForceDark is IGNORED outright for apps targeting
+        // API 33+ (Bolt targets 34 — the call is a no-op on every device
+        // this build can install on), and the algorithmic darkener has
+        // no already-dark detection — it double-darkens sites that ship
+        // their own dark mode and inverts images and defining designs
+        // (the v1.3.90/v1.3.91 field reports). The white flash it was
+        // asked to cure is real, though, and the honest leg is the CANVAS:
+        // Fx.webBg follows the APP theme, so a per-site dark override on a
+        // light theme (or any dark-web navigation before first paint)
+        // opened on a light canvas. While the dark-web engine is on for
+        // THIS tab's domain, the unpainted WebView surface is the skin's
+        // dark base (Fx.webBgDark); otherwise the theme-aware webBg stands
+        // (the v1.3.33 ghosting fix, unchanged). The blank canvas is the
+        // ONLY thing this colors — once the page paints, its own colors
+        // own the surface.
+        try {
+            boolean siteDark;
+            try {
+                String base = Fx.baseDomain(Fx.hostOf(url == null ? "" : url));
+                Prefs p = Prefs.get(c);
+                siteDark = p.siteBool(base, "dark", p.webDark());
+            } catch (Throwable t) {
+                siteDark = Prefs.get(c).webDark();
+            }
+            w.setBackgroundColor(siteDark ? Fx.webBgDark(c) : Fx.webBg(c));
+        } catch (Throwable ignored) {}
     }
 
     public void capture() {

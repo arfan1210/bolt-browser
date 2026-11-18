@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v1.4.12 — the dropdown arrow beside the engine glyph in the omnibox:
-     the affordance that says "this chip opens a menu" (material
-     arrow_drop_down, drawn small next to the 20dp search icon). -->
+<!-- v1.4.17 — Material Symbols Rounded (weight 400). The engine chip
+     affordance, drawn at 16dp beside the search glyph (v1.4.12).
+     Source: fonts.gstatic.com Material Symbols Rounded "arrow_drop_down",
+     weight 400. The SVG viewBox is "0 -960 960 960": the group below
+     re-bases y into the Android 960x960 viewport so the official path
+     data stays byte-identical to the published glyph. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="16dp" android:height="16dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-<path android:fillColor="?attr/colorTint" android:pathData="M7,10l5,5 5,-5z"/>
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="?attr/colorTint" android:pathData="M459-381 314-526q-3-3-4.5-6.5T308-540q0-8 5.5-14t14.5-6h304q9 0 14.5 6t5.5 14q0 2-6 14L501-381q-5 5-10 7t-11 2q-6 0-11-2t-10-7Z"/>
+    </group>
 </vector>

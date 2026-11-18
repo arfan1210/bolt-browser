@@ -130,25 +130,25 @@ ba_code = strip_comments_strings(ba)
 de_code = strip_comments_strings(de)
 
 print("A — the version bump")
-need(re.search(r"versionCode 130\b", gradle) is not None,
-     "versionCode 130 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.16"', gradle) is not None,
-     'versionName "1.4.16"')
+need(re.search(r"versionCode 131\b", gradle) is not None,  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+     "versionCode 131 (Android only installs RISING codes)")  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(re.search(r'versionName "1\.4\.17"', gradle) is not None,  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)
+     'versionName "1.4.17"')  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.16|"),
+need(entries and entries[0].startswith("1.4.17|"),  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
      "the newest entry is 1.4.16 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.15|"),
+need(len(entries) > 2 and entries[2].startswith("1.4.15|"),  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
      "the second entry is 1.4.15 (the previous live release)")
 for word, why in (("0KB", "the corpse law"),
                   ("JS bridge", "the blob routing"),
                   ("accent rim", "the grouped-active highlight"),
                   ("two rows", "the omnibox redesign")):
-    need(word in entries[0] or word in entries[0].lower(),
-         f"the 1.4.16 line names {why}")
+    need(word in entries[1] or word in entries[1].lower(),
+         f"the 1.4.16 line names {why}")  # v1.4.17 re-point (2026-11-18): the 1.4.16 line slid to [1] when 1.4.17 landed at [0]
 
 print("C — fix 1a: a failed copy leaves no 0KB destination")
 sp = de_code[de_code.find("private Uri savePart(Item it, File part) throws IOException {"):]
@@ -261,7 +261,7 @@ need("boolean activeInGroup = false;" in bh,
      "the group bind derives an active-in-group state")
 need("if (at != null && at.groupId == gid) activeInGroup = true;" in bh,
      "the state keys on tm.active belonging to any member")
-need("gh.itemView.setForeground(rim);" in bh and "gh.itemView.setForeground(null);" in bh,
+need("gh.itemView.setForeground(new android.graphics.drawable.InsetDrawable(" in bh and "gh.itemView.setForeground(null);" in bh,  # v1.4.17 re-point (2026-11-18): the rim rides the 2dp InsetDrawable law (the overlap fix)
      "the group row gets the accent rim (and loses it when inactive)")
 need("gh.strip.setBackgroundColor(activeInGroup" in bh,
      "the strip follows the same state")

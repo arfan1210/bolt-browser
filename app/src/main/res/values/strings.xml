@@ -382,10 +382,21 @@
     <!-- v1.4.13 — the PROCESS_TEXT toolbar label (the filter's own label is
          what the text-selection toolbar shows) + the network-suggest toggle -->
     <string name="search_in_bolt">Search in Bolt</string>
+    <!-- v1.4.17 — the incognito twin: the :incognito process's own
+         PROCESS_TEXT/WEB_SEARCH/SEND face, so the OS can route a selection
+         search straight into the private process instead of bouncing the
+         user into normal mode (AndroidManifest.xml, the SearchIncognito
+         alias). -->
+    <string name="search_in_bolt_incognito">Search in Bolt (Incognito)</string>
     <string name="suggest_network">Search suggestions (from the engine)</string>
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.17 (2026-11-18): the polish seven-pack — the span-void law, the
+         sheet-active highlight + rim inset, the visual-search fidelity pass,
+         the commit-time dark pass + dark canvas, the AI raw-response log,
+         the Material Symbols pass, the incognito search face -->
+    <item>1.4.17|Moving a tab into a group no longer leaves a void in the switcher grid (the grid layout manager span cache is invalidated on every move-to-group); the group sheet highlights the tab you are currently reading (accent rim + accent title) and every accent rim now draws 2dp inside its card edge so it never covers thumbnails or buttons; image search uploads at JPEG quality 90 with bilinear scaling (the grey-image report); dark mode no longer flashes white while a page loads — the inversion decision runs at first paint instead of after the page finishes loading, and the blank loading canvas is dark for sites under the dark engine; AI translate errors now leave the raw provider response in logcat under the AiBridge tag (the evidence for any future provider error); the core UI icons are Google Material Symbols Rounded at a consistent 24dp with theme-aware tinting; selecting text anywhere and choosing Search in Bolt (Incognito) runs the search in the private incognito process instead of bouncing you to normal mode.</item>
     <!-- v1.4.16 (2026-11-18): the reliability nine-pack — the 0KB/dup/.bin
          download law, the mid-drag reload deferral, the group-sheet row width,
          the race-proof incognito flag, the grouped-active highlight, the

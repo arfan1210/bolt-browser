@@ -506,6 +506,9 @@ python3 scripts/test_v1415.py
 # v1.4.16 gate: the reliability nine-pack (0KB/dup/.bin download law, mid-drag reload deferral, group-sheet row width, race-proof incognito flag, grouped-active highlight, two-row omnibox, find-bar bleed-over, omnibox dialog sweep, ghost sweep)
 python3 scripts/test_v1416.py
 
+# v1.4.17 gate: the polish seven-pack (span-void law, sheet-active highlight + rim inset, visual-search fidelity, commit-time dark pass + dark canvas, AI raw-response log, Material Symbols, incognito search face)
+python3 scripts/test_v1417.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

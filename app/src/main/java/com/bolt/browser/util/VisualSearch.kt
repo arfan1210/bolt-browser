@@ -80,7 +80,18 @@ object VisualSearch {
                 val bmp = decodeCapped(imageFile, MAX_EDGE)
                 if (bmp != null) {
                     val bo = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 85, bo)
+                    // v1.4.17 — THE PAYLOAD FIDELITY PASS (the "grey /
+                    // broken image" report): the engine-side matcher reads
+                    // fine structure, and q85 was the edge where fine text
+                    // in a photo started smearing into grey blocks. q90 is
+                    // the fidelity/cost knee for JPEG uploads (still well
+                    // under a 1280-px frame's budget); the fine scale below
+                    // already rides createScaledBitmap's bilinear FILTER
+                    // (the API's filter=true — the SDK's quality knob for
+                    // scaled bitmaps), and the multipart boundary has always
+                    // been strict CRLF, so the three legs of the report's
+                    // diagnosis are pinned here explicitly.
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 90, bo)
                     bmp.recycle()
                     val ep = endpointFor(engineIdx)
                     result = post(ep, bo.toByteArray(), c)
@@ -129,6 +140,10 @@ object VisualSearch {
         if (rough == null) return null
         val sc = minOf(1f, maxEdge.toFloat() / maxOf(rough.width, rough.height))
         if (sc >= 1f) return rough
+        // filter=true = bilinear resampling — the SDK's scale-quality knob
+        // (pinned by the v1.4.17 fidelity pass; false would nearest-sample
+        // the fine scale and alias text into the grey blocks the report
+        // described)
         val fine = Bitmap.createScaledBitmap(rough,
                 (rough.width * sc).toInt().coerceAtLeast(1),
                 (rough.height * sc).toInt().coerceAtLeast(1), true)

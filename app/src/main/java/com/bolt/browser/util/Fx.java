@@ -168,6 +168,24 @@ public class Fx {
         return dark ? 0xFF0E0E13 : 0xFFFAFAFD;
     }
 
+    /**
+     * v1.4.17 — the DARK variant of [webBg], independent of the app theme:
+     * the per-site dark override can ask a LIGHT app theme to darken one
+     * site, and that site's WebView canvas (the unpainted loading surface)
+     * must be dark BEFORE the first paint or every navigation into it opens
+     * with a white flash (the dark-web white-flash report). Mirrors the
+     * dark arms of [webBg]'s switch, skin by skin.
+     */
+    public static int webBgDark(Context c) {
+        switch (com.bolt.browser.util.Prefs.get(c).skin()) {
+            case 1: return 0xFF0C0A1E;   // Aura
+            case 2: return 0xFF000000;   // Mono
+            case 3: return 0xFF1B150E;   // Origins
+            case 4: return 0xFF131033;   // Pulse
+        }
+        return 0xFF0E0E13;              // Classic
+    }
+
     // ---------------- v1.3.35 per-skin geometry + signature accents ----------------
 
     /**

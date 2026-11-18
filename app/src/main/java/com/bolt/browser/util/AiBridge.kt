@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.text.InputType
+import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -715,8 +716,23 @@ object AiBridge {
         return t.substring(a, b + 1)
     }
 
-    /** HTTP-code + provider message, key-free, toast-safe */
+    /** HTTP-code + provider message, key-free, toast-safe.
+     *  v1.4.17 — THE RAW-RESPONSE LEG (the "Provider error" report): the
+     *  toast-safe shortening hid the exact HTTP shape (401 vs 429 vs 400
+     * vs a 5xx) — the raw provider body is the only evidence that
+     * separates "model shut down" from "key invalid" from "quota" in a
+     * field report, so every error path (they all funnel through here)
+     * now mirrors the raw response to logcat under the AiBridge tag,
+     * capped at 2000 chars so a 5xx HTML error page cannot flood the
+     * log ring. The model chain itself was already verified current
+     * (gemini-3.5-flash-lite default + gemini-flash-latest/3.8 fallbacks,
+     * re-checked against aistudio 2026-11-08 — the report's gemini-1.0
+     * diagnosis predates the v1.3.75 chain move); what was missing was
+     * the evidence channel, not a newer model name. */
     private fun shortErr(code: Int, body: String): String {
+        try {
+            Log.e("AiBridge", "Raw Response: " + body.take(2000))
+        } catch (_: Throwable) {}
         val base = when (code) {
             401, 403 -> "invalid API key"
             404 -> "model not found"

@@ -132,25 +132,25 @@ off_code = strip_comments_strings(off)
 sha_code = strip_comments_strings(sha)
 
 print("A — the version bump")
-need(re.search(r"versionCode 130\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
-     "versionCode 130 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
-need(re.search(r'versionName "1\.4\.16"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
-     'versionName "1.4.16"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+need(re.search(r"versionCode 131\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+     "versionCode 131 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(re.search(r'versionName "1\.4\.17"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)
+     'versionName "1.4.17"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.16|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+need(entries and entries[0].startswith("1.4.17|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
      "the newest entry is 1.4.14 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+need(len(entries) > 2 and entries[2].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
      "the second entry is 1.4.13 (the previous live release)")
 for word, why in (("drag", "the drag restore"), ("NEW tab", "the new-tab law"),
                   ("full field width", "the omnibox icon diet"),
                   ("incognito", "the return route"),
                   ("out-of-memory", "the OOM ladder"),
                   ("search bar", "the search bars")):
-    need(word in entries[2] or word in entries[2].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+    need(word in entries[3] or word in entries[3].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
          f"the 1.4.14 line names {why}")
 
 print("C — fix 1: the group-sheet drag (RecyclerView + ItemTouchHelper)")
@@ -293,7 +293,7 @@ need(re.search(r"for \(attempt in 0 until 4\)", vs_code) is not None,
      "the ladder is bounded (4 attempts)")
 need("maxOf(opts.outWidth, opts.outHeight) / (s * 2) >= maxEdge" in vs_code,
      "the cap rides the LONG edge (panoramas are the memory bombs)")
-need("bmp.compress(Bitmap.CompressFormat.JPEG, 85, bo)" in vs_code,
+need("bmp.compress(Bitmap.CompressFormat.JPEG, 90, bo)" in vs_code,  # v1.4.17 re-point (2026-11-18): quality 85 -> 90 (the grey-image fidelity pass)
      "the upload body is JPEG-compressed before the multipart POST")
 need("decodeCapped(imageFile, MAX_EDGE)" in vs_code,
      "search() feeds the cap to the decoder")
