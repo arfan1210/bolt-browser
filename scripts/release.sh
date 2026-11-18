@@ -503,6 +503,9 @@ python3 scripts/test_v1414.py
 # v1.4.15 gate: the responsiveness four-pack (downloads listener law, tab-switcher stale highlight, omnibox state cache + off-thread suggest build, handler sweep)
 python3 scripts/test_v1415.py
 
+# v1.4.16 gate: the reliability nine-pack (0KB/dup/.bin download law, mid-drag reload deferral, group-sheet row width, race-proof incognito flag, grouped-active highlight, two-row omnibox, find-bar bleed-over, omnibox dialog sweep, ghost sweep)
+python3 scripts/test_v1416.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

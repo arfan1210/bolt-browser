@@ -113,24 +113,24 @@ ba_code = strip_comments_strings(ba)
 de_code = strip_comments_strings(de)
 
 print("A — the version bump")
-need(re.search(r"versionCode 129\b", gradle) is not None,
-     "versionCode 129 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.15"', gradle) is not None,
-     'versionName "1.4.15"')
+need(re.search(r"versionCode 130\b", gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+     "versionCode 130 (Android only installs RISING codes)")  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+need(re.search(r'versionName "1\.4\.16"', gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+     'versionName "1.4.16"')  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.15|"),
+need(entries and entries[0].startswith("1.4.16|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
      "the newest entry is 1.4.15 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.14|"),
+need(len(entries) > 1 and entries[1].startswith("1.4.15|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
      "the second entry is 1.4.14 (the previous live release)")
 for word, why in (("Downloads", "the listener law"),
                   ("CURRENT tab", "the stale-highlight fix"),
                   ("main thread", "the off-thread build"),
                   ("handler", "the handler sweep")):
-    need(word in entries[0] or word in entries[0].lower(),
+    need(word in entries[1] or word in entries[1].lower(),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
          f"the 1.4.15 line names {why}")
 
 print("C — fix 1: the downloads event-listener law")
@@ -191,11 +191,9 @@ need("omniEmptyCache[0] = empty;" in si,
      "the applied state is written back to the cache")
 need(si.find("omniEmptyCache[0] = empty;") < si.find("setVisibility"),
      "the cache write precedes the visibility pass (a throw cannot desync it)")
-need(re.search(r"camB\.setVisibility\(empty \? View\.VISIBLE : View\.GONE\)", si)
-     is not None and
-     re.search(r"clearB\.setVisibility\(empty \? View\.GONE : View\.VISIBLE\)", si)
-     is not None,
-     "the v1.4.14 state mapping survives unchanged (camera/paste on empty, clear on typing)")
+need("actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);" in si
+     and "clearB.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
+     "the state mapping survives the v1.4.16 two-row redesign (strip + clear on typing; re-point 2026-11-18)")
 need(ba_code.find("final Boolean[] omniEmptyCache") <
      ba_code.find("final Runnable syncOmniIcons"),
      "the cache is declared with the watcher it serves (one dialog, one cache)")

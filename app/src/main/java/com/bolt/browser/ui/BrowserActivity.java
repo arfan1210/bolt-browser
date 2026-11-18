@@ -965,6 +965,18 @@ public class BrowserActivity extends AppCompatActivity {
         // away (the rotation resync — see onResume)
         try { pausedOrientation = getResources().getConfiguration().orientation; }
         catch (Throwable ignored) {}
+        // v1.4.16 — THE GHOST SWEEP: a speed-dial lift dragged to the exact
+        // moment the activity pauses (incoming call, overlay, quick home
+        // swipe) left the sdGhost floating over flRoot forever — the touch
+        // stream that would have ended the drag is gone, so the ghost sat
+        // frozen on top of the home screen on resume. Remove it NOW; the
+        // drag-end path (endSdDrag) is parent-guarded, so a resumed drag
+        // that somehow continues simply re-arms a fresh ghost.
+        try {
+            if (sdGhost != null && sdGhost.getParent() == flRoot) {
+                flRoot.removeView(sdGhost);
+            }
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -1001,6 +1013,15 @@ public class BrowserActivity extends AppCompatActivity {
         try {
             if (dlShelfListener != null && DownloadEngine.exists())
                 DownloadEngine.get(this).removeListener(dlShelfListener);
+        } catch (Throwable ignored) {}
+        // v1.4.16 — THE GHOST SWEEP, onStop edition: onPause can be skipped
+        // (a dialog over a paused-but-visible activity, OEM lifecycle quirks)
+        // while onStop still fires — the same frozen sdGhost sweep runs here
+        // so no lifecycle path can strand the lift ghost on flRoot.
+        try {
+            if (sdGhost != null && sdGhost.getParent() == flRoot) {
+                flRoot.removeView(sdGhost);
+            }
         } catch (Throwable ignored) {}
         // v1.3.13: nothing else to do here. The in-page spoof only acts while
         // the page is REALLY hidden (no arming needed), and the media service
@@ -1394,6 +1415,16 @@ public class BrowserActivity extends AppCompatActivity {
         sdWinH.removeCallbacksAndMessages(null);
         suggestH.removeCallbacksAndMessages(null);
         suggestPending = null;
+        // v1.4.16 — THE DIALOG SWEEP: a destroy with the omnibox sheet up
+        // (back-press out of the browser, an OEM kill mid-typing, a
+        // configuration recreate) leaked the Dialog window — its Window
+        // held the dead Activity's context until the system tore it down.
+        // dismissAllOverlays() is NOT called on this path, so the sheet
+        // must be dismissed here explicitly. Above the incognito early-return
+        // so BOTH process paths sweep.
+        try {
+            if (omniboxDialog != null && omniboxDialog.isShowing()) omniboxDialog.dismiss();
+        } catch (Throwable ignored) {}
         hideOtpChip();                                  // v1.3.31: no dangling fill chip
         hidePwChip();                                   // v1.3.38: password chip too
         // v1.3.60 — THE ORPHAN EXIT (the phantom's source of truth): dying
@@ -3875,6 +3906,25 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
         hideQuickPanel();
         hidePwChip();                                 // v1.3.38: no dangling fill chip
+        // v1.4.16 — THE FIND-BAR BLEED-OVER: openFind() runs against the page
+        // it was opened ON, but a tab switch (switcher tap, tab notification,
+        // external intent) left the bar up with its live-match state — the
+        // NEXT page inherited a search UI whose matches, count and query all
+        // belonged to the page being left. Hide the bar, clear the query and
+        // the count, and clearMatches on the DEPARTING tab (shownTabRef still
+        // points at it here — it is re-pinned to the new tab further below).
+        try {
+            if (findbar != null && findbar.getVisibility() == View.VISIBLE) {
+                findbar.setVisibility(View.GONE);
+                Tab leftTab = shownTabRef != null ? shownTabRef : activeTab();
+                if (leftTab != null && leftTab.web != null) {
+                    try { leftTab.web.clearMatches(); } catch (Throwable ignored) {}
+                }
+                if (etFind != null) etFind.setText("");
+                if (tvFindCount != null) tvFindCount.setText("");
+                hideKeyboard();
+            }
+        } catch (Throwable ignored) {}
         exitFullscreenVideo();
         // v1.3.61 — a pseudo-fullscreen state belongs to the page being left;
         // showBarsNow below already brings the chrome back for the fresh tab
@@ -6510,6 +6560,36 @@ public class BrowserActivity extends AppCompatActivity {
                         dname != null ? dname : android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype), mimetype);
                 return;
             }
+            // v1.4.16 — BLOB: DOWNLOADS GO STRAIGHT THROUGH THE JS BRIDGE.
+            // A blob: URL's bytes exist only inside the page that minted
+            // them; HttpURLConnection can never fetch one (MalformedURLException
+            // x4 retries -> failed row, and the name guess degraded to a
+            // UUID/.bin). The v1.3.58 rescue chain (util/BlobDownload.kt:
+            // frame dance -> fetch -> own-img -> hunts) reads the blob
+            // JS-side as a Base64 data URL and hands it to the JS-bridge
+            // method Bolt.gmSaveBlob (the annotated bridge surface — count
+            // unchanged), which calls
+            // DownloadEngine.saveDataUrl — exact bytes, real mime, honest
+            // name (the anchor's download attribute when the page sent one).
+            // Routed HERE (before the dialog) so no blob ever depends on the
+            // dialog's confirm to reach the rescue.
+            if (url != null && url.startsWith("blob:")) {
+                String bname = downloadAnchorName(url);
+                if (bname == null) {
+                    bname = DownloadEngine.humanName(url,
+                            android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype));
+                }
+                Tab bt = activeTab();
+                com.bolt.browser.util.BlobDownload.start(
+                        bt == null ? null : bt.web, url, bname, mimetype);
+                try {
+                    com.bolt.browser.util.Diag.log(BrowserActivity.this, "blobdl start name=" + bname
+                            + " mime=" + mimetype);
+                } catch (Throwable ignored) {}
+                ensureDlShelfListener();
+                Fx.toast(BrowserActivity.this, getString(R.string.download_started) + ": " + bname);
+                return;
+            }
             // userscript install: Greasy Fork / OpenUserJS .user.js links
             String guessed = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
             if (url != null && (url.endsWith(".user.js") || guessed.endsWith(".user.js"))) {
@@ -7598,10 +7678,15 @@ public class BrowserActivity extends AppCompatActivity {
                 JSONObject h = o.optJSONObject("headers");
                 final String ua = h == null ? "" : h.optString("User-Agent", h.optString("user-agent", ""));
                 ui.post(() -> {
-                    DownloadEngine.get(BrowserActivity.this).enqueue(url, name,
-                            o.optString("mime", ""), ua, activeTab().url);
-                    ensureDlShelfListener();   // v1.3.40 download shelf
-                    Fx.toast(BrowserActivity.this, getString(R.string.download_started));
+                    // v1.4.16 — THE SCHEME ROUTER: GM_download used to feed
+                    // every URL straight to DownloadEngine.enqueue, so a
+                    // userscript handing over a blob:/data: URL died in
+                    // HttpURLConnection (blob:) or as a raw enqueue (data:)
+                    // — the exact "fails via HttpURLConnection, defaults to
+                    // .bin" corpse. enqueueDownload owns the routing law:
+                    // data: -> saveDataUrl, blob: -> the JS-bridge rescue,
+                    // http(s) -> the engine. Same door for every caller.
+                    enqueueDownload(url, name, o.optString("mime", ""), ua);
                 });
             } catch (Throwable ignored) {}
         }
@@ -12669,10 +12754,11 @@ public class BrowserActivity extends AppCompatActivity {
         int dim = Fx.tint(this);
         try { lay.<ImageView>findViewById(R.id.iv_omni_search).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageView>findViewById(R.id.iv_omni_engine_arrow).setColorFilter(dim); } catch (Throwable ignored) {}
-        try { lay.<ImageButton>findViewById(R.id.btn_omni_cam).setColorFilter(dim); } catch (Throwable ignored) {}
-        try { lay.<ImageButton>findViewById(R.id.btn_omni_paste).setColorFilter(dim); } catch (Throwable ignored) {}
-        try { lay.<ImageButton>findViewById(R.id.btn_omni_copy).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_clear).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageButton>findViewById(R.id.btn_omni_copy).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageButton>findViewById(R.id.btn_omni_paste).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageButton>findViewById(R.id.btn_omni_dup).setColorFilter(dim); } catch (Throwable ignored) {}
+        try { lay.<ImageButton>findViewById(R.id.btn_omni_cam).setColorFilter(dim); } catch (Throwable ignored) {}
         // v1.4.12 — THE ENGINE CHIP: the search glyph + drop arrow at the
         // field's left open the engine picker (Google / DuckDuckGo / Bing /
         // Brave / Startpage). A pick applies to the query in the field —
@@ -12709,38 +12795,27 @@ public class BrowserActivity extends AppCompatActivity {
                 }
             }
         } catch (Throwable ignored) {}
-        // v1.4.14 — STATE-AWARE ICONS. The engine chip (left) plus the
-        // camera / voice / paste / copy / clear strip (right) were
-        // PERMANENT fixtures — 230+ dp of chrome hugging the field, "very
-        // little width to see the typed URL". The icons are now a function
-        // of the field's state, Chrome-style:
-        //   EMPTY  → engine chip + camera + paste (+ mic): the doors that
-        //            only make sense against a blank field;
-        //   TYPING → the text gets the room: clear (+ mic) only; camera,
-        //            paste and copy hide (copy is retired from the omnibox —
-        //            the field's own text-selection handles cover it).
-        // The ENGINE CHIP stays in both states: it is the engine indicator
-        // for the live query and the v1.4.12 pick-re-runs door.
-        final android.widget.ImageButton camB = lay.findViewById(R.id.btn_omni_cam);
-        final android.widget.ImageButton pasteB = lay.findViewById(R.id.btn_omni_paste);
-        final android.widget.ImageButton copyB = lay.findViewById(R.id.btn_omni_copy);
+        // v1.4.16 — THE TWO-ROW OMNIBOX. The single-row congestion fix is
+        // structural now: Row 1 (engine chip | field weight 1 | clear) is
+        // all chrome the TEXT needs, and every former trailer icon moved
+        // to Row 2 (omni_actions: copy, paste, duplicate, image search,
+        // voice search — one evenly weighted 44dp slot each). The strip is
+        // ONE visibility unit driven by the field's state:
+        //   EMPTY  → strip hidden, clear hidden — Row 1 stands alone, the
+        //            whole width is the field (plus the engine chip);
+        //   TYPING → strip + clear shown — the actions sit in their own
+        //            row and never touch the field's width again.
+        // The v1.4.15 state cache survives: only an EMPTY<->TYPING flip
+        // costs a setVisibility; every other keystroke is one array read.
+        final View actionsRow = lay.findViewById(R.id.omni_actions);
         final android.widget.ImageButton clearB = lay.findViewById(R.id.btn_omni_clear);
-        // v1.4.15 — THE STATE CACHE. The v1.4.14 watcher called setVisibility()
-        // on four views on EVERY keystroke; only an EMPTY<->TYPING transition
-        // ever changes what should be on screen. The cache holds the last
-        // applied state (Boolean[], null = never applied — the opening sync
-        // at the bottom must always run, whatever the XML defaults are); a
-        // keystroke that does not flip the state now costs one array read and
-        // zero layout invalidations.
         final Boolean[] omniEmptyCache = new Boolean[1];
         final Runnable syncOmniIcons = () -> {
             try {
                 boolean empty = et.getText().length() == 0;
                 if (omniEmptyCache[0] != null && omniEmptyCache[0] == empty) return;
                 omniEmptyCache[0] = empty;
-                if (camB != null) camB.setVisibility(empty ? View.VISIBLE : View.GONE);
-                if (pasteB != null) pasteB.setVisibility(empty ? View.VISIBLE : View.GONE);
-                if (copyB != null) copyB.setVisibility(View.GONE);
+                if (actionsRow != null) actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);
                 if (clearB != null) clearB.setVisibility(empty ? View.GONE : View.VISIBLE);
             } catch (Throwable ignored) {}
         };
@@ -12783,6 +12858,27 @@ public class BrowserActivity extends AppCompatActivity {
         lay.findViewById(R.id.btn_omni_clear).setOnClickListener(v -> {
             et.setText("");
             et.requestFocus();
+        });
+        // v1.4.16 — DUPLICATE TAB (Row 2): the switcher's per-card duplicate
+        // (same URL in a fresh tab inserted right beside the source) promoted
+        // to the omnibox action strip. Dismisses the sheet — the action is
+        // done, the typing flow is over.
+        lay.findViewById(R.id.btn_omni_dup).setOnClickListener(v -> {
+            Ui.tap(v);
+            try {
+                Tab cur = activeTab();
+                if (cur != null) {
+                    Tab n = new Tab();
+                    n.isHome = cur.isHome;
+                    n.url = cur.url;
+                    n.title = cur.title;
+                    int idx = tm.tabs.indexOf(cur);
+                    tm.tabs.add(idx >= 0 ? idx + 1 : tm.tabs.size(), n);
+                    tm.save();
+                    Fx.toast(this, getString(R.string.duplicate_tab));
+                }
+            } catch (Throwable ignored) {}
+            omniboxDismiss(lay);
         });
         et.addTextChangedListener(new TextWatcher() {
             public void afterTextChanged(Editable s) {

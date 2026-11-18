@@ -641,9 +641,147 @@ backup WITHOUT printing the password — the credential lines are
 keyPassword value's trailing "(PKCS12…)" note is dropped by the
 first-token rule).
 
-**Known-good numbers** (v1.4.15, release build): APK 2,762,201 B (budget
+**v1.4.16 — the reliability nine-pack** (the tenth session of this
+relay, 2026-11-18):
+
+1. *The 0KB corpse law.* savePart created the destination document
+   BEFORE copying the bytes; a failed copy fell through to the next
+   destination leaving the 0KB file behind — and since SAF/MediaStore
+   name-collide with "(1)", every retry minted a fresh corpse ("name",
+   "name (1)", "name (2)"). All three destination paths (SAF
+   createDocument, MediaStore insert with IS_PENDING, plain
+   uniqueFile) now delete the created URI / partial File on copy
+   failure BEFORE the fall-through. Learning: a create-then-copy
+   sequence is a TWO-RESOURCE transaction — the cleanup must live in
+   the catch, not in the caller's retry logic, because the fall-through
+   design means the caller never learns the first destination existed.
+2. *The blob routing hole.* The v1.3.58 rescue chain (BlobDownload →
+   gmSaveBlob @JavascriptInterface → saveDataUrl) existed and the
+   download DIALOG path used it — but GM_download fed every URL
+   straight to DownloadEngine.enqueue, so a userscript handing over a
+   blob:/data: URL died in HttpURLConnection (blob: is not a URL the
+   URL constructor knows: MalformedURLException x4 retries ≈ 7 s of
+   sleeps, then a failed row). onDownloadStart now routes blob:
+   THROUGH the bridge before the dialog (no blob depends on a confirm
+   anymore), and gmDownload routes through enqueueDownload's scheme
+   law — one routing table, every caller. Learning: when a rescue
+   exists but only SOME doors use it, the fix is not a second rescue;
+   it is routing every door through the one table that already knows
+   the schemes.
+3. *The strict extension law.* ensureExt only repaired
+   missing/.bin/.part extensions; a query-string URL could guess
+   "photo.zip" while the bytes sniff image/jpeg. refineFile now tracks
+   whether the type was LEARNED this call (real Content-Type swap or
+   magic-byte sniff) and forces the name's extension to extForMime of
+   the learned mime — a wrong extension is repaired, an honest
+   human-typed name with an honest mime keeps its spelling (the flag
+   only fires on learning). Learning: lenient repair and strict
+   enforcement are different contracts; the discriminator is whether
+   this call ACQUIRED new knowledge.
+4. *The mid-drag reload deferral.* The v1.3.10 drag model already
+   returns false from onMove (no live swapping; reorder commits at
+   drop) — but any EXTERNAL adapter.reload() racing the gesture (a
+   dialog confirm, an intent-driven tab mutation, a settle posted from
+   an earlier drop) rebuilt the board under ItemTouchHelper and
+   recycled the dragged ViewHolder mid-flight ("tab ghosting on
+   move"). reload() now parks the request in pendingReloadDuringDrag
+   while dragActive and DragMergeCallback.clearView flushes it in a
+   finally (posted, so a deferred settleDropSlide lands first; a
+   same-data second reload is a visual no-op). Learning: the v1.3.47
+   deferIfBusy law covered the RV's OWN layout state but not the
+   ITH's gesture state — "busy" has more dimensions than
+   isComputingLayout.
+5. *The wrap-width row.* GroupSheetAdapter's rows were created with
+   no LayoutParams, so RecyclerView's generateDefaultLayoutParams
+   handed them WRAP_CONTENT width — and weight=1 divides only the
+   LEFTOVER of a match-parent row, so the text column collapsed and
+   the 3-dot menu sat mid-row. One setLayoutParams(MATCH_PARENT,
+   WRAP_CONTENT) after creation. Learning: a RecyclerView child with
+   no explicit params is NOT match-parent — the generated default is
+   wrap/wrap, and every weight inside it silently dies.
+6. *The race-proof process flag.* The incognito flag lived in static
+   blocks — which run when the CLASS resolves, and class-load order
+   across the multi-process split is not guaranteed: TabManager could
+   construct before IncognitoActivity's initializer ran, booting the
+   "incognito" process in normal mode (normal persisted tabs, normal
+   chip, taps routing to the normal browser). Both incognito
+   activities now ALSO set TabManager.INCOGNITO = true as the very
+   first statement of onCreate(), before super.onCreate() (whose
+   tab-restore constructs the TabManager). Learning: a static
+   initializer is a load-order bet; a lifecycle line before super is
+   a guarantee. Belt and suspenders — the static stays (it covers
+   class-reference paths that never build an activity).
+7. *The grouped-active highlight.* applySelVisuals only ever ran for
+   LOOSE cards, so the tab you were reading inside a folder was
+   invisible in the switcher (v1.4.12 even taught scrollToActive to
+   find the member's GROUP ROW — the scroll knew, the highlight
+   didn't). The group bind now derives activeInGroup (tm.active's
+   groupId == the row's gid) and applies the same accent rim plus a
+   new v_group_strip bottom strip (added to BOTH group layouts —
+   the tab card's v_strip law, extended). Learning: when one consumer
+   of a state (scrollToActive) learned the group-membership rule and
+   another (the bind) didn't, the screen argues with itself.
+8. *The two-row omnibox.* The single row's icon congestion was
+   structural: v1.4.12's engine chip and v1.4.14's state-aware strip
+   shared the field's row, and at the worst moment five 40dp buttons
+   trailed the EditText. The sheet is now two rows: Row 1 = engine
+   chip | EditText (weight 1) | Clear; Row 2 (omni_actions) = Copy,
+   Paste, Duplicate tab (the switcher's per-card clone, promoted),
+   Image Search, Voice Search — evenly weighted 44dp slots, shown
+   ONLY while the field holds text (hidden when empty, per the
+   product spec). The v1.4.15 Boolean[1] state cache survives: one
+   EMPTY<->TYPING flip = one setVisibility pair (row + clear); a
+   keystroke inside a state costs one array read. Learning: when a
+   row must host both text and actions, the actions lose — give them
+   their own row and the visibility question becomes one unit
+   instead of N buttons.
+9. *The three cleanups.* (a) showTab hides a visible find bar, clears
+   etFind/tvFindCount, and clearMatches()es the DEPARTING tab
+   (shownTabRef still points at it below the re-pin) — the bar used
+   to bleed onto the next page with the old page's matches. (b)
+   onDestroy dismisses a showing omniboxDialog ABOVE the incognito
+   early-return (dismissAllOverlays is NOT on the destroy path).
+   (c) onPause AND onStop remove a stranded sdGhost from flRoot,
+   parent-guarded (a mid-drag backgrounding froze the lift ghost
+   over the home screen; onPause can be skipped while onStop still
+   fires). Learning: per-screen UI state (find bar, dialog, ghost)
+   belongs to the SCREEN — every exit path from that screen must
+   sweep it, and "exit path" includes the lifecycle, not just the
+   close button.
+10. *The standing sweep, v1.4.16 edition.* 34 prior gates re-pinned
+    130/1.4.16 with dated notes
+    (workspace scripts/repin_gates_1416.py — SINGLE-RUN, both pin
+    form families, generic 1.4.15->1.4.16 pairs BEFORE the
+    1.4.14->1.4.15 previous-live bump); the About-changelog slides
+    (+1 on every index pin, guards descending so no len-guard is
+    double-bumped); THREE behavioral re-points in test_v1414/v1415
+    where the two-row omnibox legitimately moved the pinned
+    camB/pasteB/copyB forms to the omni_actions strip law; ONE
+    near-miss: test_v147 pins the orientation capture inside a
+    5200-char window of onPause — the ghost sweep initially landed
+    ABOVE it and pushed the capture out of the window; fixed by
+    moving the sweep BELOW the capture (a zero-impact reorder that
+    keeps the old gate green without touching it — prefer moving
+    YOUR code over re-pointing an old gate when both are free).
+11. *The apostrophe NPE.* The new About entry crashed
+    mergeReleaseResources with a bare javax.xml.stream
+    NullPointerException — no file, no line. Cause: three UNESCAPED
+    apostrophes in the string-array item ("type's", "switcher's",
+    "sheet's"); through the merger pipeline the classic "Apostrophe
+    not preceded by \" diagnostic never surfaces, it is this NPE
+    instead. The 1.4.14 entry's \'s were the tell. Learning: in
+    Android values resources the apostrophe is ALWAYS a two-way
+    trap — a StAX NPE from the merger means "scan for unescaped ' ".
+    (A bisect against the clean tree isolated it in two builds: the
+    resource NPE followed the strings.xml edit, not the layouts.)
+12. *Suite shape.* All 40 release-pipeline gate commands green (the
+    new v1416 gate among them — its compiled probe runs
+    transcriptions of the 0KB corpse cleanup, the mid-drag reload
+    deferral, and the strict extension law).
+
+**Known-good numbers** (v1.4.16, release build): APK 2,764,681 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-all 56 release-pipeline gate commands green (the new v1415 gate among
+all 40 release-pipeline gate commands green (the new v1416 gate among
 them); filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).

@@ -4,6 +4,94 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.16] — 2026-11-18
+
+**The reliability nine-pack: the 0KB/duplicate/.bin download law, the
+mid-drag reload deferral, the group-sheet row width, the race-proof
+incognito flag, the grouped-active highlight, the two-row omnibox, plus
+the find-bar bleed-over, the omnibox dialog sweep, and the ghost sweep.**
+
+### Fixed — FAILED SAVES LEAVE NO 0KB "NAME (1)" CORPSES
+- `savePart` creates the destination (SAF `createDocument` /
+  `MediaStore` insert) BEFORE copying the bytes; if the copy failed, the
+  0KB document stayed behind, so every retry hit the duplicate-name wall
+  and collected `name`, `name (1)`, `name (2)` corpses. A failed copy now
+  deletes the created URI via `ContentResolver.delete()` (and the partial
+  `File` on the plain-file paths) before falling through — a retry starts
+  clean.
+
+### Fixed — BLOB: DOWNLOADS RIDE THE JS BRIDGE
+- `blob:` URLs die in `HttpURLConnection` (the bytes exist only inside
+  the page that minted them) and the name guess degraded toward a UUID
+  with a `.bin` fallback. `onDownloadStart` now routes `blob:` URLs
+  straight through the v1.3.58 rescue chain (`BlobDownload.kt` — frame
+  dance → fetch → own-img → hunts), which reads the blob JS-side as a
+  Base64 data URL and hands it to the `@JavascriptInterface`
+  `Bolt.gmSaveBlob` → `DownloadEngine.saveDataUrl`. `GM_download`
+  (userscripts) went through the same hole and now routes through
+  `enqueueDownload`'s scheme law (`data:` → `saveDataUrl`, `blob:` → the
+  bridge, `http(s)` → the engine).
+
+### Fixed — THE EXTENSION OBEYS THE LEARNED TYPE
+- `refineFile`'s `ensureExt` only repaired a missing/`.bin`/`.part`
+  extension; a URL-guessed name could keep a plainly WRONG one. When
+  refinement actually LEARNS the type (the final response's real
+  Content-Type, or magic-byte sniffing), the name's extension is now
+  forced to agree with it — and any `.bin` fallback is overridden before
+  the destination call.
+
+### Fixed — NO GHOST TABS WHILE DRAGGING
+- Any `adapter.reload()` firing while the switcher's drag was live (a
+  dialog confirm racing the gesture, a tab-list mutation from an intent,
+  a settle posted from an earlier drop) rebuilt the board mid-gesture and
+  recycled the dragged ViewHolder under ItemTouchHelper's feet — the card
+  went invisible-while-"there" or duplicated at its old slot.
+  `reload()` now parks the request while `dragActive` and
+  `DragMergeCallback.clearView` flushes it when the gesture ends
+  (the drag itself still never reloads: `onMove` returns false, the
+  reorder commits at drop time).
+
+### Fixed — GROUP SHEET MENU DOCKS AT THE EDGE
+- The sheet rows were created without LayoutParams, so RecyclerView
+  defaulted them to wrap-content width and the text column's `weight=1`
+  had no leftover space to divide — the 3-dot menu sat mid-row. Rows are
+  now `MATCH_PARENT` × `WRAP_CONTENT`.
+
+### Fixed — INCOGNITO IS SET BEFORE ANYTHING LOADS
+- The process flag lived only in static blocks, whose class-load order
+  is not guaranteed across the multi-process split: if `TabManager`
+  loaded first, the "incognito" process booted in normal mode (normal
+  tabs.json, normal chip state, taps routing to the normal browser).
+  `IncognitoActivity.onCreate()` and `TabsIncognitoActivity.onCreate()`
+  now set `TabManager.INCOGNITO = true` as their very first statement,
+  before `super.onCreate()`.
+
+### Fixed — THE FOLDER ROW OF THE TAB YOU ARE READING LIGHTS UP
+- `applySelVisuals` only highlighted loose cards, so a grouped active
+  tab was invisible in the switcher. A group row whose members include
+  `tm.active` now gets the same accent rim (and a new bottom accent
+  strip, `v_group_strip`, in both group layouts); `scrollToActive()`
+  already resolves a member's group row (the v1.4.12 walk), so the
+  highlight and the scroll finally agree.
+
+### Changed — THE OMNIBOX IS TWO ROWS NOW
+- The single row's icon congestion is structural history: Row 1 is the
+  URL field proper (engine chip | EditText weight-1 | Clear), and Row 2
+  (`omni_actions`) is a full-width action strip — Copy, Paste,
+  Duplicate tab, Image Search, Voice Search — that shows only while the
+  field holds text (hidden when empty). The v1.4.15 empty-state cache
+  survives: only an EMPTY↔TYPING flip re-layouts anything, and a
+  keystroke inside a state costs one array read.
+
+### Fixed — FIND BAR, OMNIBOX SHEET, DRAG GHOST CLEAN UP AFTER THEMSELVES
+- Switching tabs (switcher tap, notification, external intent) now hides
+  the find-in-page bar, clears its query/count, and `clearMatches()`es
+  the DEPARTING tab — the bar used to bleed onto the next page with the
+  old page's matches. `onDestroy()` dismisses a showing `omniboxDialog`
+  (a destroy mid-typing leaked the window). `onPause()`/`onStop()`
+  remove a stranded `sdGhost` from `flRoot` (a mid-drag backgrounding
+  used to leave the speed-dial lift ghost frozen over the home screen).
+
 ## [1.4.15] — 2026-11-18
 
 **The responsiveness four-pack: the downloads event-listener law, the

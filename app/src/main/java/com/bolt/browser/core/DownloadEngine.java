@@ -711,10 +711,21 @@ public class DownloadEngine {
                             numbered(it.name));
                 }
                 if (target == null) throw new IOException("SAF create failed");
+                // v1.4.16 — THE 0KB CORPSE LAW: createDocument already MADE
+                // the destination file; a copy failure used to fall through
+                // to the next destination leaving the empty document behind,
+                // so every retry hit the duplicate-name wall and the user
+                // collected "name", "name (1)", "name (2)" corpses (the
+                // "download 0KB + (1) duplicate" report). Delete the created
+                // URI before the fall-through — a retry starts clean.
                 try (InputStream in = new FileInputStream(partFile(it));
                      OutputStream out = ctx.getContentResolver().openOutputStream(target, "wt")) {
                     if (out == null) throw new IOException("SAF stream closed");
                     copy(in, out);
+                } catch (Throwable copyFail) {
+                    try { ctx.getContentResolver().delete(target, null, null); }
+                    catch (Throwable ignored) {}
+                    throw copyFail;
                 }
                 return target;
             } catch (Throwable e) {
@@ -732,10 +743,18 @@ public class DownloadEngine {
                 Uri dir = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
                 Uri row = ctx.getContentResolver().insert(dir, cv);
                 if (row == null) throw new IOException("MediaStore insert failed");
+                // v1.4.16 — the 0KB corpse law, MediaStore edition: the
+                // insert already created the (IS_PENDING) row; a failed copy
+                // must delete it instead of leaving a 0KB pending corpse —
+                // same law as the SAF branch above.
                 try (InputStream in = new FileInputStream(partFile(it));
                      OutputStream out = ctx.getContentResolver().openOutputStream(row)) {
                     if (out == null) throw new IOException("MediaStore stream closed");
                     copy(in, out);
+                } catch (Throwable copyFail) {
+                    try { ctx.getContentResolver().delete(row, null, null); }
+                    catch (Throwable ignored) {}
+                    throw copyFail;
                 }
                 ContentValues fin = new ContentValues();
                 fin.put(MediaStore.MediaColumns.IS_PENDING, 0);
@@ -749,9 +768,15 @@ public class DownloadEngine {
         File dir = Environment_getPublicDownloads();
         if (dir != null && dir.canWrite()) {
             File out = uniqueFile(dir, it.name);
+            // v1.4.16 — the 0KB corpse law, plain-file edition: a failed
+            // copy deletes the partial File so uniqueFile cannot hand the
+            // NEXT attempt a "name (1)" slot beside a dead "name".
             try (InputStream in = new FileInputStream(part);
                  OutputStream outS = new FileOutputStream(out)) {
                 copy(in, outS);
+            } catch (Throwable copyFail) {
+                try { out.delete(); } catch (Throwable ignored) {}
+                throw copyFail;
             }
             scan(out);
             return Uri.fromFile(out);
@@ -1088,6 +1113,13 @@ public class DownloadEngine {
     /** refine mime + filename from the downloaded part file (http path) */
     private void refineFile(Item it, File part) {
         try {
+            // v1.4.16 — THE LEARNED-TYPE FLAG: when refinement actually
+            // LEARNS the file's type this call (the real Content-Type of
+            // the final response, or magic-byte sniffing), that knowledge is
+            // more authoritative than any extension a URL guess slapped on
+            // the name — the strict enforcement below uses it to override
+            // BOTH the old ".bin" fallback and a plain WRONG extension.
+            boolean learned = false;
             // v1.3.90 — THE NAME LAW, ROUND 2 (the field: "download often
             // messes up files names, and file format extension becomes bin
             // a lot of times"). The v1.3.86 swap only fired when the whole
@@ -1106,7 +1138,7 @@ public class DownloadEngine {
                 String sv = safeName(it.cdName);
                 if (!sv.isEmpty() && !"download".equals(sv)) it.name = sv;
             }
-            if (isGenericMime(it.mime) && !isGenericMime(it.ct)) it.mime = it.ct;
+            if (isGenericMime(it.mime) && !isGenericMime(it.ct)) { it.mime = it.ct; learned = true; }
             if (isGenericMime(it.mime) && part.exists() && part.length() > 0) {
                 byte[] head = new byte[SNIFF_LEN];
                 try (FileInputStream fi = new FileInputStream(part)) {
@@ -1115,11 +1147,31 @@ public class DownloadEngine {
                         byte[] real = new byte[r];
                         System.arraycopy(head, 0, real, 0, r);
                         String sm = sniffMime(real);
-                        if (!sm.isEmpty()) it.mime = sm;
+                        if (!sm.isEmpty()) { it.mime = sm; learned = true; }
                     }
                 } catch (Throwable ignored) {}
             }
             it.name = ensureExt(it.name, it.mime);
+            // v1.4.16 — THE STRICT EXTENSION LAW: ensureExt only repairs a
+            // MISSING or ".bin/.part" extension. When the type was LEARNED
+            // this call (real Content-Type / magic bytes), the name's
+            // extension is forced to agree with it — a query-string URL
+            // guessed "photo.zip" while the bytes sniff image/jpeg must land
+            // as photo.jpg, and a ".bin" that somehow survived the lenient
+            // pass is overridden here too. Only fires on learned types, so a
+            // human-typed "Setup-2.4.exe" with an honest mime keeps its name.
+            if (learned) {
+                String forced = extForMime(it.mime);
+                if (!forced.isEmpty()) {
+                    int dot = it.name.lastIndexOf('.');
+                    String cur = dot > 0 ? it.name.substring(dot + 1).toLowerCase() : "";
+                    if (!cur.equals(forced)) {
+                        String base = dot > 0 ? it.name.substring(0, dot) : it.name;
+                        if (base.isEmpty()) base = "download";
+                        it.name = base + "." + forced;
+                    }
+                }
+            }
             // v1.3.90 — THE EXTENSION RESCUE: the name may STILL end in
             // .bin/.part or carry no extension at all (generic mime all the
             // way down). Two remaining witnesses can repair it: the URL's

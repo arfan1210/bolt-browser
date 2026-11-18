@@ -386,6 +386,12 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.16 (2026-11-18): the reliability nine-pack — the 0KB/dup/.bin
+         download law, the mid-drag reload deferral, the group-sheet row width,
+         the race-proof incognito flag, the grouped-active highlight, the
+         two-row omnibox, the find-bar bleed-over, the omnibox dialog sweep,
+         the ghost sweep -->
+    <item>1.4.16|Downloads are reliable again: a failed save no longer leaves a 0KB file behind (which used to force the next attempt into "name (1)" duplicates), blob: downloads route through the page-side JS bridge instead of dying in the network stack, and a file whose real type was learned from the server or its magic bytes always gets that type\'s extension (no more .bin); the tab switcher\'s drag never rebuilds the grid mid-gesture (the ghost-tab-on-move corpse — external changes now land when the drag ends); the group sheet\'s rows are full-width so the 3-dot menu docks at the edge instead of the middle; incognito mode is set before anything loads in the incognito process (a class-loading race could boot it in normal mode); the folder row of the tab you are reading lights up with the same accent rim and strip as loose tabs; the omnibox is two rows — the URL field keeps its full width (engine chip + clear only) and Copy / Paste / Duplicate / Image / Voice actions live on a strip below that appears while you type; switching tabs closes a find-in-page bar that used to bleed onto the next page; the omnibox dialog and the speed-dial drag ghost are cleaned up when the app pauses or dies.</item>
     <!-- v1.4.15 (2026-11-18): the responsiveness four-pack — the downloads
          event-listener law, the tab-switcher stale-highlight fix, the
          omnibox state cache + off-thread suggestion build, the handler sweep -->

@@ -132,25 +132,25 @@ off_code = strip_comments_strings(off)
 sha_code = strip_comments_strings(sha)
 
 print("A — the version bump")
-need(re.search(r"versionCode 129\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
-     "versionCode 129 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
-need(re.search(r'versionName "1\.4\.15"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
-     'versionName "1.4.15"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+need(re.search(r"versionCode 130\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+     "versionCode 130 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+need(re.search(r'versionName "1\.4\.16"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
+     'versionName "1.4.16"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+need(entries and entries[0].startswith("1.4.16|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
      "the newest entry is 1.4.14 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.14|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+need(len(entries) > 1 and entries[1].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
      "the second entry is 1.4.13 (the previous live release)")
 for word, why in (("drag", "the drag restore"), ("NEW tab", "the new-tab law"),
                   ("full field width", "the omnibox icon diet"),
                   ("incognito", "the return route"),
                   ("out-of-memory", "the OOM ladder"),
                   ("search bar", "the search bars")):
-    need(word in entries[1] or word in entries[1].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+    need(word in entries[2] or word in entries[2].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)
          f"the 1.4.14 line names {why}")
 
 print("C — fix 1: the group-sheet drag (RecyclerView + ItemTouchHelper)")
@@ -225,16 +225,12 @@ si = ba_code[ba_code.find("final Runnable syncOmniIcons"):]
 si = si[:si.find("};", 1) + 2]
 need("et.getText().length() == 0" in si,
      "the state keys on the field being empty")
-need(re.search(r"camB\.setVisibility\(empty \? View\.VISIBLE : View\.GONE\)", si)
-     is not None and
-     re.search(r"pasteB\.setVisibility\(empty \? View\.VISIBLE : View\.GONE\)", si)
-     is not None,
-     "camera + paste show ONLY when empty (the doors of a blank field)")
-need(re.search(r"clearB\.setVisibility\(empty \? View\.GONE : View\.VISIBLE\)", si)
-     is not None,
-     "clear shows ONLY while typing")
-need(re.search(r"copyB\.setVisibility\(View\.GONE\)", si) is not None,
-     "copy is retired from the omnibox (both states)")
+need("actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
+     "the action strip (camera/paste/copy/dup/voice) shows ONLY while typing (v1.4.16 re-point 2026-11-18: the two-row omnibox moved the doors into omni_actions)")
+need("clearB.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
+     "clear shows ONLY while typing (rides Row 1; v1.4.16 re-point 2026-11-18)")
+need("R.id.omni_actions" in ba_code and "R.id.btn_omni_copy" in ba_code,
+     "copy lives in the Row 2 strip (v1.4.16 re-point 2026-11-18: un-retired as a strip action)")
 tw = ba_code[ba_code.find("et.addTextChangedListener(new TextWatcher() {"):
              ba_code.find("et.addTextChangedListener(new TextWatcher() {") + 700]
 need("syncOmniIcons.run();" in tw,

@@ -163,6 +163,31 @@ public class TabsActivity extends AppCompatActivity {
      *  scroll listener can feed it scroll-compensation during a drag). */
     private DragMergeCallback dragCb;
 
+    /** v1.4.16 — THE MID-DRAG RELOAD DEFERRAL (the "tab ghosting on move"
+     * corpse): any adapter.reload() that fires while the grid's drag is
+     * live (a dialog confirm racing the gesture, a tab-list mutation from
+     * an intent, a settle posted from an EARLIER drop) rebuilds the items
+     * and notifyDataSetChanged-es the board mid-gesture — the RecyclerView
+     * recycles the dragged ViewHolder under ItemTouchHelper's feet and the
+     * card goes ghost (invisible while "there", or duplicated at its old
+     * slot). reload() now parks the request here instead and clearView
+     * flushes it when the gesture is over (see flushPendingReload). */
+    private boolean pendingReloadDuringDrag = false;
+
+    /** v1.4.16 — run a reload that was parked mid-drag. Called from
+     *  DragMergeCallback.clearView's finally, i.e. after every drag ends
+     *  (settle animations included). Posted, not inline: a deferred
+     *  settleDropSlide may still be queued from THIS drop, and the posted
+     *  reload lands after it in FIFO order — a second reload of identical
+     *  data is a visual no-op, so sequencing is all that matters. */
+    protected void flushPendingReload() {
+        if (!pendingReloadDuringDrag) return;
+        pendingReloadDuringDrag = false;
+        if (rv != null) rv.post(() -> {
+            try { if (adapter != null) adapter.reload(); } catch (Throwable ignored) {}
+        });
+    }
+
     // v1.3.78 — the favicon-generation poller: icons land asynchronously
     // (DuckDuckGo network fallback, late onReceivedIcon) AFTER the switcher
     // already bound its letter tiles, and homeGen only rebuilds the home
@@ -1953,6 +1978,10 @@ public class TabsActivity extends AppCompatActivity {
             }
             dragActive = false;
             stopAutoScroll();          // v1.3.47: the edge auto-scroll loop dies with the gesture
+            // v1.4.16 — the drop resolution runs inside try/finally so a
+            // mid-drag parked reload ALWAYS flushes when the gesture ends,
+            // whichever exit the drop takes (settle, merge, join, no-op).
+            try {
             // resolve the dragged tab BEFORE any reload changes positions —
             // positions are guaranteed valid because onMove never swaps
             int pos = vh.getBindingAdapterPosition();
@@ -2403,6 +2432,9 @@ public class TabsActivity extends AppCompatActivity {
             // Defer the whole settle to the next frame when the RV is busy.
             if (deferIfBusy(() -> settleDropSlide(vh, dragged, dropL, dropT))) return;
             settleDropSlide(vh, dragged, dropL, dropT);
+            } finally {
+                flushPendingReload();   // v1.4.16: the parked reload (if any) runs now
+            }
         }
 
         /** v1.3.46 — glide the held card from its DROP POINT back to (its
@@ -3001,6 +3033,18 @@ public class TabsActivity extends AppCompatActivity {
         }
 
         void reload() {
+            // v1.4.16 — THE MID-DRAG RELOAD LAW ("tab ghosting on move"):
+            // never rebuild the board while ItemTouchHelper holds a card.
+            // Park the request; DragMergeCallback.clearView runs it when
+            // the gesture ends. (The drag itself never needed a reload:
+            // onMove returns false by design — reordering commits at DROP
+            // time — so the only mid-drag reloads were EXTERNAL mutations
+            // racing the gesture, and those are exactly what deferring is
+            // for.)
+            if (dragCb != null && dragCb.dragActive) {
+                pendingReloadDuringDrag = true;
+                return;
+            }
             if (deferIfBusy(() -> reload())) return;   // v1.3.47 crash fix
             rebuildItems();
             notifyDataSetChanged();
@@ -3246,6 +3290,39 @@ public class TabsActivity extends AppCompatActivity {
                     });
                 }
                 gh.menu.setOnClickListener(v -> groupOptions(g));
+                // v1.4.16 — THE GROUPED-ACTIVE HIGHLIGHT: applySelVisuals
+                // only ever ran for LOOSE tab cards (tm.tabs.indexOf(t) ==
+                // tm.active), so the tab you are reading inside a folder was
+                // invisible in the switcher — no rim, no strip, nothing to
+                // tell it apart from its sleeping siblings. The group row
+                // now carries the same accent law when tm.active belongs to
+                // ANY of its members: the accent rim (same stroke the
+                // multi-select uses) on the row and an accent strip along
+                // its bottom edge, exactly like the loose card's strip.
+                // scrollToActive() already resolves a member's group row
+                // (the v1.4.12 walk), so the highlight and the scroll
+                // finally agree.
+                boolean activeInGroup = false;
+                if (!selMode) {
+                    Tab at = (tm.active >= 0 && tm.active < tm.tabs.size())
+                            ? tm.tabs.get(tm.active) : null;
+                    if (at != null && at.groupId == gid) activeInGroup = true;
+                }
+                try {
+                    if (activeInGroup) {
+                        GradientDrawable rim = new GradientDrawable();
+                        rim.setCornerRadius(Fx.dp(TabsActivity.this, 14));
+                        rim.setStroke(Math.max(2, Fx.dp(TabsActivity.this, 2)),
+                                Fx.accent(TabsActivity.this));
+                        gh.itemView.setForeground(rim);
+                    } else {
+                        gh.itemView.setForeground(null);
+                    }
+                } catch (Throwable ignored) {}
+                if (gh.strip != null) {
+                    gh.strip.setBackgroundColor(activeInGroup
+                            ? Fx.accent(TabsActivity.this) : 0x00000000);
+                }
             } else {
                 final Tab t = (Tab) items.get(pos);
                 CardHolder ch = (CardHolder) h;
@@ -3812,6 +3889,17 @@ public class TabsActivity extends AppCompatActivity {
         @Override public int getItemCount() { return members.size(); }
         @Override public GroupSheetAdapter.H onCreateViewHolder(ViewGroup parent, int viewType) {
             LinearLayout row = new LinearLayout(parent.getContext());
+            // v1.4.16 — THE ROW WIDTH LAW (the "3-dot menu sits in the
+            // middle" corpse): the row was created with NO LayoutParams,
+            // so RecyclerView's generateDefaultLayoutParams handed it
+            // WRAP_CONTENT width — and a wrap-width row makes the text
+            // column's weight=1 meaningless (there is no leftover space to
+            // divide), leaving the ⋯ menu glued to the short text instead
+            // of docked at the row's end. MATCH_PARENT width + WRAP height
+            // is the contract the weight needs; RecyclerView converts the
+            // LinearLayout.LayoutParams on addView, preserving the sizes.
+            row.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
             row.setMinimumHeight(Fx.dp(TabsActivity.this, 56));
@@ -4078,6 +4166,7 @@ public class TabsActivity extends AppCompatActivity {
         ImageButton menu;
         LinearLayout cards;
         View chevron, cardsWrap, header;
+        View strip;   // v1.4.16: the grouped-active accent strip (v_group_strip)
         GroupHolder(View v) {
             super(v);
             dot = v.findViewById(R.id.v_group_dot);
@@ -4089,6 +4178,7 @@ public class TabsActivity extends AppCompatActivity {
                     ? v.findViewById(R.id.hv_group_cards) : (View) cards.getParent();
             chevron = v.findViewById(R.id.iv_group_chevron);
             header = v.findViewById(R.id.ll_group_header);
+            strip = v.findViewById(R.id.v_group_strip);
         }
     }
 }

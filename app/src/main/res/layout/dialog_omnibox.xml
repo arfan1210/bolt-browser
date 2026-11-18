@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- v1.3.34 — modern omnibox sheet: grab handle, 24dp rounded top, taller
-     52dp url field with 16sp type. -->
+     52dp url field with 16sp type.
+     v1.4.16 — THE TWO-ROW OMNIBOX. v1.4.12 added the engine chip and
+     v1.4.14 the state-aware icon strip to the SAME single row as the
+     field — at the worst moment five 40dp buttons trailed the EditText
+     and the typed URL had no width left ("icon congestion"). The sheet is
+     now VERTICAL, two rows:
+       Row 1 — the url field proper: engine chip | EditText (weight 1) |
+               Clear. Nothing else ever enters this row.
+       Row 2 — a full-width action strip (id omni_actions): Copy, Paste,
+               Duplicate tab, Image Search, Voice Search, one 44dp slot
+               each, evenly weighted. syncOmniIcons shows the strip only
+               while the field holds text; an empty field (the home /
+               fresh-open state) hides it and Row 1 stands alone. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="vertical" android:layout_width="match_parent"
     android:layout_height="wrap_content" android:background="@drawable/bg_sheet"
@@ -10,6 +22,7 @@
     <View android:id="@+id/omni_handle" android:layout_width="36dp" android:layout_height="4dp"
         android:layout_gravity="center_horizontal" android:layout_marginTop="10dp"
         android:background="@drawable/bg_handle"/>
+    <!-- ==================== ROW 1 — the url field ==================== -->
     <LinearLayout android:orientation="horizontal"
         android:layout_width="match_parent" android:layout_height="52dp"
         android:layout_marginTop="10dp"
@@ -41,28 +54,52 @@
             android:textSize="17sp" android:background="@null"
             android:paddingStart="10dp" android:paddingEnd="10dp"
             android:importantForAutofill="no"/>
-        <!-- v1.4.12 — THE IMAGE-SEARCH DOOR: camera or gallery pick, the
-             picture routes to the selected engine's visual search. -->
-        <ImageButton android:id="@+id/btn_omni_cam"
-            android:layout_width="40dp" android:layout_height="40dp"
-            android:src="@drawable/ic_camera" android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Image search"/>
-        <ImageButton android:id="@+id/btn_omni_voice"
-            android:layout_width="40dp" android:layout_height="40dp"
-            android:src="@drawable/ic_mic" android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Voice search"/>
-        <ImageButton android:id="@+id/btn_omni_paste"
-            android:layout_width="40dp" android:layout_height="40dp"
-            android:src="@drawable/ic_paste" android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/paste"/>
-        <ImageButton android:id="@+id/btn_omni_copy"
-            android:layout_width="40dp" android:layout_height="40dp"
-            android:src="@drawable/ic_copy" android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/copy"/>
+        <!-- v1.4.14's state rule keeps its post: Clear rides Row 1 (it is
+             the one action that belongs beside the text itself) and shows
+             only while the field holds text. -->
         <ImageButton android:id="@+id/btn_omni_clear"
             android:layout_width="40dp" android:layout_height="40dp"
             android:src="@drawable/ic_close" android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/clear"/>
+    </LinearLayout>
+    <!-- ==================== ROW 2 — the action strip ====================
+         v1.4.16: one evenly-weighted 44dp slot per action; the whole strip
+         is a single visibility unit driven by syncOmniIcons (text present =
+         shown, empty field = hidden). -->
+    <LinearLayout android:id="@+id/omni_actions"
+        android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="44dp"
+        android:layout_marginTop="6dp" android:gravity="center_vertical">
+        <ImageButton android:id="@+id/btn_omni_copy"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:src="@drawable/ic_copy"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/copy"/>
+        <ImageButton android:id="@+id/btn_omni_paste"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:src="@drawable/ic_paste"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/paste"/>
+        <!-- v1.4.16 — DUPLICATE TAB: the tab switcher's per-card duplicate
+             (same URL in a fresh tab, right beside the source) promoted to
+             the omnibox strip. -->
+        <ImageButton android:id="@+id/btn_omni_dup"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:src="@drawable/ic_open_new"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/duplicate_tab"/>
+        <!-- v1.4.12 — THE IMAGE-SEARCH DOOR: camera or gallery pick, the
+             picture routes to the selected engine's visual search. -->
+        <ImageButton android:id="@+id/btn_omni_cam"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:src="@drawable/ic_camera"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Image search"/>
+        <ImageButton android:id="@+id/btn_omni_voice"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:src="@drawable/ic_mic"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Voice search"/>
     </LinearLayout>
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_suggest" android:layout_width="match_parent"
