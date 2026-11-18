@@ -113,6 +113,25 @@ public class DownloadsActivity extends BaseListActivity implements DownloadEngin
             reload();
         });
         reload();
+        // v1.4.15 — THE LISTENER LAW. The activity implements
+        // DownloadEngine.Listener and dutifully removes itself in onDestroy,
+        // but never REGISTERED: the UI was deaf to engine events and leaned
+        // entirely on the 500 ms refreshLoop poll (progress arrived up to
+        // half a second late, and "switch tabs and back" felt disconnected
+        // or reset). Registered here, onDownloadsChanged() drives reload()
+        // the instant a download starts / advances / completes. addListener is
+        // contains()-guarded (idempotent), so the onResume re-arm is free.
+        DownloadEngine.get(this).addListener(this);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // v1.4.15: belt-and-braces — re-arm the event feed every resume (the
+        // engine's listener set is process-global; the contains() guard makes
+        // the double registration a no-op). Events that fired while paused
+        // already reloaded through onDownloadsChanged()'s ui.post.
+        DownloadEngine.get(this).addListener(this);
     }
 
     // ---------------------------------------------------------------- v1.3.59 view toggle

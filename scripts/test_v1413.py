@@ -138,28 +138,28 @@ dl_code = strip_comments_strings(dl)
 wp_code = strip_comments_strings(wpool)
 
 print("A — the version bump")
-need(re.search(r"versionCode 128\b", gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
-     "versionCode 128 (Android only installs RISING codes)")  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
-need(re.search(r'versionName "1\.4\.14"', gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
-     'versionName "1.4.14"')  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need(re.search(r"versionCode 129\b", gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+     "versionCode 129 (Android only installs RISING codes)")  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+need(re.search(r'versionName "1\.4\.15"', gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+     'versionName "1.4.15"')  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.14|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need(entries and entries[0].startswith("1.4.15|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the newest entry is 1.4.13 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.13|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack); the [1] pin names the PREVIOUS live release (1.4.13)
+need(len(entries) > 1 and entries[1].startswith("1.4.14|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack); the [1] pin names the PREVIOUS live release (1.4.13)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the second entry is 1.4.12 (the previous live release)")
-need("300 ms" in entries[1] and "pause" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need("300 ms" in entries[2] and "pause" in entries[2],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the 1.4.13 line names the debounce")
-need("1000 icons" in entries[1] and "50 MB" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need("1000 icons" in entries[2] and "50 MB" in entries[2],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the 1.4.13 line names the favicon caps")
-need("pre-warmed" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need("pre-warmed" in entries[2],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the 1.4.13 line names the WebView pre-warm")
-need("If-Range" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need("If-Range" in entries[2],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the 1.4.13 line names the resume validator")
-need("Search in Bolt" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need("Search in Bolt" in entries[2],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the 1.4.13 line names the toolbar label")
 
 print("C — fix 1: the PROCESS_TEXT toolbar entry (mime + label, all faces)")
@@ -220,7 +220,7 @@ need("suggestH.removeCallbacks(suggestPending);" in od,
 sa = ba_code[ba_code.find("protected class SuggestAdapter"):]
 need("private String webQuery = \"\";" in sa and "private List<String> webRows" in sa,
      "the adapter carries the rows AND the query they answer")
-need("q.trim().equalsIgnoreCase(webQuery)" in sa,
+need("q.trim().equalsIgnoreCase(wq)" in sa,   # v1.4.15 re-point (2026-11-18): the exact-query guard moved into buildRows(q, wq, wr) — the off-thread suggestion build snapshots webQuery/webRows on the main thread and the build carries the snapshot
      "rows render only while the field still holds their exact query")
 need("void setWebSuggestions(String query, List<String> rows)" in sa,
      "the guarded setter exists")

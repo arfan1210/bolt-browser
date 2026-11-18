@@ -132,25 +132,25 @@ off_code = strip_comments_strings(off)
 sha_code = strip_comments_strings(sha)
 
 print("A — the version bump")
-need(re.search(r"versionCode 128\b", gradle) is not None,
-     "versionCode 128 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.14"', gradle) is not None,
-     'versionName "1.4.14"')
+need(re.search(r"versionCode 129\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+     "versionCode 129 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+need(re.search(r'versionName "1\.4\.15"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
+     'versionName "1.4.15"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.14|"),
+need(entries and entries[0].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the newest entry is 1.4.14 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.13|"),
+need(len(entries) > 1 and entries[1].startswith("1.4.14|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
      "the second entry is 1.4.13 (the previous live release)")
 for word, why in (("drag", "the drag restore"), ("NEW tab", "the new-tab law"),
                   ("full field width", "the omnibox icon diet"),
                   ("incognito", "the return route"),
                   ("out-of-memory", "the OOM ladder"),
                   ("search bar", "the search bars")):
-    need(word in entries[0] or word in entries[0].lower(),
+    need(word in entries[1] or word in entries[1].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)
          f"the 1.4.14 line names {why}")
 
 print("C — fix 1: the group-sheet drag (RecyclerView + ItemTouchHelper)")

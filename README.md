@@ -543,6 +543,81 @@ this relay, 2026-11-18):
    bare NPE deep in AAPT (the error names no line — validate the XML
    and grep for `[A-Za-z]'[A-Za-z]` before building).
 
+**v1.4.15 — the responsiveness four-pack** (the ninth session of this
+relay, 2026-11-18):
+
+1. *The deaf listener.* DownloadsActivity implemented
+   DownloadEngine.Listener and removed itself in onDestroy() — but never
+   REGISTERED, so the whole screen leaned on the 500 ms refreshLoop poll
+   (progress up to half a second late; "switch tabs and it looks reset").
+   addListener now runs at the end of onCreate() AND in a new onResume()
+   (the engine's addListener is contains()-guarded, so the double arm is
+   a no-op); onDownloadsChanged() was ALREADY implemented, posting a
+   guarded reload() to the ui handler — the callback machinery existed,
+   only the registration was missing. Learning: a Listener interface with
+   a remove but no add is a HALF-WIRED observer — the poll fallback hides
+   the deafness (it works, just late), so nothing crashes and the bug
+   reads as "laggy", not "broken".
+2. *The stale highlight.* TabsActivity.onResume() called only
+   adapter.rebindIcons() — a rebind of the rows the adapter ALREADY held,
+   never a model rebuild; a switcher covered while tm.active moved
+   (notification, external intent) reopened outlining the OLD tab.
+   adapter.reload() now follows (rebuildItems + notifyDataSetChanged +
+   afterReload); the active search filter survives (rebuildItems
+   re-applies tabQuery). Learning: rebind and reload are different
+   contracts — a rebind refreshes what the rows SHOW, a reload refreshes
+   WHICH rows exist; resume-time freshness needs the second one.
+3. *The omnibox double diet.* (a) syncOmniIcons called setVisibility() on
+   four views per keystroke; the empty state is now cached in a
+   Boolean[1] (null sentinel = never applied, so the opening sync always
+   runs) and a keystroke that does not flip EMPTY<->TYPING costs one
+   array read. (b) ad.update() walked the bookmarks + speed-dial +
+   400-entry history JSON synchronously in afterTextChanged; update() is
+   now a DISPATCHER: the build runs on SUGGEST_BUILD (one process-wide
+   daemon thread, "bolt-suggest"), every call bumps suggestGen, and the
+   apply (items swap + notify) posts through the ACTIVITY's ui handler
+   only if its generation is still the newest — stale builds can never
+   reach the screen, and onDestroy's existing ui sweep kills any
+   still-queued apply. The previous rows stay up until the fresh pass
+   lands (no clear-first flash of emptiness). Learning: v1.4.13 debounced
+   the NETWORK and left the LOCAL walk synchronous because it was
+   "memory-fast" — memory-fast is still main-thread work; the right cut
+   is thread ownership, not just request rate. And a generation counter
+   beats a string compare for staleness: it is monotonic where strings
+   can repeat.
+4. *The handler sweep.* sdWinH (speed-dial hold-to-lift) and suggestH
+   (the omnibox debounce) were created as fields but only ui was ever
+   cleaned in onDestroy(); both now get removeCallbacksAndMessages(null),
+   placed ABOVE the incognito early-return so BOTH process paths sweep
+   (a cleanup below an early-return is a half cleanup — the branch that
+   returns early never reaches it).
+5. *The standing sweep, v1.4.15 edition.* 33 prior version gates
+   re-pinned 129/1.4.15 with dated notes
+   (scripts/repin_gates_1415.py in the workspace); test_v1410/1411/1412/
+   1413/1414 got surgical entry-index slides (every About-changelog line
+   slid one slot down when 1.4.15 landed at entries[0]; the [2] pin's
+   stale '> 1' len guard — two slides behind its index — was repaired to
+   '> 3'); v1413's exact-query guard pin got a dated behavioral re-point
+   (equalsIgnoreCase(webQuery) -> equalsIgnoreCase(wq): the guard moved
+   into buildRows and reads the main-thread snapshot). TWO REPIN LAWS
+   learned the hard way: (a) the old script's r'' "regex-looking" pairs
+   were LITERAL-substring matches against the backslash text inside the
+   gates' re.search() patterns — dropping them updated the pin LABELS but
+   not the pinned REGEXES, and five gates (v1384-v1387, v1391) failed
+   with a label that said 129 and a regex that still hunted 128; keep
+   BOTH form families in every repin. (b) The repin script is
+   SINGLE-RUN by design — a second run double-slides every surgical
+   index pin; running it twice was caught and recovered by
+   git-checkout-and-rerun-once. The v1.4.14 order law (generic
+   1.4.14->1.4.15 pairs BEFORE the 1.4.13->1.4.14 previous-live bump)
+   held — no double application.
+6. *Suite shape.* All 56 release-pipeline gate commands green (the new
+   v1415 gate among them — its compiled probe runs transcriptions of
+   BOTH new contracts: the generation guard and the icon state cache).
+   The standalone gate run needs the grafted JDK on PATH (release.sh
+   exports it; three older gates shell out to bare 'javac' and fail
+   standalone without it — pre-existing, not a gate regression).
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
@@ -566,10 +641,10 @@ backup WITHOUT printing the password — the credential lines are
 keyPassword value's trailing "(PKCS12…)" note is dropped by the
 first-token rule).
 
-**Known-good numbers** (v1.4.14, release build): APK 2,760,997 B (budget
+**Known-good numbers** (v1.4.15, release build): APK 2,762,201 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-69/69 release-pipeline check commands green across 38 version gates (the
-new v1414 gate among them); filter rule census unchanged from v1.4.9
+all 56 release-pipeline gate commands green (the new v1415 gate among
+them); filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 

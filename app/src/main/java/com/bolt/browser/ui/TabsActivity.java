@@ -420,6 +420,17 @@ public class TabsActivity extends AppCompatActivity {
         // v1.3.78: an icon may have landed while another activity was in
         // front — rebind once, then keep the poller armed
         if (adapter != null) adapter.rebindIcons();
+        // v1.4.15 — THE STALE-HIGHLIGHT FIX. rebindIcons() only re-binds the
+        // rows the adapter ALREADY holds; it never rebuilds the model. If the
+        // active tab moved while the switcher was covered (a notification or
+        // external intent routed through BrowserActivity, a group sheet
+        // action, a satellite screen tapping a row), the switcher reopened
+        // highlighting the OLD tm.active — applySelVisuals() reads live state
+        // but nothing re-triggered it against a rebuilt model. reload() is
+        // rebuildItems() + notifyDataSetChanged() + afterReload(): the accent
+        // rim and the bottom strip re-derive from the CURRENT tm.active, and
+        // an active search filter survives (rebuildItems re-applies it).
+        if (adapter != null) adapter.reload();
         favPoll.removeCallbacks(favPollTick);
         favPoll.postDelayed(favPollTick, 700);
     }

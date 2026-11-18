@@ -4,6 +4,63 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.15] — 2026-11-18
+
+**The responsiveness four-pack: the downloads event-listener law, the
+tab-switcher stale-highlight fix, the omnibox state cache plus off-thread
+suggestion build, and the handler sweep.**
+
+### Fixed — DOWNLOAD PROGRESS NOW ARRIVES BY EVENT, NOT POLL
+- `DownloadsActivity` implements `DownloadEngine.Listener` and correctly
+  removed itself in `onDestroy()` — but never registered, so the UI was
+  deaf to real-time events and leaned entirely on the 500 ms `refreshLoop`
+  poll (progress up to half a second late; switching screens felt
+  disconnected, laggy, or "reset"). `DownloadEngine.get(this).addListener(this)`
+  now runs at the end of `onCreate()` and inside a new `onResume()` —
+  `onDownloadsChanged()` (which was already implemented, posting a guarded
+  `reload()` to the UI handler) finally fires. Registration is
+  contains()-guarded (idempotent), so the double arm is free.
+
+### Fixed — TAB SWITCHER RE-HIGHLIGHTS THE CURRENT TAB
+- `TabsActivity.onResume()` only called `adapter.rebindIcons()` — a rebind
+  of the rows the adapter ALREADY held, never a model rebuild. If the
+  active tab moved while the switcher was covered (a notification or
+  external intent routed through the browser, a satellite screen tapping
+  a row), reopening the switcher outlined the OLD tab:
+  `applySelVisuals()` reads live `tm.active` but nothing re-triggered it
+  against a rebuilt model. `adapter.reload()` now follows the rebind —
+  `rebuildItems()` + `notifyDataSetChanged()` + `afterReload()` — so the
+  accent rim and bottom strip derive from the CURRENT active tab, and an
+  active search filter survives the reload (rebuildItems re-applies it).
+
+### Fixed — OMNIBOX TYPING LAG (STATE CACHE + OFF-THREAD BUILD)
+- The v1.4.14 state-aware icon strip called `setVisibility()` on four
+  views on every keystroke. Only an EMPTY↔TYPING transition ever changes
+  what is on screen: the empty state is now cached in a final
+  `Boolean[1]` holder (null = never applied, so the opening sync always
+  runs) and a keystroke that does not flip the state costs one array
+  read and zero layout invalidations.
+- The suggestion pass (`ad.update()`) walked the bookmarks, speed-dial
+  and 400-entry history JSON arrays synchronously inside
+  `afterTextChanged` — per keystroke, on the main thread. The build now
+  runs on a single process-wide daemon thread (`SUGGEST_BUILD`): every
+  `update()` bumps a generation counter, the build carries its
+  generation, and the apply (items swap + `notifyDataSetChanged()`)
+  posts back through the activity's `ui` handler only if it is still the
+  newest — stale builds can never reach the screen. The previous rows
+  stay up until the fresh pass lands (no flash of emptiness mid-word),
+  and the activity's existing `ui` cleanup kills any still-queued apply
+  at destroy.
+
+### Fixed — HANDLER MEMORY LEAKS ON DESTROY
+- `sdWinH` (the speed-dial hold-to-lift timer) and `suggestH` (the
+  omnibox network debounce) were created as fields but only `ui` was
+  cleaned in `onDestroy()` — destroying the activity with callbacks
+  pending (a held speed-dial item, a 300 ms suggest timer mid-pause)
+  kept the whole dying Activity reachable from the handler queues.
+  Both are now swept with `removeCallbacksAndMessages(null)` — placed
+  above the incognito early-return so both process paths clean up.
+
 ## [1.4.14] — 2026-11-18
 
 **The interaction six-pack: the group-sheet drag restore, the external-search

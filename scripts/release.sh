@@ -500,6 +500,9 @@ python3 scripts/test_v1413.py
 # v1.4.14 gate: the interaction six-pack (group-sheet drag, external-search new tab, omnibox icon diet, incognito return route, visual-search OOM ladder, bookmarks/history search)
 python3 scripts/test_v1414.py
 
+# v1.4.15 gate: the responsiveness four-pack (downloads listener law, tab-switcher stale highlight, omnibox state cache + off-thread suggest build, handler sweep)
+python3 scripts/test_v1415.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

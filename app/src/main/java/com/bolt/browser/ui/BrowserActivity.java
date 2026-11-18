@@ -1383,6 +1383,17 @@ public class BrowserActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         ui.removeCallbacksAndMessages(null);
+        // v1.4.15 — THE HANDLER SWEEP. sdWinH (the speed-dial hold-to-lift
+        // timer) and suggestH (the omnibox network debounce) were created as
+        // fields but only ui was ever cleaned here — a destroy with callbacks
+        // pending (a held speed-dial item, a 300 ms suggest timer mid-pause)
+        // kept the whole dying Activity reachable from its Handler's queued
+        // messages. Placed ABOVE the incognito early-return so BOTH process
+        // paths sweep. (suggestGen makes any in-flight SUGGEST_BUILD apply a
+        // no-op; the ui sweep above already drops its posted apply.)
+        sdWinH.removeCallbacksAndMessages(null);
+        suggestH.removeCallbacksAndMessages(null);
+        suggestPending = null;
         hideOtpChip();                                  // v1.3.31: no dangling fill chip
         hidePwChip();                                   // v1.3.38: password chip too
         // v1.3.60 — THE ORPHAN EXIT (the phantom's source of truth): dying
@@ -12714,9 +12725,19 @@ public class BrowserActivity extends AppCompatActivity {
         final android.widget.ImageButton pasteB = lay.findViewById(R.id.btn_omni_paste);
         final android.widget.ImageButton copyB = lay.findViewById(R.id.btn_omni_copy);
         final android.widget.ImageButton clearB = lay.findViewById(R.id.btn_omni_clear);
+        // v1.4.15 — THE STATE CACHE. The v1.4.14 watcher called setVisibility()
+        // on four views on EVERY keystroke; only an EMPTY<->TYPING transition
+        // ever changes what should be on screen. The cache holds the last
+        // applied state (Boolean[], null = never applied — the opening sync
+        // at the bottom must always run, whatever the XML defaults are); a
+        // keystroke that does not flip the state now costs one array read and
+        // zero layout invalidations.
+        final Boolean[] omniEmptyCache = new Boolean[1];
         final Runnable syncOmniIcons = () -> {
             try {
                 boolean empty = et.getText().length() == 0;
+                if (omniEmptyCache[0] != null && omniEmptyCache[0] == empty) return;
+                omniEmptyCache[0] = empty;
                 if (camB != null) camB.setVisibility(empty ? View.VISIBLE : View.GONE);
                 if (pasteB != null) pasteB.setVisibility(empty ? View.VISIBLE : View.GONE);
                 if (copyB != null) copyB.setVisibility(View.GONE);
@@ -12955,10 +12976,35 @@ public class BrowserActivity extends AppCompatActivity {
     // law: a new keystroke must kill the pending request, never stack
     // behind it), so only a typing PAUSE becomes a request. The local
     // rows (tabs/bookmarks/history/instant answers) still re-filter on
-    // EVERY keystroke — they are memory-fast; only the NETWORK is
-    // debounced.
+    // EVERY keystroke — memory-resident, but v1.4.15 moved their build
+    // off the main thread (SUGGEST_BUILD below); the NETWORK stays
+    // debounced AND the build stays off-thread — two separate doors.
     private final Handler suggestH = new Handler(Looper.getMainLooper());
     private Runnable suggestPending;
+
+    // v1.4.15 — THE LOCAL-SUGGEST BUILD THREAD. v1.4.13 debounced only the
+    // NETWORK pass; the local pass (bookmarks + speed-dial + the 400-entry
+    // history walk, every entry string-matched) still ran INSIDE
+    // afterTextChanged — synchronous JSON-array walking on the main thread,
+    // per keystroke, which is the "typing lag" arithmetic. The build now runs
+    // on ONE process-wide daemon thread (BrowserActivity exists in at most
+    // one process at a time, so one idle thread is the whole footprint).
+    // Every update() call — TextWatcher keystrokes and the debounced
+    // setWebSuggestions refresh, all main-thread — bumps suggestGen and
+    // carries the bump into the build; the apply pass (items swap +
+    // notifyDataSetChanged, posted through the ACTIVITY's ui handler so
+    // onDestroy's existing removeCallbacksAndMessages kills any still-queued
+    // one) lands only when its generation is still the newest. Stale builds
+    // still cost their walk but can never reach the screen. Until a fresh
+    // pass lands the PREVIOUS rows stay up (no flash of emptiness mid-word).
+    private static final java.util.concurrent.ExecutorService SUGGEST_BUILD =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "bolt-suggest");
+                t.setDaemon(true);
+                return t;
+            });
+    /** main-thread-confined: bumped by every update(), compared by every apply. */
+    private int suggestGen = 0;
 
     /** park [q] behind the 300 ms typing pause; called on every keystroke. */
     protected void scheduleNetSuggest(SuggestAdapter ad, String q) {
@@ -13031,10 +13077,39 @@ public class BrowserActivity extends AppCompatActivity {
 
         /** v1.3.36 — the suggestion pass: OPEN TAB matches first (the "switch
          *  to tab" rows Chrome shows), then history, then bookmarks, then the
-         *  search row. "action" is either an URL, "search:q", or "tab:idx". */
+         *  search row. "action" is either an URL, "search:q", or "tab:idx".
+         *  v1.4.15 — THE OFF-THREAD BUILD: update() is now a DISPATCHER. The
+         *  row build (the JSON walks) runs on SUGGEST_BUILD; the apply (items
+         *  swap + notify) posts back through the activity's ui handler and
+         *  lands only if its generation is still the newest. Old rows stay on
+         *  screen until the fresh pass replaces them — smoother than the old
+         *  clear-first flash of emptiness. */
         void update(String q) {
-            items.clear();
-            if (q == null) q = "";
+            final String query = q == null ? "" : q;
+            final int gen = ++suggestGen;          // main-thread only (see field)
+            final String wq = webQuery;            // snapshot: written on main
+            final List<String> wr = webRows;
+            try {
+                SUGGEST_BUILD.execute(() -> {
+                    try {
+                        final List<Object[]> fresh = buildRows(query, wq, wr);
+                        ui.post(() -> {
+                            try {
+                                if (gen != suggestGen) return;   // stale guard
+                                items.clear();
+                                items.addAll(fresh);
+                                notifyDataSetChanged();
+                            } catch (Throwable ignored) {}
+                        });
+                    } catch (Throwable ignored) {}
+                });
+            } catch (Throwable ignored) {}   // executor rejected (process dying)
+        }
+
+        /** the row build, pure except for reads (prefs snapshots, tm under its
+         *  monitor, resources) — safe off the main thread by design. */
+        private List<Object[]> buildRows(String q, String wq, List<String> wr) {
+            List<Object[]> out = new ArrayList<>();
             String ql = q.toLowerCase();
             // 0) v1.3.39 INSTANT ANSWER (menu-3 #2): math and unit queries
             // answer LOCALLY — "12*34", "100kg in lbs", "2h30m in minutes".
@@ -13049,7 +13124,7 @@ public class BrowserActivity extends AppCompatActivity {
             // 1) open tabs — switching beats reloading
             try {
                 synchronized (tm.tabs) {   // v1.4.11: the thread law — size()+get() as one step
-                    for (int i = 0; i < tm.tabs.size() && items.size() < 3; i++) {
+                    for (int i = 0; i < tm.tabs.size() && out.size() < 3; i++) {
                         Tab t = tm.tabs.get(i);
                         if (t == tm.current()) continue;
                         String title = t.isHome ? getString(R.string.home)
@@ -13057,7 +13132,7 @@ public class BrowserActivity extends AppCompatActivity {
                         String url = t.url == null ? "" : t.url;
                         if (!ql.isEmpty() && (title.toLowerCase().contains(ql)
                                 || url.toLowerCase().contains(ql))) {
-                            items.add(new Object[]{R.drawable.ic_tabcount,
+                            out.add(new Object[]{R.drawable.ic_tabcount,
                                     title.isEmpty() ? url : title,
                                     getString(R.string.switch_to_tab), "tab:" + i});
                         }
@@ -13085,7 +13160,7 @@ public class BrowserActivity extends AppCompatActivity {
                     String u = o.optString("url");
                     String t = o.optString("title");
                     if (u.toLowerCase().contains(ql) || t.toLowerCase().contains(ql)) {
-                        items.add(new Object[]{R.drawable.ic_bookmark, t.isEmpty() ? u : t, u, u});
+                        out.add(new Object[]{R.drawable.ic_bookmark, t.isEmpty() ? u : t, u, u});
                         bmFound++;
                     }
                 }
@@ -13105,7 +13180,7 @@ public class BrowserActivity extends AppCompatActivity {
                                 String u = s.optString("url");
                                 String t = s.optString("title");
                                 if (u.toLowerCase().contains(ql) || t.toLowerCase().contains(ql)) {
-                                    items.add(new Object[]{R.drawable.ic_home,
+                                    out.add(new Object[]{R.drawable.ic_home,
                                             t.isEmpty() ? u : t,
                                             getString(R.string.shortcut_in, o.optString("name")), u});
                                     sdFound++;
@@ -13115,7 +13190,7 @@ public class BrowserActivity extends AppCompatActivity {
                             String u = o.optString("url");
                             String t = o.optString("title");
                             if (u.toLowerCase().contains(ql) || t.toLowerCase().contains(ql)) {
-                                items.add(new Object[]{R.drawable.ic_home,
+                                out.add(new Object[]{R.drawable.ic_home,
                                         t.isEmpty() ? u : t,
                                         getString(R.string.home_shortcut), u});
                                 sdFound++;
@@ -13138,7 +13213,7 @@ public class BrowserActivity extends AppCompatActivity {
                 String u = o.optString("url");
                 String t = o.optString("title");
                 if (u.toLowerCase().contains(ql) || t.toLowerCase().contains(ql)) {
-                    items.add(new Object[]{R.drawable.ic_history, t.isEmpty() ? u : t, u, u});
+                    out.add(new Object[]{R.drawable.ic_history, t.isEmpty() ? u : t, u, u});
                     found++;
                 }
             }
@@ -13146,13 +13221,13 @@ public class BrowserActivity extends AppCompatActivity {
             // they already ranked above history at 2a
             if (!localFirst) {
                 org.json.JSONArray bm = prefs.bookmarks();
-                for (int i = 0; i < bm.length() && items.size() < 8; i++) {
+                for (int i = 0; i < bm.length() && out.size() < 8; i++) {
                     org.json.JSONObject o = bm.optJSONObject(i);
                     if (o == null) continue;
                     String u = o.optString("url");
                     String t = o.optString("title");
                     if (u.toLowerCase().contains(ql) || t.toLowerCase().contains(ql)) {
-                        items.add(new Object[]{R.drawable.ic_bookmark, t.isEmpty() ? u : t, u, u});
+                        out.add(new Object[]{R.drawable.ic_bookmark, t.isEmpty() ? u : t, u, u});
                     }
                 }
             }
@@ -13164,11 +13239,11 @@ public class BrowserActivity extends AppCompatActivity {
             String[] names = getResources().getStringArray(R.array.search_engine_names);
             String eng = names[Math.max(0, Math.min(names.length - 1, prefs.searchEngine()))];
             if (bangUrl != null) {
-                items.add(new Object[]{R.drawable.ic_search,
+                out.add(new Object[]{R.drawable.ic_search,
                         getString(R.string.search_with, eng) + ": " + q,
                         "custom engine · " + bangUrl, bangUrl});
             } else {
-                items.add(new Object[]{R.drawable.ic_search,
+                out.add(new Object[]{R.drawable.ic_search,
                         getString(R.string.search_with, eng) + ": " + q, q, "search:" + q});
             }
             // 5) v1.4.13 — THE DEBOUNCED ENGINE ROWS: up to five completions
@@ -13176,14 +13251,14 @@ public class BrowserActivity extends AppCompatActivity {
             // holds the exact query they answer (webQuery — a keystroke
             // past the pause hides them until the next pause's answer).
             // They arrive via setWebSuggestions, never a keystroke.
-            if (!webRows.isEmpty() && q.trim().equalsIgnoreCase(webQuery)) {
-                for (String s : webRows) {
-                    if (items.size() >= 15) break;
-                    items.add(new Object[]{R.drawable.ic_search, s,
+            if (!wr.isEmpty() && q.trim().equalsIgnoreCase(wq)) {
+                for (String s : wr) {
+                    if (out.size() >= 15) break;
+                    out.add(new Object[]{R.drawable.ic_search, s,
                             getString(R.string.search_with, eng), "search:" + s});
                 }
             }
-            notifyDataSetChanged();
+            return out;
         }
 
         @NonNull

@@ -386,6 +386,10 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.15 (2026-11-18): the responsiveness four-pack — the downloads
+         event-listener law, the tab-switcher stale-highlight fix, the
+         omnibox state cache + off-thread suggestion build, the handler sweep -->
+    <item>1.4.15|The Downloads screen now hears the download engine directly (events instead of a 500 ms poll — progress updates land the instant a download advances, so switching screens never looks reset or stale); the tab switcher re-highlights the CURRENT tab on every reopen (a notification or external link that moved your reading tab used to leave the old one outlined); typing in the address bar is smoother twice over — the icon strip only re-lays-out when the empty/typing state actually flips, and the bookmark/history suggestion walk moved off the main thread so every keystroke renders instantly; two lingering handler leaks (the speed-dial hold timer and the omnibox suggestion debounce) are cleaned up when the browser is destroyed.</item>
     <!-- v1.4.14 (2026-11-18): the interaction six-pack — the group-sheet
          drag restore, the external-search new-tab law, the omnibox
          icon diet, the incognito return route, the visual-search OOM
