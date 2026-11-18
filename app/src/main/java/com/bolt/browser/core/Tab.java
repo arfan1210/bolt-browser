@@ -147,10 +147,15 @@ public class Tab {
     public WebView buildWeb(Context c, WebViewClient vc, WebChromeClient cc,
                             Object jsBridge, boolean incognito) {
         if (web != null) return web;
-        // v1.3.38: BoltWeb (Kotlin) — a plain WebView EXCEPT it lets the
-        // browser intercept the text-selection ActionMode (selection bubble
-        // actions). No other behavior change.
-        WebView w = new com.bolt.browser.ui.BoltWeb(c);
+        // v1.4.13 — THE PRE-WARM TAKE: pull BoltApp's spare WebView when the
+        // pool still holds one (its MutableContextWrapper swaps to THIS
+        // caller's context inside take — see core/WebPool.java) and fall
+        // back to plain construction otherwise. Everything below configures
+        // either instance identically: the settings block is idempotent and
+        // the once-per-WebView guards (PasskeyCompat, FrameHooks, ShadowGate)
+        // see a fresh view either way.
+        WebView w = com.bolt.browser.core.WebPool.take(c);
+        if (w == null) w = new com.bolt.browser.ui.BoltWeb(c);
         // opaque background: transparent WebView surfaces can flash the previous
         // tab's last frame when they are re-attached ("ghosting of previous tabs")
         // v1.3.33: skin-aware (Fx.webBg resolves from the skin pref directly —

@@ -342,6 +342,96 @@ this relay, 2026-11-18):
    gradle-8.9/ and local.properties; full toolchain back via
    `scripts/setup_toolchain.sh` in ~4 min.
 
+**v1.4.13 — the performance five-pack** (the seventh session of this relay,
+2026-11-18):
+
+1. *The toolbar label.* The report said the PROCESS_TEXT filter "was
+   missing the MIME type" — v1.4.12 had already shipped it (all five
+   aliases, pinned by its own gate). The REAL gap was the label: the
+   text-selection toolbar renders the RESOLVED FILTER's label, and a
+   filter without one falls back to the bare app name. Every alias's
+   PROCESS_TEXT filter now carries its own `android:label`
+   ("Search in Bolt"). Verified in the BUILT apk (aapt on the binary
+   manifest: filter label resource + action + DEFAULT + text/plain all
+   present), because a source-level pin alone never proves the MERGED
+   artifact. Learning: when a report's diagnosis is already fixed in
+   HEAD, reread what the USER actually sees — the visible symptom
+   ("shows as just Bolt" vs "Search in Bolt") is the real ask.
+2. *The omnibox debounce.* The report described a per-keystroke network
+   suggestion pass THAT DID NOT EXIST — the suggest adapter was purely
+   local (tabs/bookmarks/history/instant answers). The fix therefore
+   SHIPPED the feature with its discipline on day one: engine
+   completions (osjson: Google client=firefox, DDG type=list, Bing
+   osjson, Brave, Startpage — dead endpoints degrade to no rows, never
+   an error) behind a 300 ms Handler/Runnable in the TextWatcher
+   (removeCallbacks BEFORE postDelayed — a new keystroke kills the
+   pending request), one background thread, a rising generation counter
+   + a field-still-holds-the-query guard against late answers, a
+   five-row cap, NEVER in incognito, and a Settings off-switch
+   ("Search suggestions (from the engine)", default ON). Learning:
+   when the field report and the code disagree, the honest move is to
+   make the report TRUE the right way — born debounced, not retrofitted.
+3. *The favicon LRU.* The disk cache grew forever. Two caps now bound
+   it — 1000 icons / 50 MB, either trips the sweep — and eviction is
+   least-recently-used by lastModified, which is now a USE stamp:
+   load() touches every file it serves from disk (once per host per
+   process, before the mem LRU takes over), so "oldest" means "least
+   recently served", surviving restarts. The selection is a PURE
+   function (selectEvictions) proven by a compiled+run transcription
+   probe (the v1.4.11 parse-gate law applied to the one extractable
+   pure body). Learning, twice: an eviction order without read-touches
+   measures CAPTURE age, not use — it deletes the site you visit every
+   day; and the probe's own first draft had a wrong expectation
+   (size-optimization instead of pure LRU) — the probe caught the
+   TESTER, which is exactly what probes are for.
+4. *The WebView pre-warm pool.* A cold `new WebView()` costs ~300 ms of
+   main-thread CPU (provider load + AwContents). BoltApp now posts a
+   spare, never-attached BoltWeb 250 ms after process start (both
+   processes — the incognito data-dir suffix is set earlier in the same
+   onCreate, synchronously), and Tab.buildWeb TAKES it with a
+   plain-construction fallback. The context law: the spare is built
+   over a MutableContextWrapper(appContext) and take() swaps the base
+   to the real owner before handoff — a bare app-context WebView breaks
+   themed dialogs (HTML <select multiple>'s AlertDialog cannot get a
+   window token: BadTokenException), so the swap is what makes a
+   pre-built instance safe to attach to an activity. Learning: never
+   construct a WebView you intend to attach on anything but a swappable
+   wrapper — the constructor's context outlives your knowledge of the
+   owner.
+5. *The If-Range contract.* The Range/.part resume itself predates this
+   release (Range: bytes=N-, 206 append / 200 restart / 416 fresh-start)
+   — re-pinned so it cannot silently regress. The hole this release
+   closes: a server that STILL honors Range after changing the file
+   answers 206 and the old code silently SPLICED two different bodies
+   into one corrupt download. The engine now captures every final
+   response's ETag, persists it with the queue (survives the pause AND
+   the process death), and sends it back as If-Range on resume:
+   unchanged → 206 append as before, changed → 200 and the existing
+   restart path replaces the part. Both restart paths clear the dead
+   validator (no part, no etag). Learning: resume without a validator
+   is not a feature, it is a corruption generator with extra steps.
+6. *The standing sweep, v1.4.13 edition.* All 30 prior version gates
+   re-pinned 127/1.4.13 with dated notes (the repin script lives in the
+   workspace: `scripts/repin_gates_1413.py`); test_v1410/test_v1411/
+   test_v1412 got surgical entry-index edits (every About-changelog pin
+   slid one slot down when the 1.4.13 line landed at entries[0] — v1410
+   also gained its missing [2]=1.4.11 check and a fixed stale
+   versionName message label). Suite: 68/68 release-pipeline check
+   commands green (54 python gates + 9 node checks + 2 javac + 3 java
+   sim probes) across 37 version gates.
+7. *Environment learning (the half-installed platform).* The
+   2026-11-18 recycle wiped the toolchain again; setup_toolchain.sh
+   restored it — but `sdk/platforms/android-34/` survived HALF-INSTALLED
+   (package.xml + framework.aidl present, android.jar MISSING), so
+   sdkmanager believed the package installed and no-op'd, and Gradle
+   answered "Cannot query the value of this provider because it has no
+   value available" (its generic form for an unresolvable bootclasspath).
+   The fix: `rm -rf` the platform dir and reinstall it. Also: the first
+   background setup run died silently (a retry worked) — always re-check
+   the toolchain log AND the binary it claims to have built. The
+   workspace `scripts/restore_credentials.py` was rebuilt (the = skip
+   law from v1.4.12, now a script again after the recycle).
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
@@ -365,14 +455,19 @@ backup WITHOUT printing the password — the credential lines are
 keyPassword value's trailing "(PKCS12…)" note is dropped by the
 first-token rule).
 
-**Known-good numbers** (v1.4.12, release build): APK 2,754,345 B (budget
+**Known-good numbers** (v1.4.13, release build): APK 2,758,617 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-62/62 release-pipeline check commands green (53 python gates + 9 node
-checks) across 36 version gates; filter rule census unchanged from
-v1.4.9 (103,087 network rules, 1,709 on the regex path — see the
-hardening note above).
+68/68 release-pipeline check commands green (54 python gates + 9 node
+checks + 2 javac + 3 java sim probes) across 37 version gates; filter rule
+census unchanged from v1.4.9 (103,087 network rules, 1,709 on the regex
+path — see the hardening note above).
 
 **Plans / candidates for future versions:**
+- v1.4.13's NetSuggest endpoints are best-knowledge URLs — Startpage's
+  `suggestions?format=json` is the least certain (never field-verified);
+  a dead endpoint degrades to no rows by design, and the map is ONE
+  function (NetSuggest.endpointFor) to re-point when a field report
+  names a silent engine.
 - The bundled EasyList/EasyPrivacy snapshot refresh stays a candidate (it
   was on the v1.4.11 list and was DEFERRED — the stability four-pack took
   the release; the in-app updater exists, but the APK baseline drifts).

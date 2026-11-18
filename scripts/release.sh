@@ -494,6 +494,8 @@ python3 scripts/test_v1410.py
 python3 scripts/test_v1411.py
 # v1.4.12 gate: the usability five-pack (payload diet, group sheet, incognito flag, system search, omnibox doors)
 python3 scripts/test_v1412.py
+# v1.4.13 gate: the performance five-pack (toolbar label, omnibox debounce, favicon LRU, webview pre-warm, if-range resume)
+python3 scripts/test_v1413.py
 
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk

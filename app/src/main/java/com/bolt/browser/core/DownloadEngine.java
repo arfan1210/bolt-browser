@@ -67,6 +67,14 @@ public class DownloadEngine {
         public String cdName = ""; // v1.3.86 — filename from the final response's Content-Disposition (transient)
         public String lastUrl = ""; // v1.3.90 — final URL after the redirect chain (transient; the path-extension rescue reads it)
         public String ua = "", referer = "";
+        // v1.4.13 — the validator for SAFE resume: the ETag of the response
+        // the .part file was downloaded from. Sent back as If-Range on the
+        // resume request, so a server-side file change answers 200 (full
+        // body — the existing restart path replaces the part) instead of a
+        // 206 that would silently APPEND two different files into one
+        // corrupt download. Empty when the server sent no ETag — resume
+        // then behaves exactly as before (Range only, server's discretion).
+        public String etag = "";
         public int status = ST_QUEUED;
         public long done = 0, total = 0;
         public long speed = 0;   // bytes/s while RUNNING (transient, not persisted)
@@ -82,6 +90,7 @@ public class DownloadEngine {
                 o.put("ua", ua); o.put("ref", referer); o.put("st", status);
                 o.put("done", done); o.put("total", total); o.put("uri", finalUri);
                 o.put("err", error); o.put("t", time);
+                o.put("etag", etag == null ? "" : etag);   // v1.4.13: survives the pause
                 return o;
             } catch (Throwable e) { return new JSONObject(); }
         }
@@ -98,6 +107,7 @@ public class DownloadEngine {
             it.done = o.optLong("done");
             it.total = o.optLong("total");
             it.finalUri = o.optString("uri");
+            it.etag = o.optString("etag");   // v1.4.13: the If-Range validator rides the pause
             it.error = o.optString("err");
             it.time = o.optLong("t", System.currentTimeMillis());
             return it;
@@ -555,7 +565,19 @@ public class DownloadEngine {
                 if (cookies != null && !cookies.isEmpty()) conn.setRequestProperty("Cookie", cookies);
             } catch (Throwable ignored) {}
             conn.setRequestProperty("Accept", "*/*");
-            if (resume) conn.setRequestProperty("Range", "bytes=" + part.length() + "-");
+            // v1.4.13 — THE RESUME CONTRACT: a .part file on disk means the
+            // download picks up at that exact byte (Range, below) — but only
+            // when the file on the SERVER has not changed since the part was
+            // written. If-Range carries the ETag captured from the response
+            // the part came from: an unchanged file answers 206 (append), a
+            // CHANGED file answers 200 (the existing restart path replaces
+            // the part) — without it, a changed file that still honors Range
+            // would splice two different bodies into one corrupt download.
+            if (resume) {
+                conn.setRequestProperty("Range", "bytes=" + part.length() + "-");
+                if (it.etag != null && !it.etag.isEmpty())
+                    conn.setRequestProperty("If-Range", it.etag);
+            }
             int code = conn.getResponseCode();
             if (code >= 300 && code < 400) {
                 String loc = conn.getHeaderField("Location");
@@ -567,9 +589,10 @@ public class DownloadEngine {
             if (code == 206) {
                 // partial: keep appending to part
             } else if (code == 200 || code == 201 || code == 204) {
-                if (resume) { // server ignored Range -> restart
+                if (resume) { // server ignored Range (or If-Range said CHANGED) -> restart
                     part.delete();
                     resume = false;
+                    it.etag = "";   // v1.4.13: the part's validator died with the part; the fresh capture below re-arms it
                 }
             } else if (code == 416 && resume) {
                 // v1.3.90 — RANGE NOT SATISFIABLE: the part already holds
@@ -581,6 +604,7 @@ public class DownloadEngine {
                 conn.disconnect();
                 part.delete();
                 resume = false;
+                it.etag = "";   // v1.4.13: same law as the 200 restart — no part, no validator
                 it.done = 0;
                 continue;   // (no Range sent on the next pass, so 416 cannot repeat; the hop budget bounds it)
             } else {
@@ -609,6 +633,16 @@ public class DownloadEngine {
             try {
                 String fn = cdFilename(conn.getHeaderField("Content-Disposition"));
                 if (!fn.isEmpty()) it.cdName = fn;
+            } catch (Throwable ignored) {}
+            // v1.4.13 — capture the validator for the NEXT resume: every
+            // final response's ETag (206 or 200) is stored on the item and
+            // persisted, so a pause/kill followed by resume can prove the
+            // part still matches the server's current file. No ETag -> the
+            // item keeps its old one only while the part survives untouched
+            // by a 200 restart (the restart path below clears it with the part).
+            try {
+                String et = conn.getHeaderField("ETag");
+                if (et != null && !et.trim().isEmpty()) it.etag = et.trim();
             } catch (Throwable ignored) {}
             it.lastUrl = url;   // v1.3.90: the post-redirect URL feeds the path-extension rescue
             it.total = resume ? part.length() + Math.max(0, contentLen) : Math.max(0, contentLen);

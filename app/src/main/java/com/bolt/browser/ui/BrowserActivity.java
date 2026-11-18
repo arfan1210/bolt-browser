@@ -12691,7 +12691,10 @@ public class BrowserActivity extends AppCompatActivity {
             et.requestFocus();
         });
         et.addTextChangedListener(new TextWatcher() {
-            public void afterTextChanged(Editable s) { ad.update(s.toString()); }
+            public void afterTextChanged(Editable s) {
+                ad.update(s.toString());
+                scheduleNetSuggest(ad, s.toString());   // v1.4.13: the debounced engine pass
+            }
             public void beforeTextChanged(CharSequence a, int b, int c, int d) {}
             public void onTextChanged(CharSequence a, int b, int c, int d) {}
         });
@@ -12841,6 +12844,9 @@ public class BrowserActivity extends AppCompatActivity {
 
     protected void omniboxDismiss(View lay) {
         hideKeyboard();
+        // v1.4.13: a dismissed omnibox kills its pending suggestion request
+        // too — the debounce timer never fires into a dead dialog
+        if (suggestPending != null) { suggestH.removeCallbacks(suggestPending); suggestPending = null; }
         try {
             if (omniboxDialog != null && omniboxDialog.isShowing()) {
                 // v1.3.36: retract the way it came in — a quick slide back to
@@ -12863,6 +12869,58 @@ public class BrowserActivity extends AppCompatActivity {
 
     protected android.app.Dialog omniboxDialog;
 
+    // ------------------------------------------------------------ v1.4.13
+    // THE OMNIBOX NETWORK DEBOUNCE. The report: "the omnibox fires a
+    // network request for search suggestions on every single keystroke,
+    // causing network flooding and UI stutter." Every keystroke RESETS a
+    // 300 ms timer (removeCallbacks BEFORE postDelayed — the debounce
+    // law: a new keystroke must kill the pending request, never stack
+    // behind it), so only a typing PAUSE becomes a request. The local
+    // rows (tabs/bookmarks/history/instant answers) still re-filter on
+    // EVERY keystroke — they are memory-fast; only the NETWORK is
+    // debounced.
+    private final Handler suggestH = new Handler(Looper.getMainLooper());
+    private Runnable suggestPending;
+
+    /** park [q] behind the 300 ms typing pause; called on every keystroke. */
+    protected void scheduleNetSuggest(SuggestAdapter ad, String q) {
+        if (suggestPending != null) suggestH.removeCallbacks(suggestPending);
+        final String query = q;
+        suggestPending = () -> {
+            suggestPending = null;
+            fireNetSuggest(ad, query);
+        };
+        suggestH.postDelayed(suggestPending, 300L);
+    }
+
+    /** the pause elapsed — NOW the one request may fire (and only if the
+     *  privacy doors all open). */
+    private void fireNetSuggest(SuggestAdapter ad, String q) {
+        try {
+            if (incognito) return;                        // privacy law: never in private mode
+            if (!prefs.suggestNetwork()) return;          // the settings off door
+            String t = q == null ? "" : q.trim();
+            if (t.isEmpty() || t.startsWith("!")) return; // bangs route through custom engines
+            boolean urlish = t.startsWith("http") || t.contains("://")
+                    || t.startsWith("www.")
+                    || t.matches("(?i)[a-z0-9-]+(\\.[a-z0-9-]+)+(/.*)?");
+            if (urlish) return;                            // URLs get no suggestions
+            final String query = t;
+            com.bolt.browser.util.NetSuggest.fetch(prefs.searchEngine(), query,
+                    rows -> {
+                        // the stale guard: only re-filter when the field
+                        // still holds the query these rows answer
+                        try {
+                            if (ad == null) return;
+                            String now = ad.currentQuery() == null
+                                    ? "" : ad.currentQuery().trim();
+                            if (!query.equals(now)) return;
+                            ad.setWebSuggestions(query, rows);
+                        } catch (Throwable ignored) {}
+                    });
+        } catch (Throwable ignored) {}
+    }
+
     protected class SuggestAdapter extends RecyclerView.Adapter<SuggestAdapter.H> {
         private final List<Object[]> items = new ArrayList<>(); // {icon, title, sub, action}
         private android.app.Dialog dialog;
@@ -12873,6 +12931,25 @@ public class BrowserActivity extends AppCompatActivity {
         SuggestAdapter(EditText field) { this.field = field; }
 
         void setDialog(android.app.Dialog d) { dialog = d; }
+
+        // v1.4.13 — THE DEBOUNCED ENGINE ROWS (NetSuggest): the query they
+        // answer is carried WITH them (webQuery) — a later keystroke that
+        // changed the field never shows the previous pause's rows.
+        private String webQuery = "";
+        private List<String> webRows = new ArrayList<>();
+
+        /** what the field holds right now (the stale-response guard reads it). */
+        String currentQuery() {
+            try { return field.getText().toString(); } catch (Throwable t) { return ""; }
+        }
+
+        /** the debounced network answer landed — re-filter with the rows
+         *  attached (only called when the field still holds [query]). */
+        void setWebSuggestions(String query, List<String> rows) {
+            webQuery = query == null ? "" : query;
+            webRows = rows == null ? new ArrayList<>() : new ArrayList<>(rows);
+            update(currentQuery());
+        }
 
         /** v1.3.36 — the suggestion pass: OPEN TAB matches first (the "switch
          *  to tab" rows Chrome shows), then history, then bookmarks, then the
@@ -13015,6 +13092,18 @@ public class BrowserActivity extends AppCompatActivity {
             } else {
                 items.add(new Object[]{R.drawable.ic_search,
                         getString(R.string.search_with, eng) + ": " + q, q, "search:" + q});
+            }
+            // 5) v1.4.13 — THE DEBOUNCED ENGINE ROWS: up to five completions
+            // from the selected engine, shown ONLY while the field still
+            // holds the exact query they answer (webQuery — a keystroke
+            // past the pause hides them until the next pause's answer).
+            // They arrive via setWebSuggestions, never a keystroke.
+            if (!webRows.isEmpty() && q.trim().equalsIgnoreCase(webQuery)) {
+                for (String s : webRows) {
+                    if (items.size() >= 15) break;
+                    items.add(new Object[]{R.drawable.ic_search, s,
+                            getString(R.string.search_with, eng), "search:" + s});
+                }
             }
             notifyDataSetChanged();
         }

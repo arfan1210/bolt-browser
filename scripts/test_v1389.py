@@ -157,8 +157,8 @@ need("var hid=false;try{hid=isReallyHidden();}catch(x){}" in mhk,
 print("V1 — version pin")
 m = re.search(r"versionCode\s+(\d+)", gradle)
 m2 = re.search(r'versionName\s+"([^"]+)"', gradle)
-need(m and m.group(1) == "126" and m2 and m2.group(1) == "1.4.12",  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
-     "build.gradle pins 126 / 1.4.12 (got %s / %s)" % (  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
+need(m and m.group(1) == "127" and m2 and m2.group(1) == "1.4.13",  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
+     "build.gradle pins 127 / 1.4.13 (got %s / %s)" % (  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
          m.group(1) if m else "?", m2.group(1) if m2 else "?"))
 
 print()

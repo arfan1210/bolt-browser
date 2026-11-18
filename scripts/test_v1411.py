@@ -105,26 +105,28 @@ def strip_comments_strings(src):
 scr_code = strip_comments_strings(scr)
 
 print("A — the version bump")
-need(re.search(r"versionCode 126\b", gradle) is not None,  # # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
-     "versionCode 126 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.12"', gradle) is not None,  # # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)
-     'versionName "1.4.12"')
+need(re.search(r"versionCode 127\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
+     "versionCode 127 (Android only installs RISING codes)")
+need(re.search(r'versionName "1\.4\.13"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
+     'versionName "1.4.13"')
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.12|"),   # v1.4.12 re-point (2026-11-18): 1.4.12 landed at [0]
-     "the newest entry is 1.4.12 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.11|"),   # v1.4.12 re-point (2026-11-18): this gate's line slid to [1]
-     "the second entry is 1.4.11 (the version this gate pins)")
-need("leak" in entries[1] and "rotation" in entries[1],   # v1.4.12 re-point: slid from [0]
+need(entries and entries[0].startswith("1.4.13|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]
+     "the newest entry is 1.4.13 (the label law)")
+need(len(entries) > 1 and entries[1].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): the 1.4.12 line sits at [1]
+     "the second entry is 1.4.12 (the previous live release)")
+need(len(entries) > 2 and entries[2].startswith("1.4.11|"),   # v1.4.13 re-point (2026-11-18): this gate's line slid to [2]
+     "the third entry is 1.4.11 (the version this gate pins)")
+need("leak" in entries[2] and "rotation" in entries[2],   # v1.4.13 re-point: slid from [1]
      "the 1.4.11 line names the OCR rotation leak")
-need("list lock" in entries[1] or "holds the list lock" in entries[1],   # v1.4.12 re-point: slid from [0]
+need("list lock" in entries[2] or "holds the list lock" in entries[2],   # v1.4.13 re-point: slid from [1]
      "the 1.4.11 line names the tab-list lock sweep")
-need("Accept" in entries[1],   # v1.4.12 re-point: slid from [0]
+need("Accept" in entries[2],   # v1.4.13 re-point: slid from [1]
      "the 1.4.11 line names the Accept-header adblock signal")
-need("cookie" in entries[1] and ("retries" in entries[1] or "retry" in entries[1]),   # v1.4.12 re-point: slid from [0]
+need("cookie" in entries[2] and ("retries" in entries[2] or "retry" in entries[2]),   # v1.4.13 re-point: slid from [1]
      "the 1.4.11 line names the cookie-jar retry")
 
 print("C — fix 1: the OCR rotation leak (app context, never the activity)")

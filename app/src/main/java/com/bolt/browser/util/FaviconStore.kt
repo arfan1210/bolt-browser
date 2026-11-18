@@ -58,6 +58,17 @@ object FaviconStore {
 
     private const val MAX = 64          // px — crisper on tab cards
 
+    // v1.4.13 — THE DISK BUDGET (the report: "the favicon cache downloads
+    // and saves icons but never evicts old ones, leading to infinite
+    // storage growth over time"). Two caps, EITHER one triggers eviction:
+    // at most 1000 icon files, at most 50 MB of icons on disk. Eviction is
+    // LRU by lastModified — and lastModified is a USE stamp: load() touches
+    // every file it serves (once per host per process, before the mem LRU
+    // takes over), a fresh store() write stamps the just-saved file, so
+    // "oldest" genuinely means "least recently used", surviving restarts.
+    const val MAX_ICONS = 1000
+    const val MAX_BYTES = 50L * 1024 * 1024
+
     // v1.3.79 — THE MEMORY LAYER. store() now rides the background executor
     // (the v1.3.79 perf pass: onReceivedIcon used to PNG-encode + write on
     // the MAIN thread, 10–50 ms per icon landing), so surfaces need a fast
@@ -261,6 +272,11 @@ object FaviconStore {
             FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
             File(dir(c), missName(h)).delete()   // a real icon clears the miss marker
             mem[h] = bmp
+            // v1.4.13 — the LRU sweep rides the same executor thread as the
+            // write: every save re-examines the budget, so an over-cap dir
+            // (years of growth predating this law, or a restore) is trimmed
+            // on the FIRST store after it — no timer, no cold-start pass.
+            try { evictOverBudgetLocked(dir(c), f) } catch (ignored: Throwable) {}
             // v1.3.95 — THE COMPOUND-KEY FIX: tileCache keys are
             // "host|sizeDp|radiusDp|mode"; remove(h) never matched one, so
             // an icon landing from the network fallback never refreshed
@@ -275,6 +291,90 @@ object FaviconStore {
             return bmp
         } catch (t: Throwable) { return null }
     }
+
+    // ---------------- v1.4.13: the LRU eviction law ----------------
+
+    /**
+     * PURE selection (no Android, no filesystem mutation — the gate
+     * transcribes + runs this exact body): given the icon files with their
+     * sizes, decide which to DELETE so the survivors fit both caps.
+     * Rules:
+     *  - [keep] (the file this store just wrote) is NEVER a candidate — it
+     *    carries the NEWEST stamp by construction anyway, but the law is
+     *    explicit, not incidental;
+     *  - candidates sort oldest-stamp FIRST (LRU: lastModified is the use
+     *    stamp — load() refreshes it, store() refreshes it);
+     *  - delete in that order until the count is <= maxIcons AND the total
+     *    size is <= maxBytes — BOTH caps must hold when the sweep stops;
+     *  - an already-under-budget dir selects nothing.
+     */
+    fun selectEvictions(
+        files: List<Pair<Long, Long>>,   // (lastModified, size) per file
+        keepIdx: Int,
+        maxIcons: Int,
+        maxBytes: Long
+    ): List<Int> {
+        var count = 0
+        var total = 0L
+        for (i in files.indices) {
+            count++
+            total += files[i].second
+        }
+        if (count <= maxIcons && total <= maxBytes) return emptyList()
+        val order = files.indices
+            .filter { it != keepIdx }
+            .sortedBy { files[it].first }
+        val out = ArrayList<Int>()
+        for (i in order) {
+            if (count <= maxIcons && total <= maxBytes) break
+            out.add(i)
+            count--
+            total -= files[i].second
+        }
+        return out
+    }
+
+    /** the disk-side sweep (executor thread only, hence Locked): list the
+     *  icon .png files (miss markers are neither counted nor evicted — they
+     *  are 0-byte backoff flags, not icons), select, delete, and drop the
+     *  memory entries of everything deleted so avatar() never serves a
+     *  corpse. */
+    private fun evictOverBudgetLocked(dir: File, keep: File) {
+        val fs = dir.listFiles() ?: return
+        val icons = fs.filter { it.isFile && it.name.endsWith(".png") && !it.name.endsWith(".miss") }
+        if (icons.isEmpty()) return
+        val stamps = icons.map { Pair(try { it.lastModified() } catch (t: Throwable) { 0L },
+                try { it.length() } catch (t: Throwable) { 0L }) }
+        val keepIdx = icons.indexOfFirst { it.path == keep.path }
+        for (idx in selectEvictions(stamps, keepIdx, MAX_ICONS, MAX_BYTES)) {
+            val victim = icons[idx]
+            try { victim.delete() } catch (ignored: Throwable) {}
+            val host = hostOf(victim)
+            if (host != null) {
+                try { mem.remove(host) } catch (ignored: Throwable) {}
+                try {
+                    synchronized(tileCache) {
+                        val it = tileCache.entries.iterator()
+                        while (it.hasNext()) if (it.next().key.startsWith("$host|")) it.remove()
+                    }
+                } catch (ignored: Throwable) {}
+            }
+        }
+    }
+
+    /** decode an icon file's name back to its host key (base64url, no
+     * padding — see [name]); null when the name is not one of ours. */
+    private fun hostOf(f: File): String? = try {
+        val n = f.name
+        if (!n.endsWith(".png")) null
+        else {
+            val b = android.util.Base64.decode(
+                    n.removeSuffix(".png"),
+                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                            or android.util.Base64.NO_PADDING)
+            String(b, Charsets.UTF_8)
+        }
+    } catch (t: Throwable) { null }
 
     /** v1.3.79 — THE DOM-EXTRACTION LANDING (the universal favicon fix).
      *  The page itself rasterizes its own <link rel=icon> (SVG included —
@@ -297,7 +397,11 @@ object FaviconStore {
 
     /** the stored icon for a base domain, or null. v1.3.79: the LRU serves
      *  every hit after the first (the disk decode happens once per host per
-     *  process now); a miss still schedules the network fallback. */
+     *  process now); a miss still schedules the network fallback.
+     *  v1.4.13: a disk HIT refreshes the file's lastModified — the LRU use
+     *  stamp. Once per host per process (the mem LRU takes over after), so
+     *  the metadata write is bounded; without it, eviction order would be
+     *  "oldest SAVED", deleting the site you visit every day. */
     @JvmStatic
     fun load(c: Context, host: String?): Bitmap? {
         if (host.isNullOrEmpty()) return null
@@ -313,7 +417,14 @@ object FaviconStore {
                     try { mem.remove(h) } catch (_: Throwable) {} }
                 val f = File(dir(c), name(h))
                 val b = if (!f.exists()) null else BitmapFactory.decodeFile(f.path)
-                if (b != null) { mem[h] = b; b }
+                if (b != null) {
+                    // v1.4.13 — the LRU use stamp: this disk hit (the first
+                    // for this host this process) marks the file freshly
+                    // USED, so the eviction sweep measures recency of READS,
+                    // not recency of captures
+                    try { f.setLastModified(System.currentTimeMillis()) } catch (ignored: Throwable) {}
+                    mem[h] = b; b
+                }
                 else {
                     // v1.3.81: the baseDomain file is the legacy fallback
                     // (pre-v1.3.81 captures were keyed that way) before the

@@ -379,9 +379,17 @@
     <string name="suggest_local_first">Suggest bookmarks &amp; shortcuts first</string>
     <string name="home_shortcut">Home shortcut</string>
     <string name="shortcut_in">Shortcut in %1$s</string>
+    <!-- v1.4.13 — the PROCESS_TEXT toolbar label (the filter's own label is
+         what the text-selection toolbar shows) + the network-suggest toggle -->
+    <string name="search_in_bolt">Search in Bolt</string>
+    <string name="suggest_network">Search suggestions (from the engine)</string>
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.13 (2026-11-18): the performance five-pack — the text-selection
+         toolbar label, the omnibox network debounce, the favicon LRU
+         eviction, the WebView pre-warm pool, the If-Range resume contract -->
+    <item>1.4.13|The text-selection toolbar now shows a proper "Search in Bolt" label (the PROCESS_TEXT filter carries its own label plus the text/plain MIME on every launcher face); the address bar asks your search engine for completions only after a 300 ms typing pause — one request per pause, never per keystroke, never in incognito, with an off switch in Settings; the favicon cache is capped at 1000 icons / 50 MB and evicts least-recently-used files (reads refresh the use stamp); a spare WebView is pre-warmed in the background at app start, so opening a new tab no longer pays the ~300 ms construction stutter; interrupted downloads resume from the exact byte they stopped at — now with an ETag/If-Range check so a file that changed server-side restarts cleanly instead of splicing two different files into one corrupt download.</item>
     <!-- v1.4.12 (2026-11-18): the usability five-pack — the AI translate
          payload diet, the group folder sheet + switcher context, the
          incognito tabs process flag, the system search entries, the

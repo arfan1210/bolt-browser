@@ -4,6 +4,73 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.13] — 2026-11-18
+
+**The performance five-pack: the text-selection toolbar label, the omnibox
+network debounce, the favicon LRU eviction, the WebView pre-warm pool, and
+the If-Range resume contract.**
+
+### Fixed — "SEARCH IN BOLT" IN THE TEXT-SELECTION TOOLBAR
+- The `ACTION_PROCESS_TEXT` filters shipped in v1.4.12 carry the
+  `text/plain` MIME type (without it Android's
+  `setTypeAndNormalize("text/plain")` query never resolves an activity, and
+  the app is invisible in the floating toolbar). This release makes the
+  toolbar entry legible as an ACTION, not just an app name: every one of the
+  five launcher aliases' PROCESS_TEXT filters now carries **its own label —
+  "Search in Bolt"** — because the toolbar renders the resolved filter's
+  label, which otherwise falls back to the bare app label.
+
+### Fixed — THE OMNIBOX NETWORK DEBOUNCE (one request per typing pause, not per keystroke)
+- The omnibox's engine suggestion pass is born debounced: a keystroke parks
+  a **300 ms Handler/Runnable timer** (`removeCallbacks` before
+  `postDelayed` — a new keystroke kills the pending request instead of
+  stacking behind it), so only a typing **pause** becomes a network request.
+  Local rows (open tabs, bookmarks, shortcuts, history, instant answers)
+  still re-filter on every keystroke — they are memory-fast; only the
+  network is throttled. The rows arrive from the selected engine's
+  OpenSearch-style `osjson` endpoint (Google / DuckDuckGo / Bing / Brave /
+  Startpage), are capped at five, carry a stale-response guard (an answer
+  only applies while the field still holds the exact query it answers), and
+  a rising generation counter drops late answers outright. **Never in
+  incognito**, and a Settings toggle ("Search suggestions (from the
+  engine)") is the privacy escape hatch.
+
+### Fixed — THE FAVICON CACHE LRU EVICTION (infinite growth, capped)
+- The favicon cache downloaded and saved icons but **never evicted old
+  ones**. The disk store is now bounded by two caps — **1000 icon files or
+  50 MB, whichever trips first** — and the sweep runs on the store
+  executor after every save. Eviction order is **least-recently-used by
+  the file's lastModified**, and lastModified is a genuine USE stamp:
+  serving an icon from disk refreshes it (once per host per process),
+  so "oldest" means "least recently served", not "least recently
+  captured". Deleted victims also leave the memory caches, and the
+  just-written file is never a candidate.
+
+### Fixed — THE WEBVIEW PRE-WARM POOL (the ~300 ms new-tab stutter)
+- Constructing a WebView from scratch blocks the CPU for ~300 ms (provider
+  load + AwContents) — the micro-stutter when opening a new tab. BoltApp
+  now **pre-warms one spare, never-attached WebView 250 ms after process
+  start** (posted, so the cold start's first frame never pays for it), and
+  `Tab.buildWeb` takes the spare when it needs one, falling back to plain
+  construction when the pool is empty. The spare is built over a
+  `MutableContextWrapper` carrying the app context; `take()` swaps the
+  base to the real owner's context before handoff, so the WebView behaves
+  exactly like one constructed with it (HTML `<select multiple>`'s dialog
+  needs a themed, token-bearing context — the swap is what keeps that
+  safe).
+
+### Fixed — THE IF-RANGE RESUME CONTRACT (no more corrupt splices)
+- Interrupted downloads already resume from the exact byte in the `.part`
+  file (`Range: bytes=N-`, 206 append / 200 restart / 416 fresh-start).
+  This release closes the classic hole in that design: a **server-side
+  file change** between the interruption and the resume would still answer
+  206, silently appending a DIFFERENT body onto the old part. The engine
+  now captures every final response's **ETag**, persists it with the
+  queue, and sends it back as **`If-Range`** on the resume request — an
+  unchanged file answers 206 (append, as before), a changed file answers
+  200 (the existing restart path replaces the part cleanly). No ETag from
+  the server → the old behavior, server's discretion.
+
 ## [1.4.12] — 2026-11-18
 
 **The usability five-pack: the AI translate payload diet, the group folder

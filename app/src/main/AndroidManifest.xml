@@ -123,7 +123,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
+            <!-- v1.4.13 — the filter's OWN label: the text-selection toolbar
+                 shows the RESOLVED filter's label, not the app name, so this
+                 is what turns a bare "Bolt" row into "Search in Bolt" (the
+                 documented PROCESS_TEXT shape: action + DEFAULT category +
+                 the text/plain MIME, without which the framework's
+                 setTypeAndNormalize("text/plain") query never resolves). -->
+            <intent-filter android:label="@string/search_in_bolt">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
@@ -183,7 +189,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
+            <!-- v1.4.13 — the filter's OWN label: the text-selection toolbar
+                 shows the RESOLVED filter's label, not the app name, so this
+                 is what turns a bare "Bolt" row into "Search in Bolt" (the
+                 documented PROCESS_TEXT shape: action + DEFAULT category +
+                 the text/plain MIME, without which the framework's
+                 setTypeAndNormalize("text/plain") query never resolves). -->
+            <intent-filter android:label="@string/search_in_bolt">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
@@ -231,7 +243,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
+            <!-- v1.4.13 — the filter's OWN label: the text-selection toolbar
+                 shows the RESOLVED filter's label, not the app name, so this
+                 is what turns a bare "Bolt" row into "Search in Bolt" (the
+                 documented PROCESS_TEXT shape: action + DEFAULT category +
+                 the text/plain MIME, without which the framework's
+                 setTypeAndNormalize("text/plain") query never resolves). -->
+            <intent-filter android:label="@string/search_in_bolt">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
@@ -279,7 +297,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
+            <!-- v1.4.13 — the filter's OWN label: the text-selection toolbar
+                 shows the RESOLVED filter's label, not the app name, so this
+                 is what turns a bare "Bolt" row into "Search in Bolt" (the
+                 documented PROCESS_TEXT shape: action + DEFAULT category +
+                 the text/plain MIME, without which the framework's
+                 setTypeAndNormalize("text/plain") query never resolves). -->
+            <intent-filter android:label="@string/search_in_bolt">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
@@ -327,7 +351,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <intent-filter>
+            <!-- v1.4.13 — the filter's OWN label: the text-selection toolbar
+                 shows the RESOLVED filter's label, not the app name, so this
+                 is what turns a bare "Bolt" row into "Search in Bolt" (the
+                 documented PROCESS_TEXT shape: action + DEFAULT category +
+                 the text/plain MIME, without which the framework's
+                 setTypeAndNormalize("text/plain") query never resolves). -->
+            <intent-filter android:label="@string/search_in_bolt">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />

@@ -253,6 +253,13 @@ public class Prefs {
      *  first, bookmarks after, no shortcut rows). Default ON — the ask
      *  was for the behavior, the toggle is the escape hatch. */
     public boolean suggestLocalFirst() { return b("suggestLocalFirst", true); }
+
+    /** v1.4.13 — the omnibox NETWORK suggestion toggle (NetSuggest rides
+     *  the selected engine's osjson endpoint, debounced 300 ms in the
+     *  TextWatcher). Default ON — the feature is the ask, the toggle is
+     *  the privacy escape hatch. NEVER consulted in incognito: the
+     *  caller hard-skips there regardless of this pref. */
+    public boolean suggestNetwork() { return b("suggestNetwork", true); }
     public String homepage() { return s("homepage", "bolt:home"); }
     public int fontSize() { return i("fontSize", 100); }
     public int uaIndex() { return i("ua", 0); }

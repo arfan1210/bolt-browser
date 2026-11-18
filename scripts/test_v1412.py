@@ -131,28 +131,28 @@ tia_code = strip_comments_strings(tia)
 vs_code = strip_comments_strings(vs)
 
 print("A — the version bump")
-need(re.search(r"versionCode 126\b", gradle) is not None,
-     "versionCode 126 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.12"', gradle) is not None,
-     'versionName "1.4.12"')
+need(re.search(r"versionCode 127\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
+     "versionCode 127 (Android only installs RISING codes)")
+need(re.search(r'versionName "1\.4\.13"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
+     'versionName "1.4.13"')
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.12|"),
-     "the newest entry is 1.4.12 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.11|"),
-     "the second entry is 1.4.11 (the previous live release)")
-need("200 KB" in entries[0] and "1280" in entries[0],
+need(entries and entries[0].startswith("1.4.13|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]
+     "the newest entry is 1.4.13 (the label law)")
+need(len(entries) > 1 and entries[1].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): this gate's line slid to [1]
+     "the second entry is 1.4.12 (the version this gate pins)")
+need("200 KB" in entries[1] and "1280" in entries[1],   # v1.4.13 re-point: slid from [0]
      "the 1.4.12 line names the payload diet numbers")
-need("bottom sheet" in entries[0],
+need("bottom sheet" in entries[1],   # v1.4.13 re-point: slid from [0]
      "the 1.4.12 line names the group folder sheet")
-need("incognito" in entries[0],
+need("incognito" in entries[1],   # v1.4.13 re-point: slid from [0]
      "the 1.4.12 line names the incognito tabs flag fix")
-need("text-selection" in entries[0],
+need("text-selection" in entries[1],   # v1.4.13 re-point: slid from [0]
      "the 1.4.12 line names the system search entries")
-need("visual search" in entries[0],
+need("visual search" in entries[1],   # v1.4.13 re-point: slid from [0]
      "the 1.4.12 line names the image-search door")
 
 print("C — fix 1: the AI payload diet (1280 px / q75, OCR untouched)")

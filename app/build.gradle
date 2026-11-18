@@ -16,11 +16,11 @@ android {
         applicationId "com.bolt.browser"
         minSdk 24
         targetSdk 34
-        // v1.4.10 (2026-11-17): the v1.4.9 hardening four-pack rides this
-        // bump — v1.4.9/123 was ALREADY published from the private repo, so
-        // an update at the same versionCode would be rejected by Android.
-        versionCode 126
-        versionName "1.4.12"
+        // v1.4.13 (2026-11-18): the performance five-pack — the text-selection
+        // toolbar label fix, the omnibox network debounce, the favicon LRU
+        // eviction, the WebView pre-warm pool, the If-Range resume contract.
+        versionCode 127
+        versionName "1.4.13"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

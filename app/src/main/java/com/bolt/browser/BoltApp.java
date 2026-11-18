@@ -170,6 +170,19 @@ public class BoltApp extends Application {
         // userscript engine: capture the app context early so GM storage reads
         // (gmValues/wrap) work before the first GM_xmlhttpRequest
         com.bolt.browser.scripts.UserscriptEngine.init(this);
+        // v1.4.13 — THE WEBVIEW PRE-WARM (see core/WebPool.java): a spare,
+        // never-attached WebView constructed 250 ms from now. Posted, not
+        // inline: onCreate must not pay the ~300 ms constructor on the cold
+        // start's critical path — the spare builds while the first frame is
+        // already on screen, and every LATER new tab (and any activity that
+        // races past the 250 ms mark) takes it instead of paying the stutter.
+        // Runs in BOTH processes: the incognito suffix above was set earlier
+        // in this same onCreate, synchronously, so the spare can only ever
+        // land in the right data directory.
+        appH.postDelayed(() -> {
+            try { com.bolt.browser.core.WebPool.prewarm(BoltApp.this); }
+            catch (Throwable ignored) {}
+        }, 250L);
         // v1.3.48 — NIGHT SCREEN EVERYWHERE: one amber veil per activity
         // window (the v1.3.39 filter only tinted the browser's fl_root —
         // the "not in the tabs, not in the settings" field report).

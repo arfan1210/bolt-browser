@@ -171,6 +171,13 @@ public class SettingsItemsActivity extends BaseListActivity {
                 prefs.suggestLocalFirst(), (b, on) -> prefs.set("suggestLocalFirst", on));
         lf.sub = "While typing in the address bar, your bookmarks and home-screen shortcuts rank above history";
         rows.add(lf);
+        // v1.4.13 — NETWORK SUGGESTIONS (the debounced engine pass): the
+        // omnibox asks the SELECTED engine for completions after a 300 ms
+        // typing pause (never on every keystroke, never in incognito).
+        Row ns = toggle(R.drawable.ic_search, getString(R.string.suggest_network),
+                prefs.suggestNetwork(), (b, on) -> prefs.set("suggestNetwork", on));
+        ns.sub = "The address bar asks your search engine for completions after a 300 ms pause — never in incognito";
+        rows.add(ns);
         // v1.3.40 — WORKSPACES (field task 15): the session manager + the
         // backup "profile" merged into ONE Chrome-style concept — named
         // spaces with their own tab sets. Old sessions.json migrates on
