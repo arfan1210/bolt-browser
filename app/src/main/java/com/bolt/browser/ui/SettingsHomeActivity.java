@@ -104,16 +104,16 @@ public class SettingsHomeActivity extends AppCompatActivity {
                 }));
         cards.add(com.bolt.browser.util.MenuCards.card(R.drawable.ic_bookmark,
                 getString(R.string.bookmarks), "Saved pages with folders — tap a bookmark to open it.",
-                () -> startActivity(new Intent(this, BookmarksActivity.class))));
+                () -> Ui.launchSatellite(this, BookmarksActivity.class)));
         cards.add(com.bolt.browser.util.MenuCards.card(R.drawable.ic_history,
                 getString(R.string.history), "Recently visited pages; clear them from Privacy → Clear browsing data.",
-                () -> startActivity(new Intent(this, HistoryActivity.class))));
+                () -> Ui.launchSatellite(this, HistoryActivity.class)));
         cards.add(com.bolt.browser.util.MenuCards.card(R.drawable.ic_download,
                 getString(R.string.downloads), "Bolt's own download engine: queue, pause/resume/retry.",
-                () -> startActivity(new Intent(this, DownloadsActivity.class))));
+                () -> Ui.launchSatellite(this, DownloadsActivity.class)));
         cards.add(com.bolt.browser.util.MenuCards.card(R.drawable.ic_offline,
                 getString(R.string.offline_pages), "Pages saved as files that open without network.",
-                () -> startActivity(new Intent(this, OfflinePagesActivity.class))));
+                () -> Ui.launchSatellite(this, OfflinePagesActivity.class)));
         stripHost.addView(com.bolt.browser.util.MenuCards.cardStrip(this, cards));
 
         // the LIST TIER: the two toggles as compact rows (was two big cards)
@@ -232,13 +232,13 @@ public class SettingsHomeActivity extends AppCompatActivity {
                 getString(R.string.settings), () -> startActivity(new Intent(this,
                         AboutActivity.class))));
         out.add(new Entry(R.drawable.ic_bookmark, getString(R.string.bookmarks),
-                getString(R.string.settings), () -> startActivity(new Intent(this, BookmarksActivity.class))));
+                getString(R.string.settings), () -> Ui.launchSatellite(this, BookmarksActivity.class)));
         out.add(new Entry(R.drawable.ic_history, getString(R.string.history),
-                getString(R.string.settings), () -> startActivity(new Intent(this, HistoryActivity.class))));
+                getString(R.string.settings), () -> Ui.launchSatellite(this, HistoryActivity.class)));
         out.add(new Entry(R.drawable.ic_download, getString(R.string.downloads),
-                getString(R.string.settings), () -> startActivity(new Intent(this, DownloadsActivity.class))));
+                getString(R.string.settings), () -> Ui.launchSatellite(this, DownloadsActivity.class)));
         out.add(new Entry(R.drawable.ic_offline, getString(R.string.offline_pages),
-                getString(R.string.settings), () -> startActivity(new Intent(this, OfflinePagesActivity.class))));
+                getString(R.string.settings), () -> Ui.launchSatellite(this, OfflinePagesActivity.class)));
         out.add(new Entry(R.drawable.ic_backup, getString(R.string.backup_export),
                 getString(R.string.settings), () -> startActivity(new Intent(this, BackupActivity.class))));
         out.add(new Entry(R.drawable.ic_person, getString(R.string.profile),

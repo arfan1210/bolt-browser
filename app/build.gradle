@@ -19,8 +19,8 @@ android {
         // v1.4.13 (2026-11-18): the performance five-pack — the text-selection
         // toolbar label fix, the omnibox network debounce, the favicon LRU
         // eviction, the WebView pre-warm pool, the If-Range resume contract.
-        versionCode 127
-        versionName "1.4.13"
+        versionCode 128
+        versionName "1.4.14"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

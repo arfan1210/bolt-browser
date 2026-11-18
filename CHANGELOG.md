@@ -4,6 +4,94 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.14] — 2026-11-18
+
+**The interaction six-pack: the group-sheet drag restore, the external-search
+new-tab law, the omnibox icon diet, the incognito return route, the
+visual-search OOM ladder, and the bookmarks/history search bars.**
+
+### Fixed — TAB GROUP DRAG-AND-DROP IN THE BOTTOM SHEET
+- v1.4.12 replaced the inline group strip's hold-drag with long-press
+  "Move up / Move down" buttons when the folder became a bottom sheet. The
+  gesture is back: the sheet's member list is a **RecyclerView** with an
+  **ItemTouchHelper.SimpleCallback** (`makeMovementFlags(UP | DOWN, 0)` —
+  drag only, no swipe). Long-press a row and drag; every crossed
+  neighbour commits through `tm.reorderGroupMember` (the same
+  member-indexed backend the buttons drove) and `notifyItemMoved` glides
+  the swap. The sheet needed a new door for this:
+  `Ui.showSheetView()` hosts a RecyclerView as the sheet root without the
+  ScrollView wrapper (nested scrolling would steal the touch stream and
+  the drag could never run). The Move up/Move down buttons are removed.
+
+### Fixed — EXTERNAL SEARCHES OPEN IN A NEW TAB
+- Selecting text in another app and tapping "Search in Bolt"
+  (`ACTION_PROCESS_TEXT` / `ACTION_WEB_SEARCH` / `ACTION_SEND`) used to
+  land via `loadInTab()`, which loads into the **active** tab — the search
+  overwrote the page the user was reading. All three externally-originated
+  entries now route through **`openQueryInNewTab()`**: the query resolves
+  through the same resolver the omnibox uses (URL-vs-query, engine, bangs,
+  tracker cleaner — extracted into `resolveInput()`, one resolution shared
+  by both doors) and opens in a **new tab**; the user's current tab is
+  untouched. It runs inline exactly like the VIEW branch, so a cold-start
+  search lands as one tab (no spare home tab beside it).
+
+### Fixed — OMNIBOX CONGESTION WHILE TYPING
+- The engine chip (left) and the camera icon (right) added in v1.4.12 were
+  permanent fixtures — over 230 dp of chrome hugging the field, leaving
+  very little width to see the typed URL. The icons are now **state-aware
+  in the TextWatcher**, Chrome-style: when the field is **empty** it shows
+  the engine chip + camera + paste (+ mic); the moment the user **types**,
+  the camera, paste and copy icons hide and only the **clear** button (+
+  mic) remains, giving the typed text the full field width; clearing the
+  field restores the full set. The engine chip stays in both states (it is
+  the engine indicator for the live query and the pick-re-runs door); the
+  copy button is retired from the omnibox (the field's own text-selection
+  handles cover it).
+
+### Fixed — INCOGNITO INTENT LEAK
+- Opening a link in a "new tab" from inside an Incognito tab sometimes
+  spawned in the normal `BrowserActivity`. The root cause: the satellite
+  screens (bookmarks, history, saved pages — and Settings, which chains to
+  all three) run in the **main process** even when launched from the
+  incognito browser, and their row taps fired plain
+  `BrowserActivity.class` VIEW intents — the page then loaded with the
+  normal cookie jar and normal history. The fix is a **stamp-and-return
+  contract**: `Ui.launchSatellite()` stamps every satellite launch with
+  `EXTRA_FROM_INCOGNITO` when the launcher is the incognito process
+  (`TabManager.INCOGNITO`) or a stamped satellite itself (Settings →
+  Bookmarks chains keep the stamp), and `Ui.browserOpenIntent()` routes a
+  stamped satellite's URL opens to **IncognitoActivity** — the same
+  ACTION_VIEW contract in the `:incognito` process — never
+  `BrowserActivity.class`. Inside a browser process, new tabs are created
+  in the current process's `TabManager` directly (the process law, now
+  documented at `openNewTab`); the only cross-process hop left is the
+  tabs view's explicit "switch to normal" chip.
+
+### Fixed — VISUAL SEARCH OOM CRASH
+- Picking a high-resolution photo (e.g. 12 MP, ~48 MB as full ARGB) for
+  visual search could die with an `OutOfMemoryError` on memory-constrained
+  devices. The decode is now **bounds-first** (`inJustDecodeBounds`), picks
+  an `inSampleSize` that lands the long edge at a **1280 px cap** (halving
+  while the longest halved dimension still clears the cap — extreme aspect
+  ratios are the memory bombs, so the cap rides the long edge), then
+  fine-scales and compresses to JPEG for the multipart POST. An
+  **OutOfMemoryError retry ladder** doubles the sample size (up to 3
+  retries): memory pressure degrades the resolution, it never crashes the
+  process.
+
+### Added — HISTORY & BOOKMARKS SEARCH
+- There was no way to search through saved bookmarks or browsing history.
+- Both screens (and every `BaseListActivity` that opts in) gain a **search
+  bar** under the header — the same `bg_urlbar` skin the omnibox field
+  wears, with a leading search glyph and a clear (X) affordance. A
+  **TextWatcher filters the RecyclerView in real time by URL or title**
+  (case-insensitive substring over the row's title and sub — history's sub
+  carries the date and URL, bookmarks' the URL; folder rows match by name
+  too). The filter runs over the screen's last-built model in place — no
+  re-read of prefs per keystroke, so a long history stays keystroke-fast —
+  and clearing the box restores the full list. A query that matches
+  nothing shows a dedicated "No matches for …" state.
+
 ## [1.4.13] — 2026-11-18
 
 **The performance five-pack: the text-selection toolbar label, the omnibox

@@ -601,12 +601,15 @@ public class BrowserActivity extends AppCompatActivity {
         // SEND text/plain / PROCESS_TEXT filters, one per launcher face).
         // The query rides a different extra per surface: SearchManager.QUERY
         // for WEB_SEARCH, EXTRA_TEXT for the share sheet, and
-        // EXTRA_PROCESS_TEXT for the text-selection floating toolbar. All
-        // three funnel into loadInTab(), which owns URL-vs-query resolution,
-        // the engine choice, and tracker stripping — the same path as typing
-        // into the omnibox. Posted (not run inline): onCreate calls this
-        // BEFORE the first tab exists, and loadInTab() needs the active tab
-        // the caller's next lines are still about to build.
+        // EXTRA_PROCESS_TEXT for the text-selection floating toolbar.
+        // v1.4.14 — THE NEW-TAB LAW: all three now funnel into
+        // openQueryInNewTab() instead of loadInTab(). A search that arrives
+        // from OUTSIDE the browser must never overwrite the page in the
+        // user's active tab — it resolves through the same resolver the
+        // omnibox uses (resolveInput: URL-vs-query, engine, bangs, tracker
+        // cleaner) and opens in its OWN tab. Inline like the VIEW branch
+        // below (openQueryInNewTab builds its own tab, so it has no
+        // dependency on the active tab onCreate has not created yet).
         try {
             if (i != null && i.getAction() != null) {
                 String act = i.getAction();
@@ -621,10 +624,7 @@ public class BrowserActivity extends AppCompatActivity {
                     q = cs == null ? null : cs.toString();
                 }
                 if (q != null && !q.trim().isEmpty()) {
-                    final String query = q.trim();
-                    ui.post(() -> {
-                        try { loadInTab(query); } catch (Throwable ignored) {}
-                    });
+                    try { openQueryInNewTab(q.trim()); } catch (Throwable ignored) {}
                     return;   // a search entry is fully handled — never fall
                               // through to the VIEW/data branch as well
                 }
@@ -1638,7 +1638,7 @@ public class BrowserActivity extends AppCompatActivity {
         });
         btnHome.setOnClickListener(v -> goHome());
         btnTabs.setOnClickListener(v -> openTabsView());
-        btnMenu.setOnClickListener(v -> startActivity(new Intent(this, SettingsHomeActivity.class)));
+        btnMenu.setOnClickListener(v -> Ui.launchSatellite(this, SettingsHomeActivity.class));
         tvUrl.setOnClickListener(v -> showOmnibox());
         fabMedia.setOnClickListener(v -> showMediaSheet());
         setupFabDrag();
@@ -2428,13 +2428,13 @@ public class BrowserActivity extends AppCompatActivity {
             case com.bolt.browser.util.QuickActions.TABS: openTabsView(); break;
             case com.bolt.browser.util.QuickActions.HOME: goHome(); break;
             case com.bolt.browser.util.QuickActions.BOOKMARKS:
-                startActivity(new Intent(this, BookmarksActivity.class)); break;
+                Ui.launchSatellite(this, BookmarksActivity.class); break;
             case com.bolt.browser.util.QuickActions.HISTORY:
-                startActivity(new Intent(this, HistoryActivity.class)); break;
+                Ui.launchSatellite(this, HistoryActivity.class); break;
             case com.bolt.browser.util.QuickActions.DOWNLOADS:
-                startActivity(new Intent(this, DownloadsActivity.class)); break;
+                Ui.launchSatellite(this, DownloadsActivity.class); break;
             case com.bolt.browser.util.QuickActions.APPEARANCE:
-                startActivity(new Intent(this, AppearanceActivity.class)); break;
+                Ui.launchSatellite(this, AppearanceActivity.class); break;
             case com.bolt.browser.util.QuickActions.SHARE: sharePage(); break;
             case com.bolt.browser.util.QuickActions.FIND: openFind(); break;
             case com.bolt.browser.util.QuickActions.HARD_RELOAD:
@@ -5126,9 +5126,15 @@ public class BrowserActivity extends AppCompatActivity {
         showTab(tm.active);
     }
 
-    protected void loadInTab(String input) {
-        if (input == null || input.trim().isEmpty()) return;
-        String q = input.trim();
+    /**
+     * v1.4.14 — THE ONE URL-vs-QUERY RESOLVER, extracted from loadInTab so
+     * the external search doors (openQueryInNewTab — system text selection,
+     * share sheet, WEB_SEARCH) share the omnibox's exact resolution: scheme
+     * passthrough, bare-host heuristics, custom engine bangs, the selected
+     * engine's search URL, and the tracker cleaner. One resolution, many
+     * doors — a search from outside must resolve EXACTLY like one typed.
+     */
+    protected String resolveInput(String q) {
         String url;
         if (q.startsWith("http://") || q.startsWith("https://") || q.contains("://")
                 || q.startsWith("about:") || q.startsWith("file://")) {
@@ -5165,6 +5171,12 @@ public class BrowserActivity extends AppCompatActivity {
                 }
             } catch (Throwable ignored) {}
         }
+        return url;
+    }
+
+    protected void loadInTab(String input) {
+        if (input == null || input.trim().isEmpty()) return;
+        String url = resolveInput(input.trim());
         Tab t = activeTab();
         // GHOSTING FIX (same-tab path): a tab sitting on the home screen KEEPS
         // its WebView — with the last painted frame of the page the user left
@@ -5204,6 +5216,16 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     protected void openNewTab(String url) {
+        // v1.4.14 — THE PROCESS LAW (the incognito intent leak fix): every
+        // internal door that opens a NEW tab from an existing one (this
+        // method, openUrlNewTab, loadInTab, the quick actions) creates it
+        // in THIS process's TabManager directly — tm is per-process, so an
+        // IncognitoActivity caller gets an incognito tab by construction
+        // and can never spawn into the normal browser (or vice versa).
+        // Nothing here fires an intent to BrowserActivity.class; the only
+        // cross-process hop that exists is TabsActivity's explicit
+        // "switch to normal" chip (a user-visible process switch, not a
+        // tab creation).
         // v1.3.64 — a new tab DRASTICALLY changes the viewing area; the menu
         // that launched it must close so the user SEES the tap's answer (the
         // fresh tab becoming the view), instead of the sheet parked on top of
@@ -5219,6 +5241,32 @@ public class BrowserActivity extends AppCompatActivity {
         }
         tm.addTab(t);
         showTab(tm.tabs.size() - 1);
+    }
+
+    /**
+     * v1.4.14 — EXTERNALLY-ORIGINATED SEARCHES OPEN IN THEIR OWN TAB. The
+     * v1.4.12 entry funneled PROCESS_TEXT / WEB_SEARCH / SEND queries into
+     * loadInTab(), which loads into the ACTIVE tab — a "Search in Bolt"
+     * from another app overwrote whatever page the user was reading. The
+     * side door now behaves like Chrome's: the query resolves through the
+     * SAME resolver the omnibox uses (resolveInput — engine, bangs, tracker
+     * cleaner) and opens in a NEW tab; the user's current tab is untouched.
+     * Runs inline (not posted) exactly like the VIEW branch below: unlike
+     * loadInTab it has no dependency on an existing active tab — it builds
+     * its own — and onCreate's empty-tab check then sees a tab and adds no
+     * spare home tab (a cold-start search lands as ONE tab, the same shape
+     * a cold-start VIEW link produces).
+     */
+    protected void openQueryInNewTab(String input) {
+        if (input == null || input.trim().isEmpty()) return;
+        String url = resolveInput(input.trim());
+        try { dismissAllOverlays(); } catch (Throwable ignored) {}
+        Tab t = new Tab();
+        t.isHome = false;
+        t.url = url;
+        tm.addTab(t);
+        showTab(tm.tabs.size() - 1);
+        hideKeyboard();
     }
 
     protected void hideKeyboard() {
@@ -12650,6 +12698,31 @@ public class BrowserActivity extends AppCompatActivity {
                 }
             }
         } catch (Throwable ignored) {}
+        // v1.4.14 — STATE-AWARE ICONS. The engine chip (left) plus the
+        // camera / voice / paste / copy / clear strip (right) were
+        // PERMANENT fixtures — 230+ dp of chrome hugging the field, "very
+        // little width to see the typed URL". The icons are now a function
+        // of the field's state, Chrome-style:
+        //   EMPTY  → engine chip + camera + paste (+ mic): the doors that
+        //            only make sense against a blank field;
+        //   TYPING → the text gets the room: clear (+ mic) only; camera,
+        //            paste and copy hide (copy is retired from the omnibox —
+        //            the field's own text-selection handles cover it).
+        // The ENGINE CHIP stays in both states: it is the engine indicator
+        // for the live query and the v1.4.12 pick-re-runs door.
+        final android.widget.ImageButton camB = lay.findViewById(R.id.btn_omni_cam);
+        final android.widget.ImageButton pasteB = lay.findViewById(R.id.btn_omni_paste);
+        final android.widget.ImageButton copyB = lay.findViewById(R.id.btn_omni_copy);
+        final android.widget.ImageButton clearB = lay.findViewById(R.id.btn_omni_clear);
+        final Runnable syncOmniIcons = () -> {
+            try {
+                boolean empty = et.getText().length() == 0;
+                if (camB != null) camB.setVisibility(empty ? View.VISIBLE : View.GONE);
+                if (pasteB != null) pasteB.setVisibility(empty ? View.VISIBLE : View.GONE);
+                if (copyB != null) copyB.setVisibility(View.GONE);
+                if (clearB != null) clearB.setVisibility(empty ? View.GONE : View.VISIBLE);
+            } catch (Throwable ignored) {}
+        };
         rv.setLayoutManager(new LinearLayoutManager(this));
         // v1.3.36: cap the suggestion list so the window never grows past the
         // keyboard line (top-anchored + ADJUST_RESIZE would otherwise clip)
@@ -12692,12 +12765,17 @@ public class BrowserActivity extends AppCompatActivity {
         });
         et.addTextChangedListener(new TextWatcher() {
             public void afterTextChanged(Editable s) {
+                syncOmniIcons.run();   // v1.4.14: the icon strip follows the field's state
                 ad.update(s.toString());
                 scheduleNetSuggest(ad, s.toString());   // v1.4.13: the debounced engine pass
             }
             public void beforeTextChanged(CharSequence a, int b, int c, int d) {}
             public void onTextChanged(CharSequence a, int b, int c, int d) {}
         });
+        // the OPENING state: the field was prefilled BEFORE the watcher went
+        // on (no suggest pass for a pre-existing URL), so the icon strip is
+        // synced once here — prefilled URL = typing state, home tab = empty
+        syncOmniIcons.run();
         et.setOnEditorActionListener((v, actionId, ev) -> {
             if (actionId == EditorInfo.IME_ACTION_GO) {
                 loadInTab(et.getText().toString());

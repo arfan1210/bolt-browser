@@ -131,28 +131,28 @@ tia_code = strip_comments_strings(tia)
 vs_code = strip_comments_strings(vs)
 
 print("A — the version bump")
-need(re.search(r"versionCode 127\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
-     "versionCode 127 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.13"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
-     'versionName "1.4.13"')
+need(re.search(r"versionCode 128\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     "versionCode 128 (Android only installs RISING codes)")  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need(re.search(r'versionName "1\.4\.14"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     'versionName "1.4.14"')  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.13|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]
+need(entries and entries[0].startswith("1.4.14|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the newest entry is 1.4.13 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): this gate's line slid to [1]
+need(len(entries) > 2 and entries[2].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): this gate's line slid to [1]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the second entry is 1.4.12 (the version this gate pins)")
-need("200 KB" in entries[1] and "1280" in entries[1],   # v1.4.13 re-point: slid from [0]
+need("200 KB" in entries[2] and "1280" in entries[2],   # v1.4.13 re-point: slid from [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.12 line names the payload diet numbers")
-need("bottom sheet" in entries[1],   # v1.4.13 re-point: slid from [0]
+need("bottom sheet" in entries[2],   # v1.4.13 re-point: slid from [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.12 line names the group folder sheet")
-need("incognito" in entries[1],   # v1.4.13 re-point: slid from [0]
+need("incognito" in entries[2],   # v1.4.13 re-point: slid from [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.12 line names the incognito tabs flag fix")
-need("text-selection" in entries[1],   # v1.4.13 re-point: slid from [0]
+need("text-selection" in entries[2],   # v1.4.13 re-point: slid from [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.12 line names the system search entries")
-need("visual search" in entries[1],   # v1.4.13 re-point: slid from [0]
+need("visual search" in entries[2],   # v1.4.13 re-point: slid from [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.12 line names the image-search door")
 
 print("C — fix 1: the AI payload diet (1280 px / q75, OCR untouched)")
@@ -173,19 +173,20 @@ need("openGroupSheet(g)" in ta_code and "protected void openGroupSheet" in ta_co
 need(re.search(r"gh\.header\.setOnClickListener\(v -> \{\s*Ui\.tap\(v\);\s*"
                r"openGroupSheet\(g\);", ta_code) is not None,
      "the header click routes to the sheet (with haptic)")
-need("Ui.showSheet(this, body)" in ta_code,
-     "the sheet rides Ui.showSheet (the app's bottom-sheet law: handle, "
-     "rounded top, night veil, vertically scrollable)")
+need("Ui.showSheetView(this, body)" in ta_code,
+     "the sheet rides Ui.showSheetView (the v1.4.14 recycler door: handle, "
+     "rounded top, night veil — and NO ScrollView wrapper, so the drag "
+     "owns the touch stream)")  # v1.4.14 re-point (2026-11-18): the member list became a RecyclerView (the drag restore) — a recycler sheet cannot ride the ScrollView wrapper, so the door moved to Ui.showSheetView
 need(re.search(r"openGroupSheet[\s\S]{0,2200}FaviconStore\.avatar", ta_code)
      is not None,
      "sheet rows wear the favicon thumbnail")
-need(re.search(r"openGroupSheet[\s\S]{0,4500}tabOptions\(tab, gid\)", ta_code)
+need(re.search(r"GroupSheetAdapter[\s\S]{0,4500}tabOptions\(tab, group\.optLong\(", ta_code)
      is not None,
-     "every sheet row carries the ⋯ member menu (tabOptions)")
-need(re.search(r"openGroupSheet[\s\S]{0,4600}tm\.active = idx;\s*"
-               r"try \{ dRef\[0\]\.dismiss\(\); \} catch \(Throwable ignored\) \{\}\s*"
-               r"finish\(\);", ta_code) is not None,
-     "tapping a sheet row switches to that tab and leaves the switcher")
+     "every sheet row carries the ⋯ member menu (tabOptions)")  # v1.4.14 re-point (2026-11-18): the rows live in GroupSheetAdapter now (the drag restore); the member menu is wired per-bind, keyed by the group's own id
+need(re.search(r"GroupSheetAdapter[\s\S]{0,4600}tm\.active = idx;\s*"
+               r"try \{ if \(groupSheet != null\) groupSheet\.dismiss\(\); \}\s*"
+               r"catch \(Throwable ignored\) \{\}\s*finish\(\);", ta_code) is not None,
+     "tapping a sheet row switches to that tab and leaves the switcher")  # v1.4.14 re-point (2026-11-18): the row listener moved into GroupSheetAdapter; the sheet reference is the groupSheet field (dRef died with the row loop)
 need("R.layout.item_tab_mini" not in ta_code,
      "the inline mini strip is gone (no item_tab_mini inflate anywhere)")
 need("wireMiniDrag(mini," not in ta_code,
@@ -242,9 +243,8 @@ need('Intent.ACTION_SEND.equals(act)' in hi
 need("Intent.ACTION_PROCESS_TEXT.equals(act)" in hi
      and "Intent.EXTRA_PROCESS_TEXT" in hi,
      "PROCESS_TEXT reads EXTRA_PROCESS_TEXT")
-need("loadInTab(query)" in hi and "ui.post(() -> {" in hi,
-     "the query hands off to loadInTab, POSTED (onCreate runs this "
-     "before the first tab exists)")
+need("openQueryInNewTab(q.trim());" in hi and "loadInTab(query)" not in hi,  # v1.4.14 re-point (2026-11-18): the external-search NEW-TAB law — the query now routes through openQueryInNewTab() (the SHARED resolveInput + its own tab), inline like the VIEW branch; the posted loadInTab handoff is gone
+     "the query opens in its OWN tab (openQueryInNewTab — v1.4.14)")
 need(hi.find("return;") < hi.find("if (i == null || i.getData() == null) return;"),
      "a handled search returns — never falls through to the VIEW branch")
 need("import android.app.SearchManager;" in ba,
@@ -318,8 +318,8 @@ need('getHeaderField("Location")' in vs,
      "the redirect target is read manually")
 need('"file://" + f.absolutePath' in vs,
      "a direct 200 body is saved as a local page (Bing's shape)")
-need("decodeCapped(imageFile, 1024)" in vs_code,
-     "the upload decodes capped at 1024 px (a 12 MP photo uploads no slower)")
+need("decodeCapped(imageFile, MAX_EDGE)" in vs_code and "private const val MAX_EDGE = 1280" in vs_code,
+     "the upload decodes capped (MAX_EDGE, 1280 px since v1.4.14 — a 12 MP photo uploads no slower, no OOM)")  # v1.4.14 re-point (2026-11-18): the visual-search OOM ladder moved the cap to a named MAX_EDGE = 1280 with an OutOfMemoryError retry (see test_v1414 section G); the decodeCapped discipline itself is unchanged
 need("ep.home" in rv,
      "upload failure falls back to the engine's manual image-search page")
 

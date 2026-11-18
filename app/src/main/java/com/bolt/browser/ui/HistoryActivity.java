@@ -5,6 +5,7 @@ import android.os.Bundle;
 
 import com.bolt.browser.R;
 import com.bolt.browser.util.Fx;
+import com.bolt.browser.util.Ui;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,6 +30,9 @@ public class HistoryActivity extends BaseListActivity {
                 getString(R.string.sort_oldest_first),
                 getString(R.string.sort_name_az),
                 getString(R.string.sort_name_za)}, this::refresh);
+        // v1.4.14 — THE SEARCH PASS: typing filters history rows in real
+        // time by title or URL (BaseListActivity.rowMatches over sub)
+        addSearchBar();
     }
 
     @Override
@@ -70,10 +74,9 @@ public class HistoryActivity extends BaseListActivity {
             r.title = title == null || title.isEmpty() ? url : title;
             r.sub = when + " — " + url;
             r.click = v -> {
-                Intent in = new Intent(this, BrowserActivity.class);
-                in.setAction(Intent.ACTION_VIEW);
-                in.setData(android.net.Uri.parse(url));
-                startActivity(in);
+                // v1.4.14 — the incognito return route (Ui.browserOpenIntent):
+                // history opened from the incognito side stays incognito
+                startActivity(Ui.browserOpenIntent(this, url));
                 finish();
             };
             rows.add(r);

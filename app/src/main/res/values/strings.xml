@@ -386,6 +386,11 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.14 (2026-11-18): the interaction six-pack — the group-sheet
+         drag restore, the external-search new-tab law, the omnibox
+         icon diet, the incognito return route, the visual-search OOM
+         ladder, the bookmarks/history search bars -->
+    <item>1.4.14|Tab groups open a bottom sheet whose rows you can now long-press and DRAG to reorder (the Move up/Move down buttons are gone); a "Search in Bolt" from another app\'s text selection opens in a NEW tab instead of overwriting the page you were reading; the address bar hides the camera/paste icons the moment you type, giving the URL the full field width (clear + mic only, Chrome-style); bookmarks, history and saved pages opened from the incognito side return to the incognito browser instead of leaking into the normal one; picking a 12 MP photo for visual search no longer risks an out-of-memory crash (bounds-first decode to a 1280 px cap with an OOM retry ladder); Bookmarks and History gain a search bar that filters by title or URL as you type.</item>
     <!-- v1.4.13 (2026-11-18): the performance five-pack — the text-selection
          toolbar label, the omnibox network debounce, the favicon LRU
          eviction, the WebView pre-warm pool, the If-Range resume contract -->

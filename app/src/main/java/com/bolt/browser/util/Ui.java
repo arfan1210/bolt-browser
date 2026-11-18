@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -12,6 +13,7 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.net.Uri;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -533,6 +535,63 @@ public class Ui {
         return v;
     }
 
+    // ---------------------------------------------------------------- incognito route
+
+    /**
+     * v1.4.14 — THE INCOGNITO RETURN ROUTE (the intent-leak fix).
+     *
+     * The satellite screens (bookmarks, history, saved pages, downloads,
+     * settings…) run in the MAIN process even when they are opened from
+     * the incognito browser — the manifest gives them no android:process,
+     * and the process is a property of the ACTIVITY, not of who launched
+     * it. Their row taps used to fire plain
+     * {@code new Intent(this, BrowserActivity.class)} VIEW intents, so a
+     * bookmark opened from the incognito side loaded in the NORMAL
+     * browser: normal cookie jar, normal history, zero privacy — the
+     * "sometimes spawns in the normal BrowserActivity" field report.
+     *
+     * The fix is a stamp-and-return contract, all through these two doors:
+     *  - {@link #launchSatellite}: the launcher stamps the satellite's
+     *    intent with EXTRA_FROM_INCOGNITO when it itself is the incognito
+     *    process (TabManager.INCOGNITO — the per-process flag) or when it
+     *    is a satellite that was itself stamped (Settings → Bookmarks
+     *    chains keep the stamp);
+     *  - {@link #browserOpenIntent}: a stamped satellite routes its URL
+     *    opens to IncognitoActivity — the same ACTION_VIEW contract
+     *    BrowserActivity answers, in the :incognito process with the
+     *    private data dir — instead of BrowserActivity.class.
+     *
+     * New tabs created INSIDE a browser process never ride intents at all
+     * (BrowserActivity.openNewTab's process law); the only intents here
+     * are the satellite returns, and they now land on the right side.
+     */
+    public static final String EXTRA_FROM_INCOGNITO = "bolt_from_incognito";
+
+    /** launch a satellite screen, carrying this side's privacy stamp. */
+    public static void launchSatellite(Activity a, Class<?> cls) {
+        try {
+            Intent i = new Intent(a, cls);
+            boolean inc = com.bolt.browser.core.TabManager.INCOGNITO
+                    || (a.getIntent() != null
+                        && a.getIntent().getBooleanExtra(EXTRA_FROM_INCOGNITO, false));
+            if (inc) i.putExtra(EXTRA_FROM_INCOGNITO, true);
+            a.startActivity(i);
+        } catch (Throwable ignored) {}
+    }
+
+    /** the VIEW intent that opens [url] — routed to the side the current
+     *  screen was launched from (stamped satellites return to incognito). */
+    public static Intent browserOpenIntent(Activity from, String url) {
+        boolean inc = from.getIntent() != null
+                && from.getIntent().getBooleanExtra(EXTRA_FROM_INCOGNITO, false);
+        Intent i = new Intent(from, inc
+                ? com.bolt.browser.ui.IncognitoActivity.class
+                : com.bolt.browser.ui.BrowserActivity.class);
+        i.setAction(Intent.ACTION_VIEW);
+        i.setData(Uri.parse(url));
+        return i;
+    }
+
     // ---------------------------------------------------------------- buttons
 
     private static final int BTN_H = 48;
@@ -647,10 +706,23 @@ public class Ui {
     public static Dialog showSheet(Activity a, LinearLayout body) {
         ScrollView sc = new ScrollView(a);
         sc.addView(body);
-        sc.setBackground(sheetBg(a));
         sc.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        return showSheetView(a, sc);
+    }
+
+    /**
+     * v1.4.14 — the RECYCLER sheet door. showSheet() wraps every body in a
+     * ScrollView, which is right for static row stacks but WRONG for a
+     * RecyclerView: nested scrolling steals the vertical touch stream and
+     * an ItemTouchHelper drag inside can never run. This variant takes the
+     * content as the dialog's ROOT directly (no ScrollView wrapper) — the
+     * caller's RecyclerView owns scrolling AND dragging. Same window
+     * mechanics, same night veil, same rounded sheet background.
+     */
+    public static Dialog showSheetView(Activity a, View content) {
+        content.setBackground(sheetBg(a));
         Dialog d = new Dialog(a);
-        d.setContentView(sc);
+        d.setContentView(content);
         Window w = d.getWindow();
         if (w != null) {
             w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));

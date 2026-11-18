@@ -138,28 +138,28 @@ dl_code = strip_comments_strings(dl)
 wp_code = strip_comments_strings(wpool)
 
 print("A — the version bump")
-need(re.search(r"versionCode 127\b", gradle) is not None,
-     "versionCode 127 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.13"', gradle) is not None,
-     'versionName "1.4.13"')
+need(re.search(r"versionCode 128\b", gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     "versionCode 128 (Android only installs RISING codes)")  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need(re.search(r'versionName "1\.4\.14"', gradle) is not None,  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     'versionName "1.4.14"')  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.13|"),
+need(entries and entries[0].startswith("1.4.14|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the newest entry is 1.4.13 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.12|"),
+need(len(entries) > 1 and entries[1].startswith("1.4.13|"),  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack); the [1] pin names the PREVIOUS live release (1.4.13)
      "the second entry is 1.4.12 (the previous live release)")
-need("300 ms" in entries[0] and "pause" in entries[0],
+need("300 ms" in entries[1] and "pause" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.13 line names the debounce")
-need("1000 icons" in entries[0] and "50 MB" in entries[0],
+need("1000 icons" in entries[1] and "50 MB" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.13 line names the favicon caps")
-need("pre-warmed" in entries[0],
+need("pre-warmed" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.13 line names the WebView pre-warm")
-need("If-Range" in entries[0],
+need("If-Range" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.13 line names the resume validator")
-need("Search in Bolt" in entries[0],
+need("Search in Bolt" in entries[1],  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.13 line names the toolbar label")
 
 print("C — fix 1: the PROCESS_TEXT toolbar entry (mime + label, all faces)")
@@ -186,8 +186,8 @@ if "\n    }" in hi[1:]:
 need("Intent.ACTION_PROCESS_TEXT.equals(act)" in hi
      and "Intent.EXTRA_PROCESS_TEXT" in hi,
      "PROCESS_TEXT still reads EXTRA_PROCESS_TEXT (the door stays wired)")
-need("loadInTab(query)" in hi and "ui.post(() -> {" in hi,
-     "the query still hands off to loadInTab, POSTED")
+need("openQueryInNewTab(q.trim());" in hi,  # v1.4.14 re-point (2026-11-18): the new-tab law moved the door (see test_v1414 section D)
+     "the search entry routes through openQueryInNewTab (v1.4.14)")
 
 print("D — fix 2: the omnibox network debounce (300 ms, one request per pause)")
 tw = ba_code[ba_code.find("et.addTextChangedListener(new TextWatcher() {"):

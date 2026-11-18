@@ -64,32 +64,32 @@ about = open(os.path.join(ROOT, "app/src/main/java/com/bolt/browser/ui/AboutActi
 rel = open(os.path.join(ROOT, "scripts/release.sh"), encoding="utf8").read()
 
 print("A — the version bump (the collision corpse)")
-need(re.search(r"versionCode 127\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
-     "versionCode 127 (v1.4.11/v1.4.12 re-points; v1.4.13 re-point: pins follow the current release)")
-need(re.search(r'versionName "1\.4\.13"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)
-     'versionName "1.4.13"')
+need(re.search(r"versionCode 128\b", gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     "versionCode 128 (v1.4.11/v1.4.12 re-points; v1.4.13 re-point: pins follow the current release)")  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+need(re.search(r'versionName "1\.4\.14"', gradle) is not None,  # # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
+     'versionName "1.4.14"')  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
 
 print("B — the About changelog (the label law + the honesty trim)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
         if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.13|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]
+need(entries and entries[0].startswith("1.4.14|"),   # v1.4.13 re-point (2026-11-18): 1.4.13 landed at [0]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the newest entry is 1.4.13 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): the 1.4.12 line sits at [1]
+need(len(entries) > 1 and entries[2].startswith("1.4.12|"),   # v1.4.13 re-point (2026-11-18): the 1.4.12 line sits at [1]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the second entry is 1.4.12 (the previous live release)")
-need(len(entries) > 2 and entries[2].startswith("1.4.11|"),   # v1.4.13 re-point (2026-11-18): the 1.4.11 line slid to [2]
+need(len(entries) > 3 and entries[3].startswith("1.4.11|"),   # v1.4.13 re-point (2026-11-18): the 1.4.11 line slid to [2]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the third entry is 1.4.11")
-need(len(entries) > 3 and entries[3].startswith("1.4.10|"),   # v1.4.13 re-point (2026-11-18): the four-pack line slid to [3]
+need(len(entries) > 4 and entries[4].startswith("1.4.10|"),   # v1.4.13 re-point (2026-11-18): the four-pack line slid to [3]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the fourth entry is 1.4.10 (this gate's release)")
-need("Aho-Corasick" in entries[3] and "regex Patterns" in entries[3],   # v1.4.13 re-point (2026-11-18): the four-pack line slid to [3]
+need("Aho-Corasick" in entries[4] and "regex Patterns" in entries[4],   # v1.4.13 re-point (2026-11-18): the four-pack line slid to [3]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.10 line names the pattern diet (the ~130 MB memory corpse)")
-need("WebView registry" in entries[3],   # v1.4.13 re-point (2026-11-18)
+need("WebView registry" in entries[4],   # v1.4.13 re-point (2026-11-18)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.10 line names the closed-tab WebView leak")
-need("media service" in entries[3],   # v1.4.13 re-point (2026-11-18)
+need("media service" in entries[4],   # v1.4.13 re-point (2026-11-18)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.10 line names the tab-list race")
-need("signing key" in entries[3] and "install in place" in entries[3],   # v1.4.13 re-point (2026-11-18)
+need("signing key" in entries[4] and "install in place" in entries[4],   # v1.4.13 re-point (2026-11-18)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.10 line names the key rotation + the same-certificate promise")
-need("Under the hood" not in entries[4],   # v1.4.13 re-point (2026-11-18): the 1.4.9 line slid to [4]
+need("Under the hood" not in entries[5],   # v1.4.13 re-point (2026-11-18): the 1.4.9 line slid to [4]  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)
      "the 1.4.9 line no longer claims the hardening (it shipped in 1.4.10, not 1.4.9)")
 
 print("C — the pipeline law (release.sh targets the two public repos)")

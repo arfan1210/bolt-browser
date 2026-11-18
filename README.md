@@ -432,6 +432,117 @@ this relay, 2026-11-18):
    workspace `scripts/restore_credentials.py` was rebuilt (the = skip
    law from v1.4.12, now a script again after the recycle).
 
+**v1.4.14 — the interaction six-pack** (the eighth session of this relay,
+2026-11-18):
+
+1. *The drag is back.* v1.4.12's group sheet replaced the inline strip's
+   hold-drag with long-press "Move up / Move down" buttons (the sheet was
+   a ScrollView of rows — an ItemTouchHelper drag could not live there).
+   The member list is now a RecyclerView inside the sheet with an
+   ItemTouchHelper.SimpleCallback (makeMovementFlags(UP | DOWN, 0), drag
+   only), every crossed neighbour committing through the same
+   tm.reorderGroupMember backend the buttons drove, notifyItemMoved
+   gliding the swap. THE NEW SHEET DOOR: Ui.showSheetView() hosts a
+   RecyclerView as the sheet root WITHOUT the ScrollView wrapper — nested
+   scrolling steals the vertical touch stream and the drag can never arm;
+   showSheet() now delegates to it (one window mechanic, two bodies).
+   Learning: a sheet body that needs GESTURES must own its touch stream;
+   a ScrollView wrapper is for static row stacks only.
+2. *The external-search new-tab law.* PROCESS_TEXT / WEB_SEARCH / SEND
+   queries landed in loadInTab() — the ACTIVE tab — so "Search in Bolt"
+   from another app overwrote the page the user was reading. All three
+   now route through openQueryInNewTab(): the resolution moved into
+   resolveInput() (ONE resolver — scheme passthrough, bare-host, bangs,
+   engine, tracker cleaner — shared by the omnibox flow and the side
+   door), the tab is NEW, and it runs INLINE like the VIEW branch, not
+   posted: it builds its own tab so it has no dependency on the active
+   tab onCreate has not created yet, and a cold-start search lands as
+   ONE tab (no spare home tab) — the same shape a cold-start VIEW link
+   produces. Learning: "posted because loadInTab needs the active tab"
+   was a loadInTab property, not a handleIntent property — when the
+   callee stops needing the precondition, the posting ritual should die
+   with it.
+3. *The omnibox icon diet.* The engine chip + camera + paste strip were
+   permanent fixtures (~230 dp hugging the field). State-aware now, in
+   the TextWatcher: EMPTY shows chip + camera + paste (+ mic); TYPING
+   shows clear (+ mic) only. The chip STAYS in both states (the engine
+   indicator + the v1.4.12 pick-re-runs door — hiding it would break
+   engine-switch-mid-query); copy is RETIRED from the omnibox (the
+   field's own text-selection handles cover it — the spec's "only the
+   clear button (plus mic)" leaves no state for it). Learning: when a
+   spec enumerates two states exhaustively and a control belongs to
+   neither, the spec is RETIRING it — read the omission as a decision,
+   and say so in the changelog.
+4. *The incognito return route.* The leak: satellite screens (bookmarks,
+   history, saved pages — and Settings, which chains to all three) run
+   in the MAIN process even when launched from the incognito browser,
+   because android:process is a property of the ACTIVITY, not of who
+   launched it; their row taps fired plain BrowserActivity.class VIEW
+   intents, so the page loaded with the normal cookie jar and history.
+   The fix is a stamp-and-return contract: Ui.launchSatellite() stamps
+   EXTRA_FROM_INCOGNITO when the launcher is the incognito process
+   (TabManager.INCOGNITO — true exactly in :incognito) or a stamped
+   satellite itself (chains keep the stamp), and Ui.browserOpenIntent()
+   routes a stamped satellite's opens to IncognitoActivity — the same
+   ACTION_VIEW contract in the private process. In-browser new-tab logic
+   never rides intents at all (the process law, documented at
+   openNewTab). Learning: a two-process app must ask of EVERY screen
+   "which process am I in, and which process do my launches RETURN
+   to?" — the manifest decides the first, the intents decide the second,
+   and nothing keeps them in sync by default.
+5. *The visual-search OOM ladder.* The report described "encoding it
+   directly to Base64" — code that does not exist anywhere in the flow
+   (the v1.4.13 pattern again: the report's diagnosis and HEAD disagree;
+   the honest move is to make the report TRUE the right way). HEAD
+   already decoded bounds-first at a 1024 px cap; what it LACKED was
+   crash-proofing: the cap is now a named MAX_EDGE = 1280 (the spec's
+   number), and an OutOfMemoryError retry ladder doubles the sample
+   size (<= 3 retries) — memory pressure degrades resolution, it never
+   kills the process. The cap keeps riding the LONG edge (a panorama's
+   long edge is the memory bomb; a both-edges rule would fully decode
+   an 8000x1000 pick).
+6. *The bookmarks/history search bars.* BaseListActivity gained the
+   opt-in addSearchBar(): a TextWatcher filters the rows in real time
+   by title or sub (sub carries the URL — one rule covers "by URL or
+   title"), over the LAST-BUILT model captured in fullRows (setRows and
+   setRowsAnimated both capture; the filter pass re-renders through the
+   extracted renderRows without re-capturing) — no prefs re-read per
+   keystroke, so a long history stays keystroke-fast. rowMatches is the
+   release's one pure function, proven by a compiled+run transcription
+   probe (the v1.4.11 parse-gate law). A query that matches nothing
+   gets its own "No matches" state, distinct from the screen's
+   nothing-saved art.
+7. *The standing sweep, v1.4.14 edition.* 32 prior version gates
+   re-pinned 128/1.4.14 with dated notes (the repin script lives in
+   the workspace: `scripts/repin_gates_1414.py`); test_v1410/1411/1412/
+   1413 got surgical entry-index slides (every About-changelog pin slid
+   one slot down when the 1.4.14 line landed at entries[0]); v144's
+   in-group reorder pin, v1412's handleIntent handoff pin and
+   visual-search cap pin, and v1413's handoff pin got dated behavioral
+   re-points (the drag door, the new-tab law, the MAX_EDGE constant).
+   Suite: 69/69 release-pipeline check commands green (55 python gates
+   + node checks + javac/java sim probes) across 38 version gates.
+   ONE REPIN BUG worth remembering: the surgical edit that renamed
+   v1413's [1] pin from "1.4.12|" to "1.4.13|" was immediately
+   re-matched by the GENERIC 1.4.13->1.4.14 pair and double-applied —
+   order your repin so generic pairs run FIRST and surgical results are
+   inert to everything that runs after (or verify the [1] pin by hand,
+   which is how this one was caught).
+8. *Environment learnings (the fourth recycle).* The toolchain died
+   again (half-installed android-34 platform — package.xml present,
+   android.jar missing: rm -rf the platform dir and let setup_toolchain
+   reinstall it); `scripts/restore_credentials.py` was rebuilt with two
+   new laws: the backup's credential keys carry the `bolt.` prefix
+   (accept both spellings), and the cert-fingerprint check must
+   NORMALIZE (keytool prints colon-separated UPPERCASE hex; the pin is
+   lowercase — a substring compare always fails and had silently
+   degraded into a skip in earlier sessions). Also: a python heredoc
+   writing Android string resources EATS a backslash escape — `\'` in
+   the heredoc becomes `\'` in the file only if doubled; an unescaped
+   apostrophe in a <string> item kills the whole resource merge with a
+   bare NPE deep in AAPT (the error names no line — validate the XML
+   and grep for `[A-Za-z]'[A-Za-z]` before building).
+
 **Environment notes** (the sandbox toolchain, for fresh sessions): the
 build needs JDK 21 with `javac` (the sandbox's `java` is a JRE — extract
 `openjdk-21-jdk-headless` and graft, see the pattern in
@@ -455,12 +566,12 @@ backup WITHOUT printing the password — the credential lines are
 keyPassword value's trailing "(PKCS12…)" note is dropped by the
 first-token rule).
 
-**Known-good numbers** (v1.4.13, release build): APK 2,758,617 B (budget
+**Known-good numbers** (v1.4.14, release build): APK 2,760,997 B (budget
 6,000,000); signature verifies (v2 scheme) against the pinned cert; suite:
-68/68 release-pipeline check commands green (54 python gates + 9 node
-checks + 2 javac + 3 java sim probes) across 37 version gates; filter rule
-census unchanged from v1.4.9 (103,087 network rules, 1,709 on the regex
-path — see the hardening note above).
+69/69 release-pipeline check commands green across 38 version gates (the
+new v1414 gate among them); filter rule census unchanged from v1.4.9
+(103,087 network rules, 1,709 on the regex path — see the hardening note
+above).
 
 **Plans / candidates for future versions:**
 - v1.4.13's NetSuggest endpoints are best-knowledge URLs — Startpage's
@@ -480,10 +591,10 @@ path — see the hardening note above).
 - The engine chip re-runs a live query on switch, but a prefilled URL
   only switches silently — a small "engine: NAME" toast on every switch
   (not just the URL case) would make the state change louder.
-- The group sheet's long-press Move up/Move down replaced the drag; if a
-  field report misses the gesture, a RecyclerView-backed sheet could
-  restore ItemTouchHelper reordering — the door (showMemberMove +
-  reorderGroupMember) is already the wired backend for it.
+- (landed in v1.4.14) The group sheet's drag restore — the
+  RecyclerView-backed sheet with ItemTouchHelper reordering the v1.4.12
+  notes predicted; a future polish could add swipe-to-close members on
+  the same callback (swipe dirs are 0 today).
 - The compound single-call sequences on tm.tabs (indexOf-then-add in the
   TabsActivity drag paths, cached size()+get() in the swipe walk) remain
   outside the monitor law — they are individually-atomic reads whose

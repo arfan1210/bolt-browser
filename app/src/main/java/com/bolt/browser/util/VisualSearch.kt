@@ -56,11 +56,19 @@ object VisualSearch {
     }
 
     /**
-     * Downscale + JPEG the picked picture (visual search does not need more
-     * than 1024 px of long edge; a full 12 MP photo would only make the
-     * upload slow), POST it, and hand the loadable result URL to [onDone]
-     * ON THE CALLING THREAD'S schedule — onDone itself always runs on the
-     * caller's thread via [main] posting. null result = network failure.
+     * Downscale + JPEG the picked picture and POST it, handing the loadable
+     * result URL to [onDone] ON THE CALLING THREAD'S schedule — onDone
+     * itself always runs on the caller's thread via [main] posting. null
+     * result = network failure.
+     *
+     * v1.4.14 — THE OOM CONTRACT: a gallery pick can be a 12 MP photo
+     * (4000×3000 → a naive full decode is ~48 MB of ARGB, and the field
+     * report named an OutOfMemoryError crash on exactly that flow). The
+     * decode is bounds-first (inJustDecodeBounds) with an inSampleSize
+     * that lands the long edge at [MAX_EDGE] = 1280 px, an OutOfMemoryError
+     * retry ladder that halves the resolution again (up to 3 retries), and
+     * only then a JPEG compress — the multipart body never carries more
+     * than the engine needs.
      */
     @JvmStatic
     fun search(c: Context, engineIdx: Int, imageFile: File,
@@ -69,7 +77,7 @@ object VisualSearch {
         Thread {
             var result: String? = null
             try {
-                val bmp = decodeCapped(imageFile, 1024)
+                val bmp = decodeCapped(imageFile, MAX_EDGE)
                 if (bmp != null) {
                     val bo = ByteArrayOutputStream()
                     bmp.compress(Bitmap.CompressFormat.JPEG, 85, bo)
@@ -87,15 +95,38 @@ object VisualSearch {
 
     private fun onResultOf(cb: OnResult, url: String?) { cb.onResult(url) }
 
-    /** decode with a hard cap on the long edge (and a sane memory ceiling). */
+    /** the visual-search upload cap: 1280 px of long edge is more than any
+     *  engine's matcher uses, and bounds the decode + the POST body. */
+    private const val MAX_EDGE = 1280
+
+    /** decode with a hard cap on the long edge. Bounds-first
+     *  (inJustDecodeBounds), then an inSampleSize chosen so the sampled
+     *  decode's LONG edge lands within [maxEdge] (halve while the longest
+     *  halved dimension still clears the cap — extreme aspect ratios are
+     *  exactly the memory bombs, so the cap rides the long edge, not both
+     *  edges), then the fine scale to the exact cap. v1.4.14: an
+     *  OutOfMemoryError on the sampled decode retries at double the sample
+     *  (≤3 retries) — memory pressure degrades the resolution, it never
+     *  crashes the process. */
     private fun decodeCapped(f: File, maxEdge: Int): Bitmap? {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.absolutePath, opts)
         if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
         var s = 1
         while (maxOf(opts.outWidth, opts.outHeight) / (s * 2) >= maxEdge) s *= 2
-        val o2 = BitmapFactory.Options().apply { inSampleSize = s }
-        val rough = BitmapFactory.decodeFile(f.absolutePath, o2) ?: return null
+        var rough: Bitmap? = null
+        for (attempt in 0 until 4) {
+            try {
+                val o2 = BitmapFactory.Options().apply { inSampleSize = s }
+                rough = BitmapFactory.decodeFile(f.absolutePath, o2)
+                break
+            } catch (oom: OutOfMemoryError) {
+                s *= 2   // the retry ladder: half the pixels, try again
+            } catch (t: Throwable) {
+                return null
+            }
+        }
+        if (rough == null) return null
         val sc = minOf(1f, maxEdge.toFloat() / maxOf(rough.width, rough.height))
         if (sc >= 1f) return rough
         val fine = Bitmap.createScaledBitmap(rough,

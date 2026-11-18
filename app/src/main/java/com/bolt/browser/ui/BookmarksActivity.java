@@ -45,6 +45,9 @@ public class BookmarksActivity extends BaseListActivity {
         // v1.3.91 — the SORT pass: the same glyph + sheet as downloads /
         // history / saved pages; the choice persists per screen.
         addSortButton("sortBm", SORTS, this::refresh);
+        // v1.4.14 — THE SEARCH PASS: typing filters bookmark rows (and
+        // folder rows — they are rows too) in real time by title or URL
+        addSearchBar();
         // folder-aware back navigation (rewired after BaseListActivity's finish())
         findViewById(R.id.btn_g_back).setOnClickListener(v -> {
             if (!curFolder.isEmpty()) {
@@ -107,10 +110,10 @@ public class BookmarksActivity extends BaseListActivity {
             r.title = title == null || title.isEmpty() ? url : title;
             r.sub = url;
             r.click = v -> {
-                Intent in = new Intent(this, BrowserActivity.class);
-                in.setAction(Intent.ACTION_VIEW);
-                in.setData(android.net.Uri.parse(url));
-                startActivity(in);
+                // v1.4.14 — the incognito return route: a bookmark opened
+                // from the incognito side returns to IncognitoActivity
+                // (Ui.browserOpenIntent), never the normal browser
+                startActivity(Ui.browserOpenIntent(this, url));
                 finish();
             };
             final String fTitle = title == null || title.isEmpty() ? url : title;
@@ -188,10 +191,9 @@ public class BookmarksActivity extends BaseListActivity {
                 .setTitle(title)
                 .setItems(opts.toArray(new String[0]), (d, w) -> {
                     if (w == 0) {
-                        Intent in = new Intent(this, BrowserActivity.class);
-                        in.setAction(Intent.ACTION_VIEW);
-                        in.setData(android.net.Uri.parse(url));
-                        startActivity(in);
+                        // v1.4.14 — open-in-new-tab rides the same return
+                        // route (incognito side stays incognito)
+                        startActivity(Ui.browserOpenIntent(this, url));
                         finish();
                     } else if (w == 1) {
                         pickFolderFor(url);

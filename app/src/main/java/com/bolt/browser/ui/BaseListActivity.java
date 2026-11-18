@@ -1,9 +1,12 @@
 package com.bolt.browser.ui;
 
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -21,6 +24,7 @@ import com.bolt.browser.util.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Base for all list pages.
@@ -111,12 +115,102 @@ public abstract class BaseListActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
+    // ---- v1.4.14 — THE SEARCH PASS (bookmarks & history: the field
+    // report "no way to search through saved bookmarks or browsing
+    // history") ----
+    /** the header's search field (null = this screen has no search). */
+    protected EditText searchBox;
+    /** the UNFILTERED model of the last build(); the search pass filters
+     *  THIS in place — no re-read of prefs per keystroke, so even a long
+     *  history stays keystroke-fast. */
+    protected List<Row> fullRows = new ArrayList<>();
+    /** the live query ("" = show everything). */
+    protected String searchQuery = "";
+
+    /** v1.4.14 — wire a search bar under the header (opt-in: History and
+     *  Bookmarks call this in onCreate). Typing filters the screen's rows
+     * IN REAL TIME by title or sub (URL/date) — see rowMatches; clearing
+     * the box restores the full list. The bar rides the same bg_urlbar
+     * skin the omnibox field wears and a matching clear (X) affordance. */
+    protected void addSearchBar() {
+        try {
+            LinearLayout header = (LinearLayout) actionBtn.getParent();
+            LinearLayout root = (LinearLayout) header.getParent();
+            LinearLayout bar = new LinearLayout(this);
+            bar.setOrientation(LinearLayout.HORIZONTAL);
+            bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            EditText et = new EditText(this);
+            et.setBackgroundResource(R.drawable.bg_urlbar);
+            et.setHint(R.string.search);
+            et.setTextSize(15);
+            et.setSingleLine(true);
+            et.setPadding(Fx.dp(this, 12), Fx.dp(this, 10), Fx.dp(this, 8), Fx.dp(this, 10));
+            et.setTextColor(Fx.txt(this));
+            et.setHintTextColor(Fx.dim(this));
+            try {
+                ImageView glyph = new ImageView(this);
+                glyph.setImageResource(R.drawable.ic_search);
+                glyph.setColorFilter(Fx.tint(this));
+                LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(
+                        Fx.dp(this, 18), Fx.dp(this, 18));
+                glp.rightMargin = Fx.dp(this, 8);
+                glp.leftMargin = Fx.dp(this, 12);
+                bar.addView(glyph, glp);
+                et.setPadding(0, Fx.dp(this, 10), Fx.dp(this, 8), Fx.dp(this, 10));
+            } catch (Throwable ignored) {}
+            bar.addView(et, new LinearLayout.LayoutParams(0, -2, 1f));
+            ImageButton clear = new ImageButton(this);
+            clear.setImageResource(R.drawable.ic_close);
+            clear.setBackgroundResource(R.drawable.bg_item_round);
+            clear.setColorFilter(Fx.dim(this));
+            clear.setVisibility(View.GONE);
+            clear.setOnClickListener(v -> et.setText(""));
+            bar.addView(clear, new LinearLayout.LayoutParams(
+                    Fx.dp(this, 34), Fx.dp(this, 34)));
+            et.addTextChangedListener(new TextWatcher() {
+                public void afterTextChanged(Editable s) {
+                    searchQuery = s.toString();
+                    clear.setVisibility(s.length() == 0 ? View.GONE : View.VISIBLE);
+                    applySearch();
+                }
+                public void beforeTextChanged(CharSequence a, int b, int c, int d) {}
+                public void onTextChanged(CharSequence a, int b, int c, int d) {}
+            });
+            searchBox = et;
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, -2);
+            int side = Fx.dp(this, 14);
+            blp.setMargins(side, Fx.dp(this, 2), side, Fx.dp(this, 6));
+            root.addView(bar, Math.max(1, root.indexOfChild(rv)));
+        } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.14 — the live filter pass: renders the rows of [fullRows] that
+     *  match the live query (all of them when the query is blank). */
+    protected void applySearch() {
+        String q = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
+        List<Row> out = new ArrayList<>();
+        for (Row r : fullRows) if (rowMatches(r, q)) out.add(r);
+        renderRows(out, q);
+    }
+
+    /** the default match rule: case-insensitive substring on title or sub
+     *  (for history/bookmarks, sub carries the URL — so "by URL or title"
+     *  is one rule). Placeholder rows (no click, no switch — the "Empty"
+     *  line) never match a query. */
+    protected boolean rowMatches(Row r, String q) {
+        if (q == null || q.isEmpty()) return true;
+        if (r.click == null && !r.switchRow && r.longClick == null) return false;
+        return (r.title != null && r.title.toLowerCase(Locale.ROOT).contains(q))
+                || (r.sub != null && r.sub.toLowerCase(Locale.ROOT).contains(q));
+    }
+
     /** v1.3.91 — THE ANIMATED REFRESH: like setRows, but a PURE REORDER of
      *  the same rows (the sort flip) animates through notifyItemMoved so
      *  the cards glide to their new homes (RecyclerView's built-in item
      *  animator); anything structural (adds/removes/section changes) falls
      *  back to the plain full refresh. */
     protected void setRowsAnimated(List<Row> list) {
+        fullRows = new ArrayList<>(list);   // v1.4.14: the search pass always sees the latest model (both paths)
         List<Object> prev = new ArrayList<>(items);
         // build the new model exactly like setRows (sections + rows)
         List<Object> next = new ArrayList<>();
@@ -234,6 +328,16 @@ public abstract class BaseListActivity extends AppCompatActivity {
     protected abstract void build();
 
     protected void setRows(List<Row> list) {
+        fullRows = new ArrayList<>(list);   // v1.4.14: the unfiltered model; the RENDER is the search-filtered view
+        applySearch();
+    }
+
+    /** v1.4.14 — the RENDER half of setRows (items fill + notify + empty
+     *  state), split out so the search pass can re-render without
+     * re-capturing the unfiltered model. [liveQuery] is the query that
+     * produced [list] ("" = unfiltered): an empty RENDER while a query is
+     * live shows a "no matches" line instead of the screen's empty art. */
+    private void renderRows(List<Row> list, String liveQuery) {
         items.clear();
         String lastSection = null;
         for (Row r : list) {
@@ -249,12 +353,25 @@ public abstract class BaseListActivity extends AppCompatActivity {
         emptySlot.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) {
             emptySlot.removeAllViews();
-            View art = Ui.emptyState(this, emptyIcon,
-                    getString(emptyTitleRes),
-                    emptySubRes != 0 ? getString(emptySubRes) : null);
-            FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(-1, -2);
-            alp.gravity = android.view.Gravity.CENTER;
-            emptySlot.addView(art, alp);
+            if (liveQuery != null && !liveQuery.isEmpty()) {
+                // a query that matches nothing is its own state — not the
+                // screen's "nothing saved yet" art
+                TextView nm = new TextView(this);
+                nm.setText("No matches for \u201C" + liveQuery.trim() + "\u201D");
+                nm.setTextSize(15);
+                nm.setTextColor(Fx.dim(this));
+                nm.setGravity(android.view.Gravity.CENTER);
+                nm.setPadding(Fx.dp(this, 40), Fx.dp(this, 40), Fx.dp(this, 40), Fx.dp(this, 40));
+                emptySlot.addView(nm, new FrameLayout.LayoutParams(-1, -2,
+                        android.view.Gravity.CENTER));
+            } else {
+                View art = Ui.emptyState(this, emptyIcon,
+                        getString(emptyTitleRes),
+                        emptySubRes != 0 ? getString(emptySubRes) : null);
+                FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(-1, -2);
+                alp.gravity = android.view.Gravity.CENTER;
+                emptySlot.addView(art, alp);
+            }
         }
     }
 

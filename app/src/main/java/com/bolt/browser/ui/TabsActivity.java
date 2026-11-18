@@ -3773,9 +3773,119 @@ public class TabsActivity extends AppCompatActivity {
      * menu (tabOptions: Edit tab / Remove from group / Move to group /
      * Close tab — v1.4.9's indicated door survives). Tap a row = switch to
      * that tab and leave the switcher, exactly like tapping a card.
+     *
+     * v1.4.14 — THE DRAG IS BACK. v1.4.12 replaced the old inline strip's
+     * hold-drag with a long-press "Move up / Move down" chooser (the sheet
+     * was a ScrollView of rows, so an ItemTouchHelper drag could not live
+     * there). The member list is now a RecyclerView inside the sheet
+     * (Ui.showSheetView — no ScrollView wrapper: nested scrolling would
+     * steal the touch stream) with an ItemTouchHelper.SimpleCallback:
+     * long-press a row, drag; every crossed neighbour commits through
+     * tm.reorderGroupMember (the v1.4.4 in-group reorder law, same
+     * member-indexed backend the buttons used) and notifyItemMoved glides
+     * the swap. The "Move up / Move down" buttons are gone — the drag is
+     * the door again.
      */
     /** v1.4.12 — the sheet reference so a member move can rebuild it. */
     protected Dialog groupSheet;
+
+    /** v1.4.14 — the group sheet's member adapter (drag reorders this list
+     *  in lockstep with tm.reorderGroupMember). */
+    protected class GroupSheetAdapter extends RecyclerView.Adapter<GroupSheetAdapter.H> {
+        final List<Tab> members;
+        final JSONObject group;
+        GroupSheetAdapter(List<Tab> members, JSONObject group) {
+            this.members = members;
+            this.group = group;
+        }
+        @Override public int getItemCount() { return members.size(); }
+        @Override public GroupSheetAdapter.H onCreateViewHolder(ViewGroup parent, int viewType) {
+            LinearLayout row = new LinearLayout(parent.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight(Fx.dp(TabsActivity.this, 56));
+            int ph = Fx.dp(TabsActivity.this, 12), pv = Fx.dp(TabsActivity.this, 8);
+            row.setPadding(ph, pv, ph, pv);
+            row.setBackground(androidx.core.content.ContextCompat.getDrawable(
+                    TabsActivity.this, R.drawable.bg_item));
+            // thumbnail (the same logo tile the cards wear)
+            ImageView thumb = new ImageView(parent.getContext());
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    Fx.dp(TabsActivity.this, 40), Fx.dp(TabsActivity.this, 40));
+            tlp.rightMargin = Fx.dp(TabsActivity.this, 14);
+            row.addView(thumb, tlp);
+            LinearLayout col = new LinearLayout(parent.getContext());
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView title = new TextView(parent.getContext());
+            title.setTextSize(16);
+            title.setTextColor(Fx.txt(TabsActivity.this));
+            title.setSingleLine(true);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            col.addView(title, new LinearLayout.LayoutParams(-1, -2));
+            TextView dom = new TextView(parent.getContext());
+            dom.setTextSize(12);
+            dom.setTextColor(Fx.dim(TabsActivity.this));
+            dom.setSingleLine(true);
+            col.addView(dom, new LinearLayout.LayoutParams(-1, -2));
+            row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+            // the ⋯ member menu (v1.4.9's indicated door — survives the drag)
+            ImageButton more = new ImageButton(parent.getContext());
+            more.setImageResource(R.drawable.ic_more);
+            more.setBackground(androidx.core.content.ContextCompat.getDrawable(
+                    TabsActivity.this, R.drawable.bg_tab_btn));
+            more.setPadding(Fx.dp(TabsActivity.this, 6), Fx.dp(TabsActivity.this, 6),
+                    Fx.dp(TabsActivity.this, 6), Fx.dp(TabsActivity.this, 6));
+            more.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            more.setColorFilter(Fx.dim(TabsActivity.this));
+            row.addView(more, new LinearLayout.LayoutParams(
+                    Fx.dp(TabsActivity.this, 34), Fx.dp(TabsActivity.this, 34)));
+            return new H(row, thumb, title, dom, more);
+        }
+        @Override public void onBindViewHolder(GroupSheetAdapter.H h, int position) {
+            final Tab tab = members.get(position);
+            try {
+                if (tab.isHome) h.thumb.setImageResource(R.drawable.ic_home);
+                else {
+                    String mh = Fx.hostOf(tab.url);
+                    h.thumb.setImageDrawable(com.bolt.browser.util.FaviconStore.avatar(
+                            TabsActivity.this, mh,
+                            tab.title == null || tab.title.isEmpty() ? mh : tab.title, 36));
+                }
+            } catch (Throwable ignored) {}
+            h.title.setText(tab.isHome ? getString(R.string.home)
+                    : (tab.title == null || tab.title.isEmpty() ? tab.url : tab.title));
+            h.dom.setText(tab.isHome ? "" : Fx.hostOf(tab.url));
+            h.more.setOnClickListener(v -> {
+                Ui.tap(v);
+                try { if (groupSheet != null) groupSheet.dismiss(); }
+                catch (Throwable ignored) {}
+                tabOptions(tab, group.optLong("id"));
+            });
+            h.itemView.setOnClickListener(v -> {
+                Ui.tap(v);
+                if (selMode) { toggleSel(tab); return; }
+                int idx = tm.tabs.indexOf(tab);
+                if (idx >= 0) {
+                    tm.active = idx;
+                    try { if (groupSheet != null) groupSheet.dismiss(); }
+                    catch (Throwable ignored) {}
+                    finish();
+                }
+            });
+        }
+        class H extends RecyclerView.ViewHolder {
+            final ImageView thumb;
+            final TextView title, dom;
+            final ImageButton more;
+            H(View v, ImageView thumb, TextView title, TextView dom, ImageButton more) {
+                super(v);
+                this.thumb = thumb;
+                this.title = title;
+                this.dom = dom;
+                this.more = more;
+            }
+        }
+    }
 
     protected void openGroupSheet(final JSONObject g) {
         final long gid = g.optLong("id");
@@ -3792,111 +3902,65 @@ public class TabsActivity extends AppCompatActivity {
         t.setTextColor(Fx.txt(this));
         t.setPadding(Fx.dp(this, 4), Fx.dp(this, 12), Fx.dp(this, 4), Fx.dp(this, 6));
         body.addView(t, new LinearLayout.LayoutParams(-1, -2));
-        final Dialog[] dRef = new Dialog[1];
-        for (int i = 0; i < groupTabs.size(); i++) {
-            final Tab tab = groupTabs.get(i);
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            row.setMinimumHeight(Fx.dp(this, 56));
-            int ph = Fx.dp(this, 12), pv = Fx.dp(this, 8);
-            row.setPadding(ph, pv, ph, pv);
-            row.setBackground(androidx.core.content.ContextCompat.getDrawable(
-                    this, R.drawable.bg_item));
-            ImageView thumb = new ImageView(this);
-            try {
-                if (tab.isHome) thumb.setImageResource(R.drawable.ic_home);
-                else {
-                    String mh = Fx.hostOf(tab.url);
-                    thumb.setImageDrawable(com.bolt.browser.util.FaviconStore.avatar(
-                            this, mh,
-                            tab.title == null || tab.title.isEmpty() ? mh : tab.title, 36));
-                }
-            } catch (Throwable ignored) {}
-            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
-                    Fx.dp(this, 40), Fx.dp(this, 40));
-            tlp.rightMargin = Fx.dp(this, 14);
-            row.addView(thumb, tlp);
-            LinearLayout col = new LinearLayout(this);
-            col.setOrientation(LinearLayout.VERTICAL);
-            TextView title = new TextView(this);
-            title.setText(tab.isHome ? getString(R.string.home)
-                    : (tab.title == null || tab.title.isEmpty() ? tab.url : tab.title));
-            title.setTextSize(16);
-            title.setTextColor(Fx.txt(this));
-            title.setSingleLine(true);
-            title.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-            col.addView(title, new LinearLayout.LayoutParams(-1, -2));
-            TextView dom = new TextView(this);
-            dom.setText(tab.isHome ? "" : Fx.hostOf(tab.url));
-            dom.setTextSize(12);
-            dom.setTextColor(Fx.dim(this));
-            dom.setSingleLine(true);
-            col.addView(dom, new LinearLayout.LayoutParams(-1, -2));
-            row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
-            ImageButton more = new ImageButton(this);
-            more.setImageResource(R.drawable.ic_more);
-            more.setBackground(androidx.core.content.ContextCompat.getDrawable(
-                    this, R.drawable.bg_tab_btn));
-            more.setPadding(Fx.dp(this, 6), Fx.dp(this, 6), Fx.dp(this, 6), Fx.dp(this, 6));
-            more.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            more.setColorFilter(Fx.dim(this));
-            more.setOnClickListener(v -> {
-                Ui.tap(v);
-                try { dRef[0].dismiss(); } catch (Throwable ignored) {}
-                tabOptions(tab, gid);
-            });
-            row.addView(more, new LinearLayout.LayoutParams(
-                    Fx.dp(this, 34), Fx.dp(this, 34)));
-            row.setOnClickListener(v -> {
-                Ui.tap(v);
-                if (selMode) { toggleSel(tab); return; }
-                int idx = tm.tabs.indexOf(tab);
-                if (idx >= 0) {
-                    tm.active = idx;
-                    try { dRef[0].dismiss(); } catch (Throwable ignored) {}
-                    finish();
-                }
-            });
-            // v1.4.12 — the in-group REORDER door. The old inline strip's
-            // hold+drag (wireMiniDrag) died with the strip; the v1.4.4 law —
-            // members can be reordered inside the folder — survives through
-            // an INDICATED door instead (the v1.4.9 ⋯ lesson): long-press a
-            // row, move it up or down (tm.reorderGroupMember, member-indexed
-            // exactly like the drag was), the sheet rebuilds in the new order.
-            final int memberIdx = i;
-            row.setOnLongClickListener(v -> {
-                Ui.tap(v);
-                showMemberMove(g, tab, memberIdx, groupTabs.size());
+        // v1.4.14 — the member list is a RecyclerView now (the drag door).
+        // Height is bounded so a big folder cannot grow the sheet past the
+        // screen: rows are ~64dp; anything taller than 62% of the screen
+        // scrolls inside the recycler instead.
+        RecyclerView list = new RecyclerView(this);
+        list.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
+        list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        final GroupSheetAdapter ga = new GroupSheetAdapter(groupTabs, g);
+        list.setAdapter(ga);
+        int cap = (int) (getResources().getDisplayMetrics().heightPixels * 0.62f);
+        int want = Fx.dp(this, 64) * groupTabs.size() + Fx.dp(this, 24);
+        body.addView(list, new LinearLayout.LayoutParams(-1, Math.min(want, cap)));
+        // THE DRAG (v1.4.14): SimpleCallback with drag-only movement flags —
+        // makeMovementFlags(UP | DOWN, 0), no swipe. Every crossed neighbour
+        // commits immediately through tm.reorderGroupMember (member-indexed,
+        // exactly the backend the Move up/down buttons drove) and
+        // notifyItemMoved glides the row; committing per swap (not at drop)
+        // means even an interrupted drag leaves a consistent order behind.
+        ItemTouchHelper.SimpleCallback drag = new ItemTouchHelper.SimpleCallback(
+                ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
+            @Override
+            public int getMovementFlags(RecyclerView rv, RecyclerView.ViewHolder vh) {
+                return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
+            }
+            @Override
+            public boolean onMove(RecyclerView rv, RecyclerView.ViewHolder a,
+                    RecyclerView.ViewHolder b) {
+                int from = a.getBindingAdapterPosition(), to = b.getBindingAdapterPosition();
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION
+                        || from == to) return false;
+                if (!tm.reorderGroupMember(gid, from, to)) return false;
+                groupTabs.add(to, groupTabs.remove(from));
+                ga.notifyItemMoved(from, to);
                 return true;
-            });
-            body.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        }
-        dRef[0] = Ui.showSheet(this, body);
-        groupSheet = dRef[0];
-    }
-
-    /** the long-press door: Move up / Move down inside the folder
-     *  (tm.reorderGroupMember — the v1.4.4 law, sheet edition). */
-    protected void showMemberMove(final JSONObject g, final Tab t, int idx, int n) {
-        final long gid = g.optLong("id");
-        List<String> opts = new ArrayList<>();
-        final List<int[]> moves = new ArrayList<>();
-        if (idx > 0) { opts.add("Move up"); moves.add(new int[]{idx, idx - 1}); }
-        if (idx < n - 1) { opts.add("Move down"); moves.add(new int[]{idx, idx + 1}); }
-        if (opts.isEmpty()) { Fx.toast(this, "The tab is alone in the group"); return; }
-        Ui.choiceSheet(this, g.optString("name", "Group"),
-                opts.toArray(new String[0]), -1, pick -> {
-                    try {
-                        int[] mv = moves.get(pick);
-                        if (tm.reorderGroupMember(gid, mv[0], mv[1])) {
-                            adapter.reload();
-                            try { if (groupSheet != null) groupSheet.dismiss(); }
-                            catch (Throwable ignored) {}
-                            openGroupSheet(g);   // the sheet rebuilds in the new order
-                        }
-                    } catch (Throwable ignored) {}
-                });
+            }
+            @Override
+            public void onSwiped(RecyclerView.ViewHolder vh, int dir) { /* no swipe */ }
+            @Override
+            public void onSelectedChanged(RecyclerView.ViewHolder vh, int actionState) {
+                super.onSelectedChanged(vh, actionState);
+                // the held row lifts: elevation + a dim, so the drag reads
+                if (vh != null && actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    vh.itemView.setElevation(Fx.dp(TabsActivity.this, 6));
+                    vh.itemView.setAlpha(0.92f);
+                }
+            }
+            @Override
+            public void clearView(RecyclerView rv, RecyclerView.ViewHolder vh) {
+                super.clearView(rv, vh);
+                vh.itemView.setElevation(0f);
+                vh.itemView.setAlpha(1f);
+                // the switcher grid behind re-renders the folder's member
+                // order (the v1.3.47 law: adapter mutations defer when the
+                // RV is busy — adapter.reload() is already that shape)
+                try { adapter.reload(); } catch (Throwable ignored) {}
+            }
+        };
+        new ItemTouchHelper(drag).attachToRecyclerView(list);
+        groupSheet = Ui.showSheetView(this, body);
     }
 
     protected void groupOptions(final JSONObject g) {

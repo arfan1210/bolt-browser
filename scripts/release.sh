@@ -497,6 +497,9 @@ python3 scripts/test_v1412.py
 # v1.4.13 gate: the performance five-pack (toolbar label, omnibox debounce, favicon LRU, webview pre-warm, if-range resume)
 python3 scripts/test_v1413.py
 
+# v1.4.14 gate: the interaction six-pack (group-sheet drag, external-search new tab, omnibox icon diet, incognito return route, visual-search OOM ladder, bookmarks/history search)
+python3 scripts/test_v1414.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

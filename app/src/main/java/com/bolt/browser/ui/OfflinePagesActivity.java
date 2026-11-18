@@ -139,10 +139,8 @@ public class OfflinePagesActivity extends BaseListActivity {
             r.title = e.title;
             r.sub = (e.sub == null ? "" : e.sub + " — ") + (e.saf ? "folder" : "in app");
             r.click = v -> {
-                Intent i = new Intent(this, BrowserActivity.class);
-                i.setAction(Intent.ACTION_VIEW);
-                i.setData(e.uri);
-                startActivity(i);
+                // v1.4.14 — the incognito return route (Ui.browserOpenIntent)
+                startActivity(Ui.browserOpenIntent(this, e.uri.toString()));
                 finish();
             };
             r.longClick = v -> {
