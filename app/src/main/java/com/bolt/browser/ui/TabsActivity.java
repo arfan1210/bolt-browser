@@ -2203,7 +2203,7 @@ public class TabsActivity extends AppCompatActivity {
                 } catch (Throwable ignored) {}
                 dragged.groupId = joinGid;
                 tm.save();
-                adapter.reloadDiff(joinGid);
+                reloadDragNoVoid(joinGid);   // v1.4.18: the drag door joins the no-void law (was a bare reloadDiff)
                 Fx.toast(TabsActivity.this,
                         getString(R.string.moved_to_group) + ": " + groupName(joinGid));
                 return;
@@ -2226,7 +2226,7 @@ public class TabsActivity extends AppCompatActivity {
                 if (mergeTarget.groupId != 0) {
                     dragged.groupId = mergeTarget.groupId;
                     tm.save();
-                    adapter.reloadDiff(mergeTarget.groupId);
+                    reloadDragNoVoid(mergeTarget.groupId);   // v1.4.18: the drag door joins the no-void law
                     Fx.toast(TabsActivity.this,
                             getString(R.string.moved_to_group) + ": " + groupName(mergeTarget.groupId));
                 } else {
@@ -2239,7 +2239,7 @@ public class TabsActivity extends AppCompatActivity {
                         mergeTarget.groupId = gid;
                         dragged.groupId = gid;
                         tm.save();
-                        adapter.reloadDiff(gid);
+                        reloadDragNoVoid(gid);   // v1.4.18: the drag door joins the no-void law
                         Fx.toast(TabsActivity.this, getString(R.string.group_created)
                                 + ": " + gname);
                     }
@@ -3078,6 +3078,27 @@ public class TabsActivity extends AppCompatActivity {
                 @Override public boolean areContentsTheSame(int a, int b) { return true; }
             }, true);
             diff.dispatchUpdatesTo(this);
+            // v1.4.18 — THE POSTED RELAYOUT (the drag-into-group void's
+            // real mechanism, card view): ItemTouchHelper's drop recovery
+            // can still hold the dropped ViewHolder's itemView translated
+            // at the drop point for its settle animation, and the
+            // DefaultItemAnimator's remove pass on the departed row races
+            // that recovery — the RV can consume the diff's layout pass
+            // with the STALE slot geometry still pinned under the settling
+            // card, leaving an empty hole where the tab card was (it only
+            // heals when the switcher reopens and the board relayouts from
+            // scratch). A requestLayout posted AFTER dispatchUpdatesTo
+            // lands one frame later — after the settle/restore callbacks
+            // have run — and forces a fresh layout pass over the NEW item
+            // set, so the hole cannot survive. (The v1.4.17 span-cache
+            // theory cannot explain CARD-view voids — getSpanSize()
+            // returns 1 for every card there; this race is the door the
+            // field report actually walked through.)
+            try {
+                rv.post(() -> {
+                    try { rv.requestLayout(); } catch (Throwable ignored) {}
+                });
+            } catch (Throwable ignored) {}
             if (changedGroupId != 0) {
                 for (int i = 0; i < items.size(); i++) {
                     JSONObject g = groupAt(i);
@@ -3476,6 +3497,29 @@ public class TabsActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
+    /** v1.4.18 — THE DRAG-DOOR NO-VOID RELOAD (the "drag a tab onto a group
+     *  card, a hole stays where the tab was" report). v1.4.17's cure wired
+     *  reloadGridNoVoid() into the TWO ⋯-menu move-to-group doors only — the
+     *  DRAG door (the one the user actually uses) still called a bare
+     *  adapter.reloadDiff(joinGid): the animated DiffUtil path with no
+     *  stopScroll, no span invalidation, no requestLayout, racing the ITH
+     *  settle animation (see the posted-relayout law inside reloadDiff).
+     *  The drag door keeps its ANIMATION (the card visibly departs into
+     *  the folder — reloadDiff) but the whole no-void trio now wraps it:
+     *  stopScroll BEFORE the swap, span-cache invalidation + requestLayout
+     *  after, plus the posted relayout that beats the settle-vs-remove
+     *  race. This is the door the report named; the ⋯ doors keep their
+     *  v1.4.17 helper. */
+    protected void reloadDragNoVoid(long changedGroupId) {
+        try { rv.stopScroll(); } catch (Throwable ignored) {}
+        adapter.reloadDiff(changedGroupId);
+        try {
+            glm.getSpanSizeLookup().invalidateSpanIndexCache();
+            glm.getSpanSizeLookup().invalidateSpanGroupIndexCache();
+            glm.requestLayout();
+        } catch (Throwable ignored) {}
+    }
+
     /** per-card 3-dot menu: duplicate tab, move to group, ungroup, close */
     protected void cardOptions(final Tab t) {
         List<String> opts = new ArrayList<>();
@@ -3517,7 +3561,7 @@ public class TabsActivity extends AppCompatActivity {
                         } else if (picked.equals(getString(R.string.remove_from_group))) {
                             t.groupId = 0;
                             tm.save();
-                            adapter.reload();
+                            reloadGridNoVoid();   // v1.4.18: ungroup dissolves a span-2 group row into span-1 cards — the same span-change class (the README plan, swept)
                         } else if (picked.equals(getString(R.string.close_tab))) {
                             int pos = adapter.posOf(t);
                             int idx = tm.tabs.indexOf(t);
@@ -3604,7 +3648,7 @@ public class TabsActivity extends AppCompatActivity {
                     } else if (w == 1) {
                         t.groupId = 0;
                         tm.save();
-                        adapter.reload();
+                        reloadGridNoVoid();   // v1.4.18: ungroup rides the no-void law here too (cardOptions + tabOptions, both doors)
                     } else if (w == 2) {
                         if (groups.isEmpty()) {
                             Fx.toast(this, "No groups yet");

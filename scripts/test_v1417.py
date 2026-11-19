@@ -134,24 +134,24 @@ vs_code = strip_comments_strings(vs)
 ab_code = strip_comments_strings(ab)
 
 print("A — the version bump")
-need(re.search(r"versionCode 131\b", gradle) is not None,
-     "versionCode 131 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.17"', gradle) is not None,
-     'versionName "1.4.17"')
+need(re.search(r"versionCode 132\b", gradle) is not None,  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     "versionCode 132 (Android only installs RISING codes)")  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+need(re.search(r'versionName "1\.4\.18"', gradle) is not None,  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     'versionName "1.4.18"')  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.17|"),
+need(entries and entries[0].startswith("1.4.18|"),  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
      "the newest entry is 1.4.17 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.16|"),
+need(len(entries) > 2 and entries[2].startswith("1.4.16|"),  # v1.4.18 re-point (2026-11-19): the 1.4.16 line slid to [2] (1.4.18 landed at [0]; this file is slide-exempt — its [1] word-check below is already re-pointed)
      "the second entry is 1.4.16 (the previous live release)")
 for word, why in (("void", "the span-void law"),
                   ("dark", "the white-flash fix"),
                   ("Incognito", "the private search face"),
                   ("icons", "the Material Symbols pass")):
-    need(word in entries[0] or word in entries[0].lower(),
+    need(word in entries[1] or word in entries[1].lower(),  # v1.4.18 re-point (2026-11-19): the 1.4.17 line slid to [1] (1.4.18 landed at [0])
          f"the 1.4.17 line names {why}")
 
 print("C — fix 1: the span-void law")
@@ -172,8 +172,8 @@ need("glm.invalidateSpanAssignments()" not in rg,
 need(rg.find("rv.stopScroll();") < rg.find("adapter.reload();")
      < rg.find("glm.getSpanSizeLookup().invalidateSpanIndexCache();"),
      "the order is stopScroll -> reload -> invalidate + requestLayout (the report's trio, on the 1.3.2 door)")
-need(ta_code.count("reloadGridNoVoid();") == 2,
-     "BOTH move_to_group handlers route through the helper (cardOptions + tabOptions)")
+need(ta_code.count("reloadGridNoVoid();") == 4,
+     "the move_to_group + ungroup doors route through the helper (v1.4.18 re-point 2026-11-19: 2 -> 4 — both ungroup doors joined the law, and the DRAG door got its own reloadDragNoVoid with the posted relayout; probe-pinned in test_v1418)")
 # the commit forms carry string literals — RAW source slices (the strip
 # pass eats string bodies)
 mtg = ta[ta.find("protected void cardOptions"):]

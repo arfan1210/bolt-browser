@@ -132,25 +132,25 @@ off_code = strip_comments_strings(off)
 sha_code = strip_comments_strings(sha)
 
 print("A — the version bump")
-need(re.search(r"versionCode 131\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
-     "versionCode 131 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
-need(re.search(r'versionName "1\.4\.17"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)
-     'versionName "1.4.17"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(re.search(r"versionCode 132\b", gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     "versionCode 132 (Android only installs RISING codes)")  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+need(re.search(r'versionName "1\.4\.18"', gradle) is not None,  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     'versionName "1.4.18"')  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.17|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(entries and entries[0].startswith("1.4.18|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
      "the newest entry is 1.4.14 (the label law)")
-need(len(entries) > 2 and entries[2].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
+need(len(entries) > 3 and entries[3].startswith("1.4.15|"),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
      "the second entry is 1.4.13 (the previous live release)")
 for word, why in (("drag", "the drag restore"), ("NEW tab", "the new-tab law"),
                   ("full field width", "the omnibox icon diet"),
                   ("incognito", "the return route"),
                   ("out-of-memory", "the OOM ladder"),
                   ("search bar", "the search bars")):
-    need(word in entries[3] or word in entries[3].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
+    need(word in entries[4] or word in entries[4].lower(),  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
          f"the 1.4.14 line names {why}")
 
 print("C — fix 1: the group-sheet drag (RecyclerView + ItemTouchHelper)")
@@ -225,8 +225,9 @@ si = ba_code[ba_code.find("final Runnable syncOmniIcons"):]
 si = si[:si.find("};", 1) + 2]
 need("et.getText().length() == 0" in si,
      "the state keys on the field being empty")
-need("actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
-     "the action strip (camera/paste/copy/dup/voice) shows ONLY while typing (v1.4.16 re-point 2026-11-18: the two-row omnibox moved the doors into omni_actions)")
+need("actionsRow.getVisibility() != View.VISIBLE" in si
+     and "actionsRow.setVisibility(View.VISIBLE);" in si,
+     "the action strip is visible whenever the omnibox is OPEN (v1.4.16 re-point 2026-11-18 + v1.4.18 re-point 2026-11-19: the focus law — the text-gate hid the doors until the first keystroke)")
 need("clearB.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
      "clear shows ONLY while typing (rides Row 1; v1.4.16 re-point 2026-11-18)")
 need("R.id.omni_actions" in ba_code and "R.id.btn_omni_copy" in ba_code,

@@ -392,6 +392,11 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.18 (2026-11-19): the field-cure six-pack — the drag-door
+         no-void reload, the omnibox focus law, the dark invert-first
+         pass, the visual-search session continuity, the AI chain law,
+         the session-aware external search -->
+    <item>1.4.18|Dragging a tab onto a group card no longer leaves a hole in the switcher (the drag door now gets the same no-void reload the menu door got, plus a posted relayout that beats the settle-animation race, and ungrouping rides it too); the omnibox action row (copy, paste, duplicate, image search, voice) is visible the moment you tap the search box instead of appearing only after the first keystroke, and Copy on an empty field copies the current page address; dark mode inverts light pages at first paint instead of waiting ~3 seconds for sites that merely declare dark support (a site that darkens itself later is still pulled back), and background tabs get the same dark treatment; image search now carries your browser cookies and exact user agent through the upload and back into the results page (the grey broken-image report — the upload session and the results page are one session now), and Bing results saved as local pages load their images; AI translate with a custom model keeps the full fallback chain, retries and falls back on provider errors (the model that actually answers is named in a toast when it is not your pick); an external search (home-screen widget, selection toolbar, share sheet) now follows your last session — browsing incognito means the search opens in incognito instead of bouncing you back to the normal tabs menu.</item>
     <!-- v1.4.17 (2026-11-18): the polish seven-pack — the span-void law, the
          sheet-active highlight + rim inset, the visual-search fidelity pass,
          the commit-time dark pass + dark canvas, the AI raw-response log,

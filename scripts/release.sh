@@ -509,6 +509,8 @@ python3 scripts/test_v1416.py
 # v1.4.17 gate: the polish seven-pack (span-void law, sheet-active highlight + rim inset, visual-search fidelity, commit-time dark pass + dark canvas, AI raw-response log, Material Symbols, incognito search face)
 python3 scripts/test_v1417.py
 
+python3 scripts/test_v1418.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

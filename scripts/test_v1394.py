@@ -106,22 +106,18 @@ need('"workspaces.json"' in abk and '"sessions.json"' in abk and '"tabtrash.json
 need("workspaces.json + sessions.json + the closed-tab bin" in bak,
      "the toggle row tells the user what rides")
 
-print("D1 — ask first, invert last")
+print("D1 — probe first, invert now (v1.4.18 re-point 2026-11-19: ask-first retired)")
 need("askDarkJs" in media, "MediaHook.askDarkJs exists")
 need(re.search(r"askDarkJs\(\) \{[\s\S]{0,2400}prefers-color-scheme", media) is not None,
      "the ask probe checks stylesheet media rules (the page ANSWERS the scheme hint)")
 need("color-scheme" in media and "data-color-mode" in media,
      "the ask probe checks the meta/computed color-scheme + theme machinery")
-need("darkAwaitSelfDark" in act and "darkInvertNow" in act,
-     "the flow has the two new paths (hold-for-self-dark / invert-now)")
-need(re.search(r"darkProbeJs\(\), res -> \{[\s\S]{0,900}askDarkJs", act) is not None,
-     "the ASK runs only when the probe did not already say dark")
-need(re.search(r"askDarkJs\(\), ask -> \{[\s\S]{0,700}darkAwaitSelfDark", act) is not None,
-     "a declared dark mode HOLDS the inversion")
-need(re.search(r"askDarkJs\(\), ask -> \{[\s\S]{0,700}declares[\s\S]{0,300}darkInvertNow", act) is not None,
-     "no declaration → the smart inversion lands immediately")
-need("dark self-dark" in act, "the self-dark verdict has its own diag line")
-need("attempt < 1" in act, "the hold is bounded (two re-probes then fallback)")
+need("darkInvertNow" in act and "darkAwaitSelfDark(" not in act,
+     "the invert path stays; the ask-first hold is RETIRED (v1.4.18 re-point 2026-11-19: a site that merely DECLARES dark held WHITE ~3 s under a fresh cookie jar — light-at-commit inverts NOW; the compiled decision probe lives in test_v1418)")
+need(re.search(r"darkProbeJs\(\), res -> \{[\s\S]{0,900}darkInvertNow", act) is not None,
+     "LIGHT AT COMMIT = INVERT NOW (v1.4.18 re-point 2026-11-19: the probe's painted-light reading is the only evidence that matters; the declaration is not)")
+need('"dark commit-pass "' in act,
+     "the commit hook carries its own diag breadcrumb (v1.4.18: proof the hook fires on device — a static pin proves the code exists, not that the door opens)")
 need("dark late-flip" in act, "the late pull stays on the invert path (only ever inversion->none)")
 
 print("D2 — follow the skin + the clarity pass")
@@ -133,8 +129,8 @@ need("text-shadow:0 0 0.35px currentColor" in media,
      "the hairline halo thickens thin text (site-set shadows still win: no !important)")
 
 print("V — version pin")
-need("versionCode 131" in gradle and 'versionName "1.4.17"' in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
-     "build.gradle pins 131 / 1.4.17")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need("versionCode 132" in gradle and 'versionName "1.4.18"' in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     "build.gradle pins 132 / 1.4.18")  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
 
 # ---- semantic probes (node) ----
 node = subprocess.run(["which", "node"], capture_output=True, text=True).stdout.strip()

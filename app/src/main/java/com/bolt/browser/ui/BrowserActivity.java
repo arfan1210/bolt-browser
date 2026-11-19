@@ -592,6 +592,13 @@ public class BrowserActivity extends AppCompatActivity {
         // v1.3.79 — the search widget tap: open the omnibox ready to type
         try {
             if (i != null && i.getBooleanExtra("bolt_focus_search", false)) {
+                // v1.4.18 — THE SESSION-AWARE WIDGET (the "external search
+                // bounces the incognito user back to normal mode"
+                // report): the widget enters through THIS face by design
+                // (one PendingIntent, one entry point); when the last
+                // foreground Bolt session was incognito, the tap belongs
+                // in the PRIVATE session — forward and get out of the way.
+                if (forwardToIncognitoIfLast(i)) return;
                 ui.postDelayed(() -> {
                     try { showOmnibox(); } catch (Throwable ignored) {}
                 }, 350);
@@ -624,6 +631,21 @@ public class BrowserActivity extends AppCompatActivity {
                     q = cs == null ? null : cs.toString();
                 }
                 if (q != null && !q.trim().isEmpty()) {
+                    // v1.4.18 — THE SESSION-AWARE SEARCH FACE: the alias
+                    // row the OS picked is the MAIN-process one (the
+                    // v1.4.17 "(Incognito)" row is the manual override,
+                    // frequently collapsed into the toolbar overflow);
+                    // when the last foreground session was private, the
+                    // query forwards into the private process instead of
+                    // surfacing the normal task (whose back stack still
+                    // held the normal TABS MENU — the bounce the report
+                    // named). Diag breadcrumb either way: every field
+                    // report now says which face handled the search.
+                    if (forwardToIncognitoIfLast(i)) return;
+                    try {
+                        com.bolt.browser.util.Diag.log(this,
+                                "search intent " + act + " handled (normal)");
+                    } catch (Throwable ignored) {}
                     try { openQueryInNewTab(q.trim()); } catch (Throwable ignored) {}
                     return;   // a search entry is fully handled — never fall
                               // through to the VIEW/data branch as well
@@ -642,6 +664,48 @@ public class BrowserActivity extends AppCompatActivity {
             // saved offline pages (.mht) — from the Saved pages list or other apps
             openArchive(u);
         }
+    }
+
+    /** v1.4.18 — THE SESSION-AWARE FORWARD (the "external search bounces
+     *  the incognito user back to the normal tabs menu" report): when the
+     *  last foreground Bolt session was INCOGNITO (SessionState's record,
+     *  written by whichever BrowserActivity variant last resumed), an
+     *  external search intent or widget tap that resolved into THIS
+     *  normal face is re-fired at IncognitoActivity — the private process
+     *  with its own cookie jar — and this activity finishes so the normal
+     *  task (and its stale tabs-menu back stack) never surfaces over it.
+     *  The forward happens BEFORE onResume, so this face's own resume
+     *  never overwrites the record it just read. Never fires from the
+     *  incognito process itself (there the search already IS private),
+     *  and a missing record reads normal — the feature cannot hijack a
+     *  normal user's search into private mode by accident. The v1.4.17
+     *  SearchIncognito alias stays: it is the MANUAL door. */
+    private boolean forwardToIncognitoIfLast(Intent i) {
+        if (incognito) return false;
+        boolean lastIncognito;
+        try {
+            lastIncognito = com.bolt.browser.util.SessionState
+                    .lastForegroundIncognito(this);
+        } catch (Throwable t) {
+            return false;
+        }
+        if (!lastIncognito) return false;
+        try {
+            Intent fwd = new Intent(this, IncognitoActivity.class);
+            fwd.setAction(i == null ? null : i.getAction());
+            if (i != null && i.getExtras() != null) fwd.putExtras(i.getExtras());
+            fwd.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                com.bolt.browser.util.Diag.log(this, "search fwd -> incognito ("
+                        + (i == null ? "widget" : i.getAction()) + ")");
+            } catch (Throwable ignored) {}
+            startActivity(fwd);
+        } catch (Throwable t) {
+            return false;   // the forward itself failed: fall through to
+                            // normal handling rather than eating the search
+        }
+        finish();
+        return true;
     }
 
     /** open a saved web archive in a new tab: file:// loads directly;
@@ -686,6 +750,14 @@ public class BrowserActivity extends AppCompatActivity {
 
     @Override
     protected void onResume() {
+        // v1.4.18 — THE SESSION RECORD: whichever process's browser face
+        // resumes is the session the user is in LAST; the main-process
+        // search faces read this (fresh, cross-process) to decide whether
+        // an external search forwards into the private session. First
+        // statement of onResume so no early return below can skip it.
+        try {
+            com.bolt.browser.util.SessionState.noteForeground(this, incognito);
+        } catch (Throwable ignored) {}
         // v1.3.76 — CACHE GUARD, mid-session audit (rate-limited to one pass
         // per 5 minutes; over budget it trims the HTTP cache through the
         // instance API that is safe with live renderers — ANY of this app's
@@ -2520,7 +2592,9 @@ public class BrowserActivity extends AppCompatActivity {
     /** v1.3.94 — apply the smart inversion NOW (the no-designed-dark
      *  fallback, or the declared-but-never-darkened case) plus the late
      *  pull (only ever inversion → none: a page that darkens after all
-     *  gets its own colors back — re-inverting mid-read would flash). */
+     *  gets its own colors back — re-inverting mid-read would flash).
+     *  v1.4.18: with the ask-first hold retired, THIS is the only commit-
+     *  time outcome for a probed-light page (see runWebDarkPass). */
     protected void darkInvertNow(final WebView w, final String host) {
         try {
             w.evaluateJavascript(MediaHook.cssInjectOnce(
@@ -2532,8 +2606,19 @@ public class BrowserActivity extends AppCompatActivity {
             // data arrival). Only ever inversion->none.
             ui.postDelayed(() -> {
                 try {
+                    // v1.4.18 — THE BACKGROUND-TAB FIX: the old guard
+                    // (w != activeTab().web -> return) aborted the late
+                    // probe for every BACKGROUND tab, and the finish-time
+                    // backstop skips urls the commit pass already spoke
+                    // for (the run token) — so a tab loaded in the
+                    // background could keep Bolt's inversion even after
+                    // its site self-darkened, forever. The guard now
+                    // checks the tab is still ALIVE (it was closed ->
+                    // give up); fullscreen video only shields the ACTIVE
+                    // tab it actually belongs to.
+                    if (tabOf(w) == null) return;
                     Tab at = activeTab();
-                    if (at == null || w != at.web || customView != null) return;
+                    if (at != null && w == at.web && customView != null) return;
                     w.evaluateJavascript(MediaHook.darkProbeJs(), res2 -> {
                         try {
                             if ("1".equals(
@@ -2550,37 +2635,8 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
-    /** v1.3.94 — the page DECLARES a dark mode (askDarkJs said so): hold
-     *  the inversion and watch for its own dark — the dark scheme is
-     *  already reported to it, so a scheme-aware site paints its dark a
-     *  beat after onLoad. Two re-probes (~1.2 s, ~3 s); a page still light
-     *  after both is declared-but-locked — the fallback applies then. */
-    protected void darkAwaitSelfDark(final WebView w, final String host, final int attempt) {
-        ui.postDelayed(() -> {
-            try {
-                Tab at = activeTab();
-                if (at == null || w != at.web || customView != null) return;
-                w.evaluateJavascript(MediaHook.darkProbeJs(), res -> {
-                    try {
-                        if ("1".equals(
-                                res == null ? "0" : res.replace("\"", ""))) {
-                            w.evaluateJavascript(
-                                    MediaHook.darkClearJs(), null);
-                            com.bolt.browser.util.Diag.log(getApplicationContext(),
-                                    "dark self-dark " + host);
-                        } else if (attempt < 1) {
-                            darkAwaitSelfDark(w, host, attempt + 1);
-                        } else {
-                            darkInvertNow(w, host);
-                        }
-                    } catch (Throwable ignored) {}
-                });
-            } catch (Throwable ignored) {}
-        }, attempt == 0 ? 1200 : 1800);
-    }
-
     /** v1.4.17 — THE COMMIT-TIME DARK PASS (the dark-web white-flash fix).
-     * The dark decision chain (probe -> ask -> invert) used to run only at
+     * The dark decision chain (probe -> invert) used to run only at
      * onPageFinished, so a light site under the dark-web engine painted
      * WHITE from first paint until the last subresource landed — on a slow
      * page that is seconds of white between two dark pages, which reads as
@@ -2593,12 +2649,35 @@ public class BrowserActivity extends AppCompatActivity {
      * the ALREADY-INVERTED page, read it as painted-dark, and clear
      * Bolt's own inversion — the probe cannot tell site-dark from
      * bolt-dark. Native force-dark stays retired (see Tab.applyWebDark:
-     * a no-op at target 34, and the v1.3.91 double-inversion corpse). */
+     * a no-op at target 34, and the v1.3.91 double-inversion corpse).
+     *
+     * v1.4.18 — THE ASK-FIRST HOLD IS RETIRED (the "dark engine paints a
+     * light site WHITE until it finishes loading" report). The v1.3.94
+     * chain ran probe -> ASK (does the page DECLARE dark?) -> hold for
+     * its own dark (~3 s via darkAwaitSelfDark, now deleted) -> invert.
+     * A page that merely DECLARES dark (a color-scheme meta, any
+     * prefers-color-scheme rule, a data-theme attribute — very common)
+     * but renders LIGHT under a fresh cookie jar therefore sat WHITE for
+     * the whole hold. A declaration is not evidence the page WILL
+     * self-darken; the probe's painted-light reading is evidence it has
+     * NOT. The commit pass now inverts the moment the probe reads light,
+     * and the site that genuinely darkens on its own a beat later is
+     * pulled back by the 2.5 s late re-probe inside darkInvertNow
+     * (inversion -> none only) — the trade is a brief double-dark on
+     * that rare async-dark class, accepted knowingly in exchange for
+     * zero white hold on every merely-declaring site. The run-token
+     * guard and the finish-time backstop are unchanged. */
     protected void runWebDarkPass(final WebView view, final String url) {
         try {
             final String host = Fx.hostOf(url);
             String base = Fx.baseDomain(host);
             if (!siteDarkNow(base)) return;
+            // v1.4.18 — THE COMMIT BREADCRUMB: the field report needed
+            // proof the commit hook fires on device at all (a static pin
+            // proves the code exists, not that the door opens); every
+            // diag report now carries the hook's firing per host.
+            com.bolt.browser.util.Diag.log(getApplicationContext(),
+                    "dark commit-pass " + host);
             Tab t = tabOf(view);
             if (t != null) t.darkPassUrl = url;
             view.evaluateJavascript(MediaHook.darkProbeJs(), res -> {
@@ -2611,17 +2690,9 @@ public class BrowserActivity extends AppCompatActivity {
                         com.bolt.browser.util.Diag.log(getApplicationContext(),
                                 "dark native-site " + host);
                     } else {
-                        view.evaluateJavascript(MediaHook.askDarkJs(), ask -> {
-                            try {
-                                boolean declares = "1".equals(
-                                        ask == null ? "0" : ask.replace("\"", ""));
-                                if (declares) {
-                                    darkAwaitSelfDark(view, host, 0);
-                                } else {
-                                    darkInvertNow(view, host);
-                                }
-                            } catch (Throwable ignored) {}
-                        });
+                        // v1.4.18 — LIGHT AT COMMIT = INVERT NOW (the
+                        // ask-first hold died here; see the method doc)
+                        darkInvertNow(view, host);
                     }
                 } catch (Throwable ignored) {}
             });
@@ -12761,6 +12832,18 @@ public class BrowserActivity extends AppCompatActivity {
 
     // ------------------------------------------------------------ omnibox
 
+    /** v1.4.18 — the omnibox Copy target (PURE, probe-pinned per the
+     *  v1.4.11 parse-gate law): the field's text when there is any;
+     *  otherwise the ACTIVE tab's URL when the tab shows a real page;
+     *  null when there is nothing useful to copy (home tab, no URL) —
+     *  the caller toasts instead of a silent no-op. */
+    static String omniCopyText(String fieldText, String tabUrl, boolean tabIsHome) {
+        if (fieldText != null && !fieldText.isEmpty()) return fieldText;
+        if (tabIsHome) return null;
+        if (tabUrl == null || tabUrl.isEmpty()) return null;
+        return tabUrl;
+    }
+
     /** v1.3.36 FIELD FIX ("the search bar should stay at top or animate
      *  coming down from top — popping out from the bottom breaks the
      *  immersion"): the omnibox is now a TOP-ANCHORED dropdown — it hangs
@@ -12833,23 +12916,31 @@ public class BrowserActivity extends AppCompatActivity {
         // structural now: Row 1 (engine chip | field weight 1 | clear) is
         // all chrome the TEXT needs, and every former trailer icon moved
         // to Row 2 (omni_actions: copy, paste, duplicate, image search,
-        // voice search — one evenly weighted 44dp slot each). The strip is
-        // ONE visibility unit driven by the field's state:
-        //   EMPTY  → strip hidden, clear hidden — Row 1 stands alone, the
-        //            whole width is the field (plus the engine chip);
-        //   TYPING → strip + clear shown — the actions sit in their own
-        //            row and never touch the field's width again.
-        // The v1.4.15 state cache survives: only an EMPTY<->TYPING flip
-        // costs a setVisibility; every other keystroke is one array read.
+        // voice search — one evenly weighted 44dp slot each).
+        // v1.4.18 re-point (2026-11-19): the strip is NO LONGER text-gated.
+        // The v1.4.16 spec ("shown ONLY while the field holds text") hid
+        // image search / paste / duplicate / voice behind the FIRST
+        // keystroke — the field report: "tap the search box and the action
+        // buttons are invisible until I type". The strip now shows the
+        // moment the omnibox opens (focus law); only the CLEAR button
+        // keeps following the field's empty/typing state (clearing an
+        // empty field is a no-op, so it stays hidden while empty).
         final View actionsRow = lay.findViewById(R.id.omni_actions);
         final android.widget.ImageButton clearB = lay.findViewById(R.id.btn_omni_clear);
         final Boolean[] omniEmptyCache = new Boolean[1];
         final Runnable syncOmniIcons = () -> {
             try {
+                // v1.4.18 — THE FOCUS LAW: one guaranteed show per open (a
+                // cheap visibility read when already visible), then the
+                // v1.4.15 empty-cache law keeps driving ONLY the clear
+                // button: an EMPTY<->TYPING flip costs one setVisibility,
+                // every other keystroke is one array read.
+                if (actionsRow != null && actionsRow.getVisibility() != View.VISIBLE) {
+                    actionsRow.setVisibility(View.VISIBLE);
+                }
                 boolean empty = et.getText().length() == 0;
                 if (omniEmptyCache[0] != null && omniEmptyCache[0] == empty) return;
                 omniEmptyCache[0] = empty;
-                if (actionsRow != null) actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);
                 if (clearB != null) clearB.setVisibility(empty ? View.GONE : View.VISIBLE);
             } catch (Throwable ignored) {}
         };
@@ -12879,10 +12970,20 @@ public class BrowserActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
         });
         // copy current field
+        // v1.4.18 — EMPTY-FIELD COPY (the focus law's sibling): the strip
+        // is up before typing now, so Copy must do something useful
+        // there — an empty field copies the ACTIVE TAB'S URL (the user
+        // cleared the field but still wants the address); a home tab has
+        // nothing to copy and says so instead of silently doing nothing.
         lay.findViewById(R.id.btn_omni_copy).setOnClickListener(v -> {
             try {
-                String txt = et.getText().toString();
-                if (txt.isEmpty()) return;
+                Tab cur = activeTab();
+                String txt = omniCopyText(et.getText().toString(),
+                        cur == null ? null : cur.url, cur == null || cur.isHome);
+                if (txt == null) {
+                    Fx.toast(this, "Nothing to copy");
+                    return;
+                }
                 ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Bolt", txt));
                 Fx.toast(this, getString(R.string.copied));

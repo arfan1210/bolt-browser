@@ -4,6 +4,124 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.18] — 2026-11-19
+
+**The field-cure six-pack: v1.4.17 shipped 41/41 gates green but most field
+symptoms survived — static pins prove code EXISTS, not that the bug is
+CURED. Every fix below carries a compiled+run behavior probe or a Diag
+breadcrumb, and the moved pins were re-pointed at the door the user
+actually uses.**
+
+### Fixed — DRAGGING A TAB ONTO A GROUP LEAVES A HOLE (the door was wrong)
+- v1.4.17's `reloadGridNoVoid()` was wired into the TWO ⋯-menu
+  move-to-group doors only. The DRAG door — the one the report's user
+  actually used — still called a bare `adapter.reloadDiff(joinGid)` at all
+  three drop sites (join, merge-into-existing, merge-creates-new): no
+  `stopScroll`, no span invalidation, no `requestLayout`. And in CARD view
+  `getSpanSize()` returns 1 for groups too, so the span-cache theory could
+  not explain a card-view hole at all — the real mechanism is
+  ItemTouchHelper's drop-recovery animation racing the DiffUtil remove
+  pass, leaving the stale slot geometry pinned under the settling card
+  until the switcher was closed and reopened.
+- All three drag sites now route through `reloadDragNoVoid()` (new): the
+  animated DiffUtil reload wrapped in the full no-void trio — `stopScroll`
+  before the swap, span-cache invalidation + `requestLayout` after — and
+  `reloadDiff` itself posts one `requestLayout` AFTER
+  `dispatchUpdatesTo()`, the frame-later relayout that runs after the
+  settle/restore callbacks and so cannot be consumed by the stale-layout
+  pass. Ungroup (`remove_from_group`, both the card menu and the sheet
+  menu) rides `reloadGridNoVoid()` too — the span-change class the v1.4.17
+  plans section already predicted, swept without waiting for its own
+  field report.
+
+### Fixed — OMNIBOX ACTION ROW INVISIBLE UNTIL THE FIRST KEYSTROKE
+- The v1.4.16 two-row omnibox gated Row 2 (copy, paste, duplicate, image
+  search, voice) on the field HOLDING TEXT — tapping the search box showed
+  a bare field until the first keystroke landed. The strip is shown the
+  moment the omnibox opens now (the focus law); only the CLEAR button
+  keeps following the empty/typing state, and the v1.4.15
+  one-setVisibility-per-flip cache survives.
+- Copy on an EMPTY field used to be a silent no-op; it now copies the
+  active page's address (the field was cleared, the address is still what
+  you want), and a home tab says "Nothing to copy" instead of doing
+  nothing silently.
+
+### Fixed — DARK MODE PAINTS LIGHT SITES WHITE UNTIL FULLY LOADED
+- The v1.3.94 ask-first hold was the engine of the white-paint: a site
+  that merely DECLARES dark support (a color-scheme meta, any
+  prefers-color-scheme rule, a data-theme attribute — very common) but
+  renders light under a fresh cookie jar held WHITE for the whole hold
+  (~1.2 s + ~1.8 s) before the fallback inversion landed. The commit-time
+  pass now inverts the moment the luminance probe reads light — a
+  declaration is not evidence the page WILL self-darken, the probe's
+  painted-light reading is evidence it has NOT. `darkAwaitSelfDark` is
+  deleted; the 2.5 s late re-probe stays as the pull-back for a site that
+  genuinely darkens on its own (it only ever clears bolt-inversion →
+  none), the run-token guard and the finish-time backstop are unchanged,
+  and the accepted trade is a brief double-dark on the rare async-dark
+  class in exchange for zero white hold on every merely-declaring site.
+- The late re-probe aborted for every BACKGROUND tab (`w != activeTab()
+  .web → return`) while the finish backstop skips urls the commit pass
+  already spoke for — a background-loaded tab could keep Bolt's inversion
+  forever after its site self-darkened. The guard now checks the tab is
+  still alive; fullscreen video shields only the active tab it belongs
+  to. A commit-pass Diag breadcrumb (`dark commit-pass <host>`) proves
+  the hook fires on device.
+
+### Fixed — IMAGE SEARCH RESULTS SHOW GREY/BROKEN IMAGES (session split)
+- The upload rode a bare `HttpURLConnection` with a hand-written
+  User-Agent and NO cookies, then handed the result URL to the WEBVIEW —
+  a different cookie jar. Google could not associate the results page
+  with the upload session and answered with the error-image placeholder;
+  v1.4.17's q90/bilinear/CRLF fidelity legs never touched this gap. The
+  upload session is now CONTINUOUS with the browser: the POST carries the
+  WebView jar's cookies for the endpoint, speaks the WebView's exact
+  User-Agent, and every Set-Cookie minted along the redirect ladder is
+  pumped into the WebView's `CookieManager` before the result URL loads
+  (each GET hop carries and pumps too — Google's consent redirect
+  resolves when the consent cookie rides along).
+- Bing's 200-body results page is saved as a local `file://` page whose
+  HTML carries relative resource URLs — against a file:// base every
+  image died. A `<base href="https://www.bing.com/">` is injected into
+  the saved body (pure function, probe-pinned).
+
+### Fixed — AI TRANSLATE "PROVIDER ERROR" ON A CUSTOM MODEL (dead end)
+- `chain = if (m == GEMINI_DEFAULT) arrayOf(m, *FALLBACKS) else
+  arrayOf(m)` — a CUSTOM model disabled every fallback, and the chain
+  only advanced on 404 model-not-found. A custom model meeting a 503
+  "model overloaded" wave (gemini-3.8-flash had documented ones in
+  2026-11) had no retry, no fallback, and the user ate a bare "provider
+  error" — a robustness gap, not an outdated model name. The chain now
+  ALWAYS carries the default + fallbacks after the custom pick (deduped,
+  `buildChain`, probe-pinned), advances on the 5xx bucket too
+  (`advanceChain`, probe-pinned), and the same model retries a 503 with
+  a bounded backoff that honors the provider's `retryInfo.retryDelay`
+  hint when present (else 5 s, capped 30 s, ≤2 retries; the 429 free-tier
+  patience is unchanged). The model that actually answers is logged and
+  Diag-recorded always, and toasted when it is NOT the configured pick —
+  a silent fallback reads as "my model works" while it is down.
+
+### Fixed — EXTERNAL SEARCH BOUNCES AN INCOGNITO SESSION TO NORMAL MODE
+- The system search doors resolve into the MAIN process's faces: the
+  launcher aliases' WEB_SEARCH/SEND/PROCESS_TEXT filters, and the
+  home-screen widget's hardcoded `new Intent(context,
+  BrowserActivity.class)`. v1.4.17's SearchIncognito alias only ADDED a
+  second chooser row (frequently collapsed into the toolbar overflow),
+  so an incognito user's search surfaced the NORMAL task — whose back
+  stack still held the normal tabs menu, the exact bounce the report
+  named. The faces are now SESSION-AWARE: whichever BrowserActivity
+  variant resumes records the session (incognito/normal) into a tiny
+  cross-process file (atomic tmp+rename; both processes share filesDir),
+  and the normal search faces read it FRESH on every intent — an
+  external search or widget tap forwards into `IncognitoActivity` and
+  finishes the normal face so the normal task never surfaces. The
+  forward happens before onResume so the record is never overwritten by
+  the face that just read it; a missing record reads normal (the feature
+  cannot hijack a normal search into private mode); the in-app incognito
+  omnibox → tabs-button round trip stays in-process and private as
+  always; the explicit "(Incognito)" alias remains the manual door. Diag
+  breadcrumbs name the face and the forward on every search intent.
+
 ## [1.4.17] — 2026-11-18
 
 **The polish seven-pack: the move-to-group span-void law, the group-sheet

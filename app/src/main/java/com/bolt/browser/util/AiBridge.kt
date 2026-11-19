@@ -291,12 +291,16 @@ object AiBridge {
         val p = prompt(tl, iw, ih)
         return if (prov(ctx) == "gemini") {
             val m = model(ctx)
-            val chain = if (m == GEMINI_DEFAULT) arrayOf(m, *GEMINI_FALLBACKS) else arrayOf(m)
+            val chain = buildChain(m)
             for (name in chain) {
                 val r = geminiCall(ctx, name, p, b64, iw, ih)
-                if (r != null) return r
-                // only the model-not-found shape advances the chain
-                if (!lastError.contains("model")) return null
+                if (r != null) {
+                    noteAnsweredModel(ctx, m, name)
+                    return r
+                }
+                // v1.4.18: the chain advances on model-not-found AND the
+                // 5xx provider bucket (see advanceChain)
+                if (!advanceChain(lastError)) return null
             }
             null
         } else {
@@ -363,6 +367,24 @@ object AiBridge {
             try { Diag.log(ctx, "ai 429 retry") } catch (_: Throwable) {}
             try { Thread.sleep(15000) } catch (_: Throwable) { return r }
             r = geminiPost(ctx, mdl, body)
+        }
+        // v1.4.18 — THE 503 LADDER (the "custom model + provider error =
+        //  dead end" report): gemini-3.8-flash had documented 503 "model
+        //  overloaded" waves in 2026-11 — a custom model meeting one had
+        //  NO retry, NO fallback (the chain was arrayOf(m) alone), and
+        //  the user ate a bare "provider error". The SAME model now
+        //  retries with a bounded backoff — the delay honors the
+        //  provider's retryInfo.retryDelay hint when the body carries
+        //  one (retryDelaySeconds), else 5 s, capped at 30 s — up to 2
+        //  retries, then the chain walks (advanceChain advances on 5xx
+        //  now too). The 429 free-tier patience above is unchanged.
+        var tries503 = 0
+        while (r.first == 503 && tries503 < 2) {
+            val delay = retryDelaySeconds(r.second, 5).coerceIn(1, 30)
+            try { Diag.log(ctx, "ai 503 retry " + (tries503 + 1) + " in " + delay + "s") } catch (_: Throwable) {}
+            try { Thread.sleep(delay * 1000L) } catch (_: Throwable) { return r }
+            r = geminiPost(ctx, mdl, body)
+            tries503++
         }
         return r
     }
@@ -451,11 +473,14 @@ object AiBridge {
         lastError = ""
         return if (prov(ctx) == "gemini") {
             val m = model(ctx)
-            val chain = if (m == GEMINI_DEFAULT) arrayOf(m, *GEMINI_FALLBACKS) else arrayOf(m)
+            val chain = buildChain(m)
             for (name in chain) {
                 val r = geminiChat(ctx, name, system, history)
-                if (r != null) return r
-                if (!lastError.contains("model")) return null
+                if (r != null) {
+                    noteAnsweredModel(ctx, m, name)
+                    return r
+                }
+                if (!advanceChain(lastError)) return null
             }
             null
         } else {
@@ -714,6 +739,70 @@ object AiBridge {
         val b = t.lastIndexOf(']')
         if (a < 0 || b <= a) return null
         return t.substring(a, b + 1)
+    }
+
+    /** the model that actually answered the last successful call (the
+     *  configured pick or a fallback — the evidence channel for the
+     *  v1.4.18 chain law). */
+    private var lastAnsweredModel: String? = null
+
+    /** v1.4.18 — THE ANSWERED-MODEL EVIDENCE: with the chain always
+     *  carrying fallbacks, a 503-ing custom model can be silently
+     *  answered by a default — the toast says so when that happens (a
+     *  silent fallback reads as "my model works" while it is down), and
+     *  logcat + the diag ring ALWAYS carry who answered. */
+    private fun noteAnsweredModel(ctx: Context, configured: String, answered: String) {
+        lastAnsweredModel = answered
+        try { Log.i("AiBridge", "answered by model: " + answered) } catch (_: Throwable) {}
+        try { Diag.log(ctx, "ai answered by " + answered) } catch (_: Throwable) {}
+        if (answered != configured) {
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try {
+                        Toast.makeText(ctx.applicationContext,
+                                "AI fell back to " + answered, Toast.LENGTH_SHORT).show()
+                    } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
+    /** v1.4.18 — THE CHAIN LAW (the "custom model + provider error = dead
+     *  end" report): a CUSTOM model used to disable every fallback
+     *  (arrayOf(m) alone), so a 503 wave or a bad name had nowhere to
+     *  go. The chain now ALWAYS carries the default + the fallbacks
+     *  AFTER the custom pick (deduped, order preserved). PURE
+     *  (probe-pinned per the v1.4.11 parse-gate law). */
+    internal fun buildChain(m: String): Array<String> {
+        val seen = LinkedHashSet<String>()
+        seen.add(m)
+        seen.add(GEMINI_DEFAULT)
+        for (f in GEMINI_FALLBACKS) seen.add(f)
+        return seen.toTypedArray()
+    }
+
+    /** v1.4.18 — when does the chain walk to the next model? The 404
+     *  model-not-found shape AND the 5xx provider bucket (a dead or
+     *  overloaded model is exactly what a fallback exists for). Auth,
+     *  quota, rate-limit and parse errors return false — another model
+     *  on the same key would fail identically. PURE (probe-pinned). */
+    internal fun advanceChain(err: String): Boolean {
+        return err.contains("model not found") || err.contains("provider error")
+    }
+
+    /** v1.4.18 — parse the provider's retry hint (PURE, probe-pinned):
+     *  Gemini 5xx bodies carry error.details[] with retryInfo.retryDelay
+     *  as "NNs"; a plain scan (no JSON parser — the probe must run
+     *  dependency-free) finds the FIRST retryDelay, reads its seconds,
+     *  and returns [dflt] when absent or malformed. The caller caps and
+     *  floors it. */
+    internal fun retryDelaySeconds(body: String, dflt: Int): Int {
+        if (body.isEmpty()) return dflt
+        val i = body.indexOf("retryDelay")
+        if (i < 0) return dflt
+        val m = java.util.regex.Pattern.compile("(\\d{1,4})s").matcher(body.substring(i))
+        if (!m.find()) return dflt
+        return try { Integer.parseInt(m.group(1)) } catch (_: Throwable) { dflt }
     }
 
     /** HTTP-code + provider message, key-free, toast-safe.

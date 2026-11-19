@@ -18,6 +18,16 @@ import com.bolt.browser.R;
  * bolt_focus_search extra in onCreate/onNewIntent — the activity is
  * singleTask, so a running Bolt is reused, never duplicated).
  *
+ * v1.4.18 — THE TARGET STAYS BrowserActivity ON PURPOSE (the "widget
+ * always opens normal mode even after browsing incognito" leg of the
+ * session-bounce report): this face is the SESSION-AWARE ENTRY now.
+ * handleIntent() reads SessionState's last-foreground-session record and
+ * forwards the tap into IncognitoActivity when the user's last session
+ * was private, finishing the normal face so the normal task (with its
+ * stale tabs-menu back stack) never surfaces. Hardcoding the incognito
+ * activity here instead would break the OTHER half — a normal user's
+ * widget tap would land in private mode with no way back.
+ *
  * Deliberately DUMB: no update period, no config activity, no list — a
  * light browser's widget is a launch affordance, not an app. The whole
  * provider exists so the launcher has something to instantiate; every

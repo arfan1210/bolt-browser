@@ -901,27 +901,175 @@ relay, 2026-11-18):
    and every later release must slide it). Suite after the recovery:
    41/41 version gates green.
 
-**Known-good numbers** (v1.4.17, release build): APK
-2,767,561 B (budget 6,000,000); signature verifies (v2 scheme) against
-the pinned cert; suite: all 41 release-pipeline gate commands green (the
-new v1417 gate among them — its compiled probe runs transcriptions of
-the span-void law, the dark-pass run token, and the rim inset geometry);
+**v1.4.18 — the field-cure six-pack** (the twelfth session of this relay,
+2026-11-19):
+
+1. *The law of this release.* v1.4.17 shipped 41/41 gates green and most
+   field symptoms SURVIVED — the gates were static text pins, which prove
+   code EXISTS, not that the bug is CURED. The maintainer's order for
+   v1.4.18: every fix carries a compiled+run BEHAVIOR probe where a pure
+   body could be extracted (the v1.4.11 parse-gate law) or a Diag
+   breadcrumb where it could not, moved pins are re-pointed at the door
+   the user actually uses with dated notes, and "do not just re-pin —
+   verify the actual door the user uses" is now the standing rule. The
+   new gate (test_v1418) runs six compiled transcriptions: the
+   settle-vs-remove race (naive hole vs posted relayout), omniCopyText +
+   the visibility state machine, the dark decision + the background-tab
+   guard, ensureBaseHref, buildChain/advanceChain/retryDelaySeconds +
+   the dead-end walk, and the SessionState file core + the forward
+   decision.
+2. *The drag-door void (the wrong-door corpse).* v1.4.17's span-void cure
+   wired reloadGridNoVoid() into the TWO ⋯-menu move-to-group doors —
+   the DRAG door (the one the report's user used) still called a bare
+   adapter.reloadDiff at all three drop sites. And in CARD view
+   getSpanSize() returns 1 for groups too, so the span-cache theory
+   could not explain a card-view hole at all: the real mechanism is
+   ItemTouchHelper's drop-recovery animation racing the DiffUtil remove
+   pass, the stale slot geometry surviving until the switcher reopens.
+   The cure is three-legged: reloadDragNoVoid() wraps the ANIMATED diff
+   in the no-void trio (the drag keeps its animation), reloadDiff posts
+   ONE requestLayout after dispatchUpdatesTo (the frame-later relayout
+   lands after the settle/restore callbacks — the race antidote), and
+   both ungroup doors ride reloadGridNoVoid (the plans-section
+   prediction, swept without waiting for its own report). Learning: a
+   fix wired to the WRONG door reads as "the fix doesn't work" in the
+   field while every gate stays green — when a symptom survives a cure,
+   first question: WHICH door did the user walk through?
+3. *The focus law (the omnibox strip).* v1.4.16's two-row omnibox gated
+   Row 2 on the field HOLDING TEXT — image search, paste, duplicate and
+   voice were invisible until the first keystroke, exactly when they are
+   most useful (before typing). The strip now shows the moment the
+   omnibox opens; only Clear follows the field state (the v1.4.15
+   one-write cache survives, scoped to the clear button); Copy on an
+   empty field copies the ACTIVE PAGE'S URL (omniCopyText, pure,
+   probe-pinned) and a home tab toasts instead of silently doing
+   nothing. Learning: a visibility spec keyed on input STATE hides the
+   actions exactly when the user is deciding what to do — "the actions
+   exist for the empty field" is the product truth Chrome's omnibox
+   already encodes.
+4. *The ask-first hold WAS the white-paint (dark engine).* The v1.3.94
+   chain probed, then ASKED whether the page DECLARES dark, then held
+   ~3 s for its own dark — and a site that merely DECLARES (a
+   color-scheme meta, any prefers-color-scheme rule — very common) but
+   renders light under a fresh cookie jar sat WHITE for the whole hold.
+   A declaration is not evidence the page WILL self-darken; the probe's
+   painted-light reading is evidence it has NOT. Light at commit now
+   inverts IMMEDIATELY; darkAwaitSelfDark is deleted; the 2.5 s late
+   re-probe stays as the pull-back (inversion → none only); the
+   background-tab abort (w != activeTab().web) became a liveness check
+   (tabOf(w) == null) — a background-loaded tab's site could self-darken
+   and Bolt's inversion stayed forever, because the finish backstop
+   skips urls the commit pass already spoke for. The trade is accepted
+   knowingly: a brief double-dark on the rare async-dark class in
+   exchange for zero white hold on every merely-declaring site. A
+   "dark commit-pass" Diag breadcrumb proves the hook fires on device.
+   Learning, twice: evidence of INTENT (a declaration) is not evidence
+   of BEHAVIOR (painting dark) — gate on the behavior; and a guard
+   keyed on ACTIVE-NESS silently skips every background tab when the
+   fallback also skips them — the two skips compose into a forever-bug.
+5. *The session-continuity law (visual search).* The upload rode a bare
+   HttpURLConnection (its own UA, NO cookies) and handed the result URL
+   to the WEBVIEW — a different cookie jar; Google could not associate
+   the two requests and answered with the error-image placeholder (the
+   grey-image report). The upload now carries the WebView jar's cookies
+   for the endpoint, speaks the WebView's EXACT UA
+   (WebSettings.getDefaultUserAgent), and every Set-Cookie minted along
+   the redirect ladder is pumped into the WebView's CookieManager BEFORE
+   the result loads — each GET hop attaches and pumps too, which is what
+   makes Google's consent redirect resolve. Bing's saved file:// page
+   gained a <base href> (ensureBaseHref, pure, probe-pinned) so its
+   relative resource URLs stop dying against the local directory.
+   Learning: HttpURLConnection and a WebView are two different clients
+   until you explicitly share the cookie jar AND the UA AND the
+   Set-Cookie pump — any one of the three missing and the session
+   splits.
+6. *The AI chain law.* A CUSTOM model disabled every fallback
+   (arrayOf(m) alone) and the chain advanced only on 404 — a custom
+   model meeting a 503 "model overloaded" wave (gemini-3.8-flash had
+   documented ones in 2026-11) had no retry, no fallback, and the user
+   ate a bare "provider error". buildChain (pure, probe-pinned) now
+   always appends the default + fallbacks after the custom pick
+   (deduped); advanceChain walks on the 5xx bucket too; the 503 ladder
+   retries the SAME model with the provider's retryInfo.retryDelay hint
+   (plain-scan parsed, capped 30 s, ≤2 retries; the 429 patience is
+   unchanged); the model that actually answers is logged + Diag-recorded
+   always and toasted when it is NOT the configured pick. Learning: a
+   fallback chain that turns off for custom configurations converts
+   every transient outage into a permanent user-facing error — custom
+   picks need the safety net MORE than defaults, not less.
+7. *The session-aware external search.* The system search doors resolve
+   into the MAIN process's faces (the launcher aliases, the widget's
+   hardcoded BrowserActivity) — v1.4.17's SearchIncognito alias only
+   added a second chooser row, frequently collapsed into the toolbar
+   overflow, so an incognito user's search surfaced the NORMAL task
+   (whose back stack still held the normal TABS MENU — the bounce the
+   report named). SessionState (new, probe-pinned): whichever
+   BrowserActivity variant resumes writes one tiny record into filesDir
+   (shared by both processes; atomic tmp+rename; read FRESH — the two
+   processes' Prefs copies cannot see each other's writes); the normal
+   search faces forward into IncognitoActivity and finish, so the
+   normal task never surfaces. The forward runs BEFORE onResume (the
+   reading face never overwrites the record it just read); a missing
+   record reads normal (the feature cannot hijack a normal search);
+   the widget keeps targeting BrowserActivity ON PURPOSE (it is the
+   session-aware entry — hardcoding the incognito face would break the
+   other half); the "(Incognito)" alias stays as the manual door; the
+   in-app omnibox → tabs-button round trip stays in-process and
+   private. Diag breadcrumbs name the face and the forward on every
+   search intent. Learning: an OS-level entry point cannot know which
+   of your processes the user "is in" — you have to record it yourself,
+   cross-process, and the record must be written by the RESUME path,
+   not the launch path (launches are ambiguous, resumes are facts).
+8. *The standing sweep, v1.4.18 edition.* 36 prior version gates
+   re-pinned 132/1.4.18 with dated notes (workspace
+   scripts/repin_gates_1418.py — SINGLE-RUN, both pin form families, a
+   catch-all tail pair for message labels, test_v1418 slide-exempt);
+   FIVE behavioral re-points where this release legitimately moved
+   pinned forms: v1394 (the whole ask-first dark section — the hold is
+   dead, invert-now + the commit breadcrumb pin it), v1414 + v1415 +
+   v1416 (the omnibox strip law — the text-gate pins became focus-law
+   pins; the v1.4.15 cache-order pin re-scoped to the clear button),
+   v1417 (the reloadGridNoVoid count 2 → 4 — the ungroup doors joined;
+   plus its 1.4.17-line word check slid to entries[1] by hand). TWO
+   REPIN CORPSES caught and recovered: the generic startswith pair hit
+   the NEW gate's own previous-release pin (test_v1418 checks
+   entries[1] = 1.4.17 — the pair rewrote it to 1.4.18; recovered
+   surgically; the law: exempt the new gate's pins from EVERY walk,
+   not just the slides), and the must-hit accounting counted hits
+   AFTER earlier pairs had consumed them per line (the combined pairs
+   subsume the single forms — count PRE-RUN hits, or a perfectly good
+   repin reports itself unbelievable). Suite: 73/73 release-pipeline
+   check commands green (42 version gates + node checks + sim probes).
+
+**Known-good numbers** (v1.4.18, release build): APK
+2,769,465 B (budget 6,000,000; v1.4.17 was 2,767,561 — the six-pack
+cost 1,904 B); signature verifies (v2 scheme) against
+the pinned cert; suite: all 73 release-pipeline gate commands green (the
+new v1418 gate among them — its compiled probe runs transcriptions of
+all six fixes);
 filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
 **Plans / candidates for future versions:**
-- The ungroup path (`remove_from_group`) can dissolve a full-width group
-  row into span-1 cards — the same span-change class v1.4.17's
-  reloadGridNoVoid() cures for move-to-group, but the report only named
-  the move door. Sweep it the day a field report names a void on
-  ungroup (the helper is one call away).
-- The commit-time dark pass (v1.4.17) inverts a no-declared-dark page at
-  first paint; a site that ships its dark mode through ASYNC CSS with no
-  render-blocking declaration would invert, then get pulled back by the
-  2.5 s late re-probe — a brief double-dark on that rare class. If a
-  field report ever names it, the ask can gain a second look at finish
-  before the first invert.
+- (landed in v1.4.18) The ungroup path (`remove_from_group`) — both
+  doors ride `reloadGridNoVoid()` now; the plans-section prediction was
+  swept together with the drag door's own helper.
+- The v1.4.18 invert-first pass trades a brief DOUBLE-DARK on sites that
+  ship their dark through async CSS after render for zero white hold on
+  every merely-declaring site — accepted knowingly. If a field report
+  ever names the double-dark, the ask can gain a second look at finish
+  (before the 2.5 s late re-probe clears) for pages that declared dark
+  and flipped late.
+- ACTION_VIEW links from other apps still resolve into whichever face
+  the OS picked (only the SEARCH doors are session-aware in v1.4.18).
+  If a field report names a link tap bouncing an incognito session, the
+  forward in `forwardToIncognitoIfLast` can grow a VIEW branch — the
+  session record already knows the answer.
+- The AI chain now toasts when a fallback answers ("AI fell back to…").
+  If that proves noisy in the field, a Settings toggle is the honest
+  cut — the logcat/Diag channel stays regardless (it is the evidence
+  channel, per the v1.4.17 law).
 - v1.4.13's NetSuggest endpoints are best-knowledge URLs — Startpage's
   `suggestions?format=json` is the least certain (never field-verified);
   a dead endpoint degrades to no rows by design, and the map is ONE
@@ -931,11 +1079,13 @@ above).
   was on the v1.4.11 list and was DEFERRED — the stability four-pack took
   the release; the in-app updater exists, but the APK baseline drifts).
 - v1.4.12's VisualSearch rides Google's classic search-by-image POST and
-  Bing's SBI — both are undocumented endpoints that can move. If a field
-  report names a dead route, the fallback ladder (engine home page) keeps
-  the door usable, and the endpoint map is ONE function (endpointFor) to
-  re-point; consider a Lens `uploadbyurl` path for images that already
-  have a URL (long-press an image → search by image) as a follow-up.
+  Bing's SBI — both are undocumented endpoints that can move. v1.4.18's
+  session continuity reduces but does not eliminate bot-gating; if a
+  field report names a dead route, the fallback ladder (engine home
+  page) keeps the door usable, and the endpoint map is ONE function
+  (endpointFor) to re-point; a Lens `uploadbyurl` path for images that
+  already have a URL (long-press an image → search by image) stays the
+  follow-up candidate.
 - The engine chip re-runs a live query on switch, but a prefilled URL
   only switches silently — a small "engine: NAME" toast on every switch
   (not just the URL case) would make the state change louder.

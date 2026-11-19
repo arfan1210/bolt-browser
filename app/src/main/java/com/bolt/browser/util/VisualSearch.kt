@@ -158,6 +158,22 @@ object VisualSearch {
      *   - 200: the response body is the results page itself (Bing's shape)
      *     — saved to cache and returned as a file:// URL.
      *   - anything else / IOException: null (caller falls back to home).
+     *
+     * v1.4.18 — THE SESSION-CONTINUITY LAW (the "grey/broken image
+     * results" report, Google route). The upload used to ride a bare
+     * HttpURLConnection with a hand-written UA and NO cookies, then
+     * handed the result URL to the WEBVIEW — a different cookie jar.
+     * The engine could not associate the results page with the upload
+     * session (no session cookie, different fingerprint) and answered
+     * with the error-image placeholder — the q90/bilinear/CRLF fidelity
+     * legs of v1.4.17 never touched this gap. The upload session is now
+     * CONTINUOUS with the browser that renders the result: the POST
+     * carries the WebView jar's cookies for the endpoint, speaks the
+     * WebView's EXACT User-Agent, and every Set-Cookie minted along the
+     * redirect ladder is pumped into the WebView's CookieManager BEFORE
+     * the result URL loads. Google's consent redirect (consent.google.com)
+     * rides the same ladder: a user who consented in Bolt carries the
+     * consent cookie through the POST, so the ladder resolves past it.
      */
     private fun post(ep: Endpoint, jpeg: ByteArray, c: Context): String? {
         val boundary = "BoltVisualSearch" + System.currentTimeMillis()
@@ -177,15 +193,17 @@ object VisualSearch {
             conn.connectTimeout = 15000
             conn.readTimeout = 20000
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-            // a browser-ish UA: engine endpoints quality-gate botless clients
-            conn.setRequestProperty("User-Agent",
-                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                            "Chrome/124.0.0.0 Mobile Safari/537.36")
+            // v1.4.18: the WebView's own UA + the WebView jar's cookies —
+            // one client identity across the upload and the result render
+            val ua = webUa(c)
+            conn.setRequestProperty("User-Agent", ua)
+            attachWebCookies(ep.postUrl, conn)
             conn.getOutputStream().use { os ->
                 os.write(head); os.write(jpeg); os.write(tail)
             }
             val code = conn.responseCode
             if (code in 300..399) {
+                pumpSetCookies(conn)
                 var loc = conn.getHeaderField("Location")
                 if (loc.isNullOrBlank()) return null
                 if (!loc.startsWith("http")) {
@@ -193,15 +211,21 @@ object VisualSearch {
                     val u = URL(URL(ep.postUrl), loc)
                     loc = u.toString()
                 }
-                return follow(loc)
+                return follow(loc, ua)
             }
             if (code == 200) {
+                pumpSetCookies(conn)
                 val body = conn.inputStream.use { it.readBytes() }
                 if (body.isEmpty()) return null
+                // v1.4.18 — the saved-page base href (see ensureBaseHref):
+                // Bing's 200 body carries RELATIVE resource URLs that a
+                // file:// base cannot resolve — every image would die
+                val html = ensureBaseHref(
+                        String(body, Charsets.UTF_8), "https://www.bing.com/")
                 val dir = File(c.filesDir, "visual")
                 if (!dir.isDirectory) dir.mkdirs()
                 val f = File(dir, "visual-" + System.currentTimeMillis() + ".html")
-                f.writeBytes(body)
+                f.writeBytes(html.toByteArray(Charsets.UTF_8))
                 return "file://" + f.absolutePath
             }
             return null
@@ -210,8 +234,72 @@ object VisualSearch {
         }
     }
 
-    /** GET a redirect target following further 3xx to the final URL. */
-    private fun follow(start: String): String? {
+    /** v1.4.18 — the WebView's default UA: the engine's session must look
+     *  like the SAME client that will render the results page (a UA swap
+     *  mid-session is a bot signal; the old hardcoded Chrome/124 string
+     *  could not match the device's live WebView either). */
+    private fun webUa(c: Context): String = try {
+        android.webkit.WebSettings.getDefaultUserAgent(c)
+    } catch (t: Throwable) {
+        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Mobile Safari/537.36"
+    }
+
+    /** v1.4.18 — attach the WebView cookie jar's cookies for this URL to
+     *  the connection (the upload must ride the browser's session). */
+    private fun attachWebCookies(url: String, conn: HttpURLConnection) {
+        try {
+            val cookies = android.webkit.CookieManager.getInstance().getCookie(url) ?: return
+            if (cookies.isNotBlank()) conn.setRequestProperty("Cookie", cookies)
+        } catch (_: Throwable) {}
+    }
+
+    /** v1.4.18 — capture every Set-Cookie this response carried and write
+     *  it into the WEBVIEW's CookieManager: the result page loads in the
+     *  WebView, so the session cookies the engine minted must exist in
+     *  ITS jar before the load — HttpURLConnection keeps no jar of its
+     *  own, so without this pump the two requests are strangers. */
+    private fun pumpSetCookies(conn: HttpURLConnection) {
+        try {
+            val cm = android.webkit.CookieManager.getInstance()
+            val url = conn.url.toString()
+            val hdrs = conn.headerFields ?: return
+            for ((k, v) in hdrs) {
+                if (!k.equals("Set-Cookie", ignoreCase = true)) continue
+                for (cookie in v) {
+                    try { cm.setCookie(url, cookie) } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    /** v1.4.18 — inject a <base href> into a saved-page body (PURE,
+     *  probe-pinned per the v1.4.11 parse-gate law). Bing's 200-body
+     *  results page is saved as a local file:// page, but its HTML
+     *  carries RELATIVE resource URLs (//www.bing.com/…, /fd/ls/…);
+     *  against a file:// base they resolve into the local directory
+     *  and every image and stylesheet dies. Inserted after <head…> when
+     *  the tag exists (both cases), prepended otherwise; idempotent when
+     *  the page already carries the same base. */
+    internal fun ensureBaseHref(html: String, base: String): String {
+        val tag = "<base href=\"$base\">"
+        if (html.contains(tag)) return html
+        val hi = html.indexOf("<head", ignoreCase = true)
+        if (hi >= 0) {
+            val gt = html.indexOf('>', hi)
+            if (gt >= 0) {
+                return html.substring(0, gt + 1) + tag + html.substring(gt + 1)
+            }
+        }
+        return tag + html
+    }
+
+    /** GET a redirect target following further 3xx to the final URL.
+     *  v1.4.18: every hop carries the WebView jar's cookies for ITS url
+     *  and pumps the response's Set-Cookie back — the consent hops
+     *  (consent.google.com) resolve only when the consent cookie rides
+     *  along and lands in the jar the WebView will use. */
+    private fun follow(start: String, ua: String): String? {
         var url = start
         for (i in 0 until 5) {
             val conn = URL(url).openConnection() as HttpURLConnection
@@ -219,16 +307,17 @@ object VisualSearch {
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = 15000
                 conn.readTimeout = 20000
-                conn.setRequestProperty("User-Agent",
-                        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                                "Chrome/124.0.0.0 Mobile Safari/537.36")
+                conn.setRequestProperty("User-Agent", ua)
+                attachWebCookies(url, conn)
                 val code = conn.responseCode
                 if (code in 300..399) {
+                    pumpSetCookies(conn)
                     val loc = conn.getHeaderField("Location") ?: return url
                     url = if (loc.startsWith("http")) loc
                     else URL(URL(url), loc).toString()
                     continue
                 }
+                pumpSetCookies(conn)
                 return url
             } finally {
                 conn.disconnect()

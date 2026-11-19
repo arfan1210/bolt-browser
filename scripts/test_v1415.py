@@ -113,24 +113,24 @@ ba_code = strip_comments_strings(ba)
 de_code = strip_comments_strings(de)
 
 print("A — the version bump")
-need(re.search(r"versionCode 131\b", gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
-     "versionCode 131 (Android only installs RISING codes)")  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
-need(re.search(r'versionName "1\.4\.17"', gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)
-     'versionName "1.4.17"')  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(re.search(r"versionCode 132\b", gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     "versionCode 132 (Android only installs RISING codes)")  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+need(re.search(r'versionName "1\.4\.18"', gradle) is not None,  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+     'versionName "1.4.18"')  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.17|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)
+need(entries and entries[0].startswith("1.4.18|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
      "the newest entry is 1.4.15 (the label law)")
-need(len(entries) > 2 and entries[2].startswith("1.4.15|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
+need(len(entries) > 3 and entries[3].startswith("1.4.15|"),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
      "the second entry is 1.4.14 (the previous live release)")
 for word, why in (("Downloads", "the listener law"),
                   ("CURRENT tab", "the stale-highlight fix"),
                   ("main thread", "the off-thread build"),
                   ("handler", "the handler sweep")):
-    need(word in entries[2] or word in entries[2].lower(),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
+    need(word in entries[3] or word in entries[3].lower(),  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
          f"the 1.4.15 line names {why}")
 
 print("C — fix 1: the downloads event-listener law")
@@ -189,11 +189,10 @@ need("if (omniEmptyCache[0] != null && omniEmptyCache[0] == empty) return;"
      "a keystroke that does not flip the state returns BEFORE any setVisibility")
 need("omniEmptyCache[0] = empty;" in si,
      "the applied state is written back to the cache")
-need(si.find("omniEmptyCache[0] = empty;") < si.find("setVisibility"),
-     "the cache write precedes the visibility pass (a throw cannot desync it)")
-need("actionsRow.setVisibility(empty ? View.GONE : View.VISIBLE);" in si
-     and "clearB.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
-     "the state mapping survives the v1.4.16 two-row redesign (strip + clear on typing; re-point 2026-11-18)")
+need(si.find("omniEmptyCache[0] = empty;") < si.find("clearB.setVisibility"),
+     "the cache write precedes the CLEAR visibility pass (a throw cannot desync it; v1.4.18 re-point 2026-11-19: the strip's guaranteed-show moved above the cache — it is deliberately uncached, the focus law)")
+need("clearB.setVisibility(empty ? View.GONE : View.VISIBLE);" in si,
+     "the state mapping survives the two-row redesign + the focus law (clear follows the field; the strip no longer does; re-points 2026-11-18 + 2026-11-19)")
 need(ba_code.find("final Boolean[] omniEmptyCache") <
      ba_code.find("final Runnable syncOmniIcons"),
      "the cache is declared with the watcher it serves (one dialog, one cache)")
