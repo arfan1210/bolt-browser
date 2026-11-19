@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -63,6 +64,13 @@ class PasswordVaultActivity : AppCompatActivity() {
         root.addView(switchRow("Offer to save passwords",
                 "Ask when you sign in to a site",
                 prefs.b("pwSave", true)) { on -> prefs.set("pwSave", on) })
+
+        // ---- v1.4.19 — THE ADD-ENTRY DOOR (the manually-add/edit ask):
+        // the vault had save/delete backend (saveEx upserts) but NO way to
+        // create or edit an entry by hand — only the site-driven save
+        // offer ever wrote rows. An "Add password" row rides the top of
+        // the list; every entry gains Edit in its options sheet.
+        root.addView(addEntryRow())
 
         // ---- device-credential note when there is no secure lock ----
         val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
@@ -132,6 +140,106 @@ class PasswordVaultActivity : AppCompatActivity() {
         val sw = Ui.modernSwitch(this, checked, Ui.OnToggle { on -> change(on) })
         row.addView(sw, LinearLayout.LayoutParams(-2, -2))
         return row
+    }
+
+    /** v1.4.19 — the "Add password" row (the add/edit ask). Main process
+     *  only by construction: this activity never runs in :incognito (the
+     *  manifest keeps identity data out of that process). */
+    private fun addEntryRow(): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.background = Fx.cardBg(this, 0)
+        row.setPadding(Fx.dp(this, 16), Fx.dp(this, 14), Fx.dp(this, 16), Fx.dp(this, 14))
+        val lp = LinearLayout.LayoutParams(-1, -2)
+        lp.topMargin = Fx.dp(this, 10)
+        row.layoutParams = lp
+        val ic = android.widget.ImageView(this)
+        ic.setImageResource(R.drawable.ic_plus)
+        ic.setColorFilter(Fx.accentText(this))
+        Ui.iconify(ic, true)
+        row.addView(ic, LinearLayout.LayoutParams(Fx.dp(this, 28), Fx.dp(this, 28)))
+        val t = TextView(this)
+        t.text = "Add password"
+        t.textSize = 15f
+        t.typeface = Ui.medium()
+        t.setTextColor(Fx.accentText(this))
+        val tp = LinearLayout.LayoutParams(-2, -2)
+        tp.leftMargin = Fx.dp(this, 12)
+        row.addView(t, tp)
+        row.setOnClickListener { v ->
+            Ui.tap(v)
+            addOrEdit(null)
+        }
+        return row
+    }
+
+    /** v1.4.19 — THE ADD/EDIT DIALOG (host / username / password, riding
+     *  PasswordVault.saveEx — the SAME upsert the site-driven save offer
+     *  uses, so a hand-made entry is indistinguishable from a captured
+     *  one: encrypted under the keystore key, indexed, filled by the
+     *  chip). Editing an entry whose (host, user) CHANGED deletes the old
+     *  row first — a true edit, not a fork. */
+    private fun addOrEdit(e: PasswordVault.Entry?) {
+        val pad = Fx.dp(this, 8)
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.setPadding(pad, pad, pad, 0)
+        fun field(hint: String, value: String, password: Boolean): EditText {
+            val et = EditText(this)
+            et.hint = hint
+            et.setText(value)
+            et.textSize = 15f
+            et.setTextColor(Fx.txt(this))
+            et.setHintTextColor(Fx.dim(this))
+            et.isSingleLine = true
+            if (password) {
+                et.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            col.addView(et, LinearLayout.LayoutParams(-1, -2))
+            return et
+        }
+        val host = field("Site (example.com)", e?.host ?: "", false)
+        val user = field("Username", e?.user ?: "", false)
+        val passEt = field("Password", "", true)
+        if (e != null) {
+            // prefill the password from the vault (decrypt for THIS entry's
+            // exact host+user — findAll's newest-first would grab the wrong
+            // account on multi-account sites)
+            val full = PasswordVault.findAll(this, e.host)
+                    .firstOrNull { it.user == e.user }
+            if (full?.pass != null) passEt.setText(full.pass)
+        }
+        AlertDialog.Builder(this)
+                .setTitle(if (e == null) "Add password" else "Edit saved login")
+                .setView(col)
+                .setPositiveButton(R.string.save) { _, _ ->
+                    val h = host.text.toString().trim()
+                    val u = user.text.toString().trim()
+                    val p = passEt.text.toString()
+                    if (h.isEmpty() || p.isEmpty()) {
+                        Fx.toast(this, "Site and password are required")
+                        return@setPositiveButton
+                    }
+                    // a changed identity is a true EDIT: the old row goes
+                    // first, then the upsert lands the new one
+                    if (e != null && (h != e.host || u != e.user)) {
+                        PasswordVault.delete(this, e.host, e.user)
+                    }
+                    when (PasswordVault.saveEx(this, h, u, p)) {
+                        PasswordVault.SAVE_OK -> {
+                            Fx.toast(this, if (e == null) "Saved" else "Updated")
+                            rebuild()
+                        }
+                        PasswordVault.SAVE_INPUT -> Fx.toast(this, "Site and password are required")
+                        PasswordVault.SAVE_UNREADABLE ->
+                                Fx.toast(this, "The vault can't be read — reset it first")
+                        else -> Fx.toast(this, "Could not save - vault write failed")
+                    }
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
     }
 
     private fun rebuild() {
@@ -232,7 +340,7 @@ class PasswordVaultActivity : AppCompatActivity() {
 
     private fun options(e: PasswordVault.Entry) {
         val opts = arrayOf("Copy username", "Copy password",
-                "Reveal password", "Delete")
+                "Reveal password", "Edit", "Delete")
         Ui.choiceSheet(this, e.host, opts, -1) { which ->
             when (which) {
                 0 -> copy("Bolt username", e.user)
@@ -242,7 +350,8 @@ class PasswordVaultActivity : AppCompatActivity() {
                     if (pass != null) copy("Bolt password", pass) else Fx.toast(this, "Not found")
                 }
                 2 -> reveal(e)
-                3 -> confirmDelete(e)
+                3 -> addOrEdit(e)
+                4 -> confirmDelete(e)
             }
         }
     }

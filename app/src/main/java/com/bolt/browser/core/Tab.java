@@ -138,6 +138,12 @@ public class Tab {
      *  follow-order render keys rows by it ("t<tid>" in a group's
      *  ap/an anchor pair). */
     public long tid = 0L;
+
+    /** v1.4.19 — THE OFFLINE-ERROR MARKER: non-null while this tab's last
+     *  load FAILED and the native error overlay is its face (the overlay
+     *  is per-activity, so switching back to the tab re-shows it; any new
+     * navigation clears it). Never persisted — it is view state, not data. */
+    public volatile String errUrl = null;
     /** the monotonic tid sequence — max(now, last+1) keeps it increasing
      *  even when the wall clock stutters; TabManager bumps it past every
      *  restored tid at load so a fresh tab can never collide with a
@@ -168,7 +174,36 @@ public class Tab {
         // the once-per-WebView guards (PasskeyCompat, FrameHooks, ShadowGate)
         // see a fresh view either way.
         WebView w = com.bolt.browser.core.WebPool.take(c);
-        if (w == null) w = new com.bolt.browser.ui.BoltWeb(c);
+        if (w == null) {
+            // v1.4.19 — THE CONSTRUCTION GUARD (the incognito crash loop's
+            // hardening leg): this fallback was NOT try/catch-wrapped, so a
+            // data-directory failure (the AwDataDirLock collision — see
+            // BoltApp's suffix-first law) escaped as an UNCAUGHT
+            // RuntimeException and killed the process, which the OS then
+            // restarted into the same crash. Two refusals now degrade
+            // instead of crashing: (a) :incognito never constructs against
+            // the directory the MAIN process owns when its own suffix
+            // failed — buildWeb returns null and the caller shows the tab
+            // without a live page (a toast + Diag line name the cause);
+            // (b) ANY construction failure is caught, logged, and returned
+            // as null — never a process kill.
+            if (com.bolt.browser.BoltApp.incognitoSuffixFailed) {
+                try {
+                    com.bolt.browser.util.Diag.log(c,
+                            "web construct REFUSED: incognito data-dir suffix failed");
+                } catch (Throwable ignored) {}
+                return null;
+            }
+            try {
+                w = new com.bolt.browser.ui.BoltWeb(c);
+            } catch (Throwable t) {
+                try {
+                    com.bolt.browser.util.Diag.log(c, "web construct failed cls="
+                            + t.getClass().getName());
+                } catch (Throwable ignored) {}
+                return null;
+            }
+        }
         // opaque background: transparent WebView surfaces can flash the previous
         // tab's last frame when they are re-attached ("ghosting of previous tabs")
         // v1.3.33: skin-aware (Fx.webBg resolves from the skin pref directly —

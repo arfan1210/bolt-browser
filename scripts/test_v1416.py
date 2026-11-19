@@ -130,24 +130,24 @@ ba_code = strip_comments_strings(ba)
 de_code = strip_comments_strings(de)
 
 print("A — the version bump")
-need(re.search(r"versionCode 132\b", gradle) is not None,  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
-     "versionCode 132 (Android only installs RISING codes)")  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
-need(re.search(r'versionName "1\.4\.18"', gradle) is not None,  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
-     'versionName "1.4.18"')  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+need(re.search(r"versionCode 133\b", gradle) is not None,  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
+     "versionCode 133 (Android only installs RISING codes)")  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
+need(re.search(r'versionName "1\.4\.19"', gradle) is not None,  # v1.4.17 re-point (2026-11-18): the escaped-form recovery (the phantom-backslash corpse)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
+     'versionName "1.4.19"')  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.18|"),  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)
+need(entries and entries[1].startswith("1.4.18|"),  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
      "the newest entry is 1.4.16 (the label law)")
-need(len(entries) > 3 and entries[3].startswith("1.4.15|"),  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])
+need(len(entries) > 3 and entries[4].startswith("1.4.15|"),  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
      "the second entry is 1.4.15 (the previous live release)")
 for word, why in (("0KB", "the corpse law"),
                   ("JS bridge", "the blob routing"),
                   ("accent rim", "the grouped-active highlight"),
                   ("two rows", "the omnibox redesign")):
-    need(word in entries[2] or word in entries[2].lower(),  # v1.4.18 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.18 landed at [0])
+    need(word in entries[3] or word in entries[3].lower(),  # v1.4.18 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.18 landed at [0])  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
          f"the 1.4.16 line names {why}")  # v1.4.17 re-point (2026-11-18): the 1.4.16 line slid to [1] when 1.4.17 landed at [0]
 
 print("C — fix 1a: a failed copy leaves no 0KB destination")

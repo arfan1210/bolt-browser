@@ -89,6 +89,27 @@ object BoltAi {
     private var provLine: TextView? = null
     @Volatile private var busy = false
 
+    // ---------------- v1.4.19 — TEMPORARY ATTACHMENTS ----------------
+
+    /** the staged set — MEMORY ONLY (never persisted, no restore path;
+     *  wiped on send, on Clear, and by process death itself: static state
+     *  cannot survive it). Caps: [MAX_ATTACH] attachments, images through
+     *  the shared 1280-px capped decoder at q85, text files at 24k chars
+     *  (the token-budget law). */
+    private val staged = ArrayList<AiBridge.Attach>()
+    private var attachRow: LinearLayout? = null
+    private const val MAX_ATTACH = 3
+    private const val TEXT_CAP = 24000
+
+    /** v1.4.19 — PURE (probe-pinned): the attachment lifecycle verdict —
+     *  the staged set is wiped by send, by Clear, and by the browser's
+     *  death (memory-only); it SURVIVES a panel close (the session keeps
+     *  it — the user may reopen the panel to send). */
+    internal fun attachCountAfter(event: String, staged: Int): Int = when (event) {
+        "send", "clear-chat", "browser-close", "process-death" -> 0
+        else -> staged
+    }
+
     /** turns of context sent per request (older history stays UI-only).
      *  v1.3.76: 12 → 8 — the free tier meters INPUT tokens, and a leaner
      *  window is the cheapest latency/rate-limit win there is. */
@@ -214,6 +235,8 @@ object BoltAi {
         }
         chip("Clear") {
             history.clear()
+            staged.clear()
+            renderAttachRow(a)
             renderAll(a)
             Fx.toast(a, "Chat cleared")
         }
@@ -232,6 +255,13 @@ object BoltAi {
         row.gravity = Gravity.CENTER_VERTICAL
         row.setPadding(pad, Fx.dp(a, 4).toInt(), pad, pad)
 
+        // v1.4.19 — the attachment row: staged chips (name + remove) sit
+        // directly above the input row while anything is staged
+        val arow = LinearLayout(a)
+        arow.orientation = LinearLayout.HORIZONTAL
+        arow.setPadding(pad, 0, pad, Fx.dp(a, 2).toInt())
+        attachRow = arow
+
         val et = EditText(a)
         et.hint = "Ask Bolt AI anything\u2026"
         et.textSize = 14.5f
@@ -248,6 +278,22 @@ object BoltAi {
         row.addView(et, LinearLayout.LayoutParams(0,
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         input = et
+
+        // v1.4.19 — THE ATTACH BUTTON (image / file upload, temporary):
+        // ACTION_GET_CONTENT (no bundled picker lib — the 6 MB APK law);
+        // shown on the browser faces that can deliver the pick result
+        // (main process only — identity/pick grants stay out of
+        // :incognito, and the result routing rides BrowserActivity)
+        if (a is com.bolt.browser.ui.BrowserActivity && a.aiAttachAllowed()) {
+            val attach = android.widget.ImageView(a)
+            attach.setImageResource(com.bolt.browser.R.drawable.ic_attach)
+            attach.setColorFilter(Fx.dim(a))
+            attach.setPadding(Fx.dp(a, 6).toInt(), Fx.dp(a, 8).toInt(),
+                Fx.dp(a, 6).toInt(), Fx.dp(a, 8).toInt())
+            attach.setOnClickListener { pickAttachment(a) }
+            row.addView(attach, LinearLayout.LayoutParams(
+                Fx.dp(a, 26).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
 
         val send = TextView(a)
         send.text = "\u27A4"
@@ -269,6 +315,7 @@ object BoltAi {
         body.addView(chipsRow)
         body.addView(scroller, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        body.addView(arow)
         body.addView(row)
 
         val d = Dialog(a)
@@ -284,12 +331,13 @@ object BoltAi {
         }
         body.background = Ui.sheetBg(a)
         d.setOnDismissListener {
-            if (dialog === d) { dialog = null; list = null; input = null; provLine = null }
+            if (dialog === d) { dialog = null; list = null; input = null; provLine = null; attachRow = null }
         }
         d.show()
         dialog = d
 
         renderAll(a)
+        renderAttachRow(a)
         // a fresh panel opens on the keyboard-ready field when empty
         if (history.isEmpty()) try { et.requestFocus() } catch (_: Throwable) {}
     }
@@ -301,7 +349,159 @@ object BoltAi {
         list = null
         input = null
         provLine = null
+        attachRow = null
         try { d.dismiss() } catch (_: Throwable) {}
+    }
+
+    // ---------------- v1.4.19 — the attachment machinery ----------------
+
+    /** the picker door: ACTION_GET_CONTENT over images + text (CATEGORY_OPENABLE;
+     *  no bundled picker library — the size law). The result lands in the
+     *  HOST activity's onActivityResult (BrowserActivity, code 1030) which
+     *  hands it back here. */
+    private fun pickAttachment(a: Activity) {
+        if (staged.size >= MAX_ATTACH) {
+            Fx.toast(a, "Up to $MAX_ATTACH attachments per message")
+            return
+        }
+        try {
+            val i = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT)
+            i.addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            i.type = "*/*"
+            i.putExtra(android.content.Intent.EXTRA_MIME_TYPES,
+                arrayOf("image/*", "text/*"))
+            a.startActivityForResult(i, 1030)
+        } catch (t: Throwable) {
+            Fx.toast(a, "No file picker available")
+        }
+    }
+
+    /** the pick result (from BrowserActivity.onActivityResult 1030): decode
+     *  off-thread, stage the attachment, render the chips. Images go through
+     *  the SHARED capped decoder (VisualSearch.decodeCapped — one OOM
+     *  ladder for the whole app); text is read with a byte cap and trimmed
+     *  to the char budget. */
+    @JvmStatic
+    fun onAttachmentResult(a: Activity, uri: android.net.Uri?) {
+        if (uri == null) return
+        Thread {
+            try {
+                val cr = a.contentResolver
+                var mime = try { cr.getType(uri) ?: "" } catch (_: Throwable) { "" }
+                var name = ""
+                try {
+                    cr.query(uri, null, null, null, null)?.use { c ->
+                        if (c.moveToFirst()) {
+                            val ci = c.getColumnIndex(
+                                android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (ci >= 0) name = c.getString(ci) ?: ""
+                        }
+                    }
+                } catch (_: Throwable) {}
+                if (name.isEmpty()) name = "file"
+                if (mime.isEmpty()) {
+                    val l = name.lowercase()
+                    mime = when {
+                        l.endsWith(".png") -> "image/png"
+                        l.endsWith(".jpg") || l.endsWith(".jpeg") -> "image/jpeg"
+                        l.endsWith(".webp") -> "image/webp"
+                        l.endsWith(".gif") -> "image/gif"
+                        l.endsWith(".bmp") -> "image/bmp"
+                        l.endsWith(".txt") || l.endsWith(".md") || l.endsWith(".json")
+                                || l.endsWith(".csv") || l.endsWith(".xml")
+                                || l.endsWith(".html") || l.endsWith(".js")
+                                || l.endsWith(".kt") || l.endsWith(".java")
+                                || l.endsWith(".py") || l.endsWith(".css")
+                                || l.endsWith(".log") || l.endsWith(".yml")
+                                || l.endsWith(".yaml") -> "text/plain"
+                        else -> ""
+                    }
+                }
+                val att: AiBridge.Attach? = when {
+                    mime.startsWith("image/") -> {
+                        val tmp = java.io.File(a.cacheDir,
+                                "ai-attach-" + System.currentTimeMillis())
+                        try {
+                            cr.openInputStream(uri)?.use { ins ->
+                                java.io.FileOutputStream(tmp).use { tmpOut -> ins.copyTo(tmpOut) }
+                            } ?: return@Thread
+                            val bmp = VisualSearch.decodeCapped(tmp, 1280)
+                            if (bmp != null) {
+                                val bo = java.io.ByteArrayOutputStream()
+                                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bo)
+                                bmp.recycle()
+                                AiBridge.Attach(name, "image/jpeg",
+                                    android.util.Base64.encodeToString(bo.toByteArray(),
+                                        android.util.Base64.NO_WRAP), null)
+                            } else null
+                        } finally {
+                            try { tmp.delete() } catch (_: Throwable) {}
+                        }
+                    }
+                    mime.startsWith("text/") -> {
+                        val raw = cr.openInputStream(uri)?.use { it.readBytes() }
+                            ?: return@Thread
+                        AiBridge.Attach(name, "text/plain", null,
+                            String(raw.copyOfRange(0,
+                                minOf(raw.size, TEXT_CAP * 4)), Charsets.UTF_8)
+                                .take(TEXT_CAP))
+                    }
+                    else -> null
+                }
+                main.post {
+                    if (att == null) {
+                        Fx.toast(a, "Unsupported attachment type")
+                    } else if (staged.size >= MAX_ATTACH) {
+                        Fx.toast(a, "Up to $MAX_ATTACH attachments per message")
+                    } else {
+                        staged.add(att)
+                        renderAttachRow(a)
+                        try {
+                            Diag.log(a, "ai attach " + att.mime
+                                    + " name=" + att.name.take(40))
+                        } catch (_: Throwable) {}
+                    }
+                }
+            } catch (t: Throwable) {
+                main.post { Fx.toast(a, "Couldn't read the file") }
+            }
+        }.start()
+    }
+
+    /** the staged chips: one removable chip per attachment, hidden when the
+     *  set is empty */
+    private fun renderAttachRow(a: Activity) {
+        val row = attachRow ?: return
+        row.removeAllViews()
+        if (staged.isEmpty()) {
+            row.visibility = View.GONE
+            return
+        }
+        row.visibility = View.VISIBLE
+        for (i in staged.indices) {
+            val at = staged[i]
+            val chip = TextView(a)
+            chip.text = "\u2715 " + at.name
+            chip.textSize = 12.5f
+            chip.setTextColor(Fx.txt(a))
+            chip.maxLines = 1
+            chip.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            chip.setPadding(Fx.dp(a, 12).toInt(), Fx.dp(a, 8).toInt(),
+                Fx.dp(a, 12).toInt(), Fx.dp(a, 8).toInt())
+            val bg = GradientDrawable()
+            bg.cornerRadius = Fx.dp(a, 18).toFloat()
+            bg.setColor(Fx.surface2(a))
+            chip.background = bg
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.rightMargin = Fx.dp(a, 8).toInt()
+            chip.layoutParams = lp
+            chip.setOnClickListener {
+                if (i < staged.size) staged.removeAt(i)
+                renderAttachRow(a)
+            }
+            row.addView(chip)
+        }
     }
 
     /** the config gear + the setup card's button — editable ANY time */
@@ -430,7 +630,9 @@ object BoltAi {
 
     // ---------------- the actions ----------------
 
-    /** typed chat: history append + the thinking bubble + the request */
+    /** typed chat: history append + the thinking bubble + the request.
+     *  v1.4.19 — the staged attachments ride THIS request and are consumed
+     *  by it (the lifecycle law — nothing queued for the next turn). */
     private fun sendTyped(a: Activity, web: WebView?, openUrl: AiBridge.LinkOpener?) {
         if (busy) { Fx.toast(a, "Still thinking\u2026"); return }
         val et = input ?: return
@@ -442,21 +644,31 @@ object BoltAi {
             return
         }
         et.setText("")
-        ask(a, text)
+        val atts = if (staged.isEmpty()) null else ArrayList(staged)
+        ask(a, text, atts)
     }
 
-    /** the shared request path — [userText] is already final */
-    private fun ask(a: Activity, userText: String) {
+    /** the shared request path — [userText] is already final.
+     *  v1.4.19 — [attaches] (nullable) ride ONLY this turn. */
+    private fun ask(a: Activity, userText: String,
+            attaches: List<AiBridge.Attach>? = null) {
         history.add(AiBridge.Msg("user", userText))
         addBubble(a, userText, true)
         val thinking = addBubble(a, "\u2026", false)
         scrollDown()
         busy = true
+        if (attaches != null) {
+            staged.clear()
+            renderAttachRow(a)
+            try {
+                Diag.log(a, "ai send +" + attaches.size + " attachments")
+            } catch (_: Throwable) {}
+        }
         val t0 = System.currentTimeMillis()
         POOL.execute {
             val turns = if (history.size > MAX_TURNS)
                 history.subList(history.size - MAX_TURNS, history.size).toList() else history.toList()
-            val reply = AiBridge.chat(a, SYSTEM, turns)
+            val reply = AiBridge.chatX(a, SYSTEM, turns, attaches)
             main.post {
                 busy = false
                 try {

@@ -35,6 +35,9 @@
     <string name="new_incognito_tab">New incognito tab</string>
     <string name="close_tab">Close tab</string>
     <string name="close_all">Close all</string>
+    <!-- v1.4.19 (the icon-only tooltip law): the plain verb for icon-only
+         close affordances (find bar, future) -->
+    <string name="close">Close</string>
     <string name="bookmark_added">Bookmark added</string>
     <string name="shortcut_added">Shortcut added</string>
     <string name="copied">Copied</string>
@@ -392,6 +395,13 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.19 (2026-11-19): the root-cure ten-pack — the incognito
+         crash-loop fix (suffix-first), the offline error overlay +
+         intent fallback, the drag-join animator bypass, the dark stroke
+         floor, the AI translate token ladder, the Bing real-origin
+         intercept, the engine-chip logos, the icon-only tooltip law,
+         the vault add/edit door, the temporary AI attachments -->
+    <item>1.4.19|Incognito mode no longer crash-loops on Android 10 (the WebView data directory is secured before anything can load the provider — the crash that kept bouncing you to the normal tabs menu is cured, and the exit button now actually leaves incognito instead of landing you back on the incognito home); a page that fails to load no longer corrupts the tab address into an unfixable error URL — the error is an overlay with a Retry button, the tab keeps its real address, and intent:// links with no app installed load the site\'s web fallback (Facebook links work without the app); dragging a tab onto a group no longer leaves a hole in a long switcher grid (the change animation that kept the gap alive is bypassed for the drop); forced dark mode keeps thin lines, dividers and hamburger icons visible (light hairline colors are remapped so they don\'t invert into near-black); AI screen translate handles dense screens (the reply token cap doubles with an automatic retry when the answer hits the limit); Bing image search results now run under the real bing.com origin so the page\'s scripts, cookies and results actually load; the omnibox engine chip shows the active search engine\'s logo (Google, DuckDuckGo, Bing, Brave, Startpage) and updates when you switch; every icon-only button carries a long-press tooltip; saved passwords can be added and edited by hand in the vault; and Bolt AI accepts temporary image and text attachments (never saved, cleared on close).</item>
     <!-- v1.4.18 (2026-11-19): the field-cure six-pack — the drag-door
          no-void reload, the omnibox focus law, the dark invert-first
          pass, the visual-search session continuity, the AI chain law,

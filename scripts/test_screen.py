@@ -269,11 +269,15 @@ def main():
                   "private fun geminiText(",
                   'optBoolean("thought", false)',
                   "private fun parseBoxes(",
-                  "parseBoxes(geminiText(txt), iw, ih)",
+                  # v1.4.19 re-point (2026-11-19): the token-cap ladder moved
+                  # the call onto the per-rung response pair (r.second) and
+                  # the cap became a parameter (32768 -> 65536 on MAX_TOKENS)
+                  "parseBoxes(geminiText(r.second), iw, ih)",
                   'val GEMINI_DEFAULT = "gemini-3.5-flash-lite"',
                   '"gemini-flash-latest", "gemini-3.8-flash"',
                   '"responseMimeType", "application/json"',
-                  'put("maxOutputTokens", 16384)',
+                  # v1.4.19 re-point: the hardcoded 16384 died with the ladder
+                  'put("maxOutputTokens", cap)',
                   "fun interface LinkOpener",
                   # v1.3.76 — the thinking cut + the 429 patience
                   'fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int)',
@@ -333,7 +337,7 @@ def main():
     bolt = bolt_path.read_text(encoding="utf-8")
     for probe in ("object BoltAi",
                   "fun open(a: Activity, web: WebView?, openUrl: AiBridge.LinkOpener?)",
-                  "AiBridge.chat(a, SYSTEM, turns)",
+                  "AiBridge.chatX(a, SYSTEM, turns, attaches)",  # v1.4.19 re-point (2026-11-19): the temporary-attachments feature moved the ask onto chatX (attachments ride ONLY their turn; chat() stays as the no-attachment skin)
                   "const val PAGE_JS",
                   "b.slice(0,12000)",
                   "const val SEL_JS",

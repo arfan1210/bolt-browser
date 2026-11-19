@@ -3497,6 +3497,19 @@ public class TabsActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
+    /** v1.4.19 — PURE (probe-pinned): the post-drag-join board verdict for
+     *  the void-evidence breadcrumb. With the animator bypassed there can be
+     *  no animation-pinned stale slots, so a healthy board shows SOME
+     *  children, never more than the adapter's item count (more = recycled
+     *  ViewHolders still attached past the data = the stale-geometry smell),
+     *  and a non-empty adapter never shows zero children. */
+    static String dragJoinVerdict(int childCount, int adapterCount) {
+        if (adapterCount <= 0) return childCount == 0 ? "empty-ok" : "ghost-children";
+        if (childCount <= 0) return "no-children";
+        if (childCount > adapterCount) return "ghost-children";
+        return "ok";
+    }
+
     /** v1.4.18 — THE DRAG-DOOR NO-VOID RELOAD (the "drag a tab onto a group
      *  card, a hole stays where the tab was" report). v1.4.17's cure wired
      *  reloadGridNoVoid() into the TWO ⋯-menu move-to-group doors only — the
@@ -3504,19 +3517,53 @@ public class TabsActivity extends AppCompatActivity {
      *  adapter.reloadDiff(joinGid): the animated DiffUtil path with no
      *  stopScroll, no span invalidation, no requestLayout, racing the ITH
      *  settle animation (see the posted-relayout law inside reloadDiff).
-     *  The drag door keeps its ANIMATION (the card visibly departs into
-     *  the folder — reloadDiff) but the whole no-void trio now wraps it:
-     *  stopScroll BEFORE the swap, span-cache invalidation + requestLayout
-     *  after, plus the posted relayout that beats the settle-vs-remove
-     *  race. This is the door the report named; the ⋯ doors keep their
-     *  v1.4.17 helper. */
+     *  v1.4.19 — THE ANIMATOR BYPASS (the void survived v1.4.18's posted
+     *  relayout: the second field report, mid-list on a ~40-tab card grid,
+     *  healing only on close/reopen). The DefaultItemAnimator's predictive
+     *  REMOVE runs ~250 ms — the one-frame-later posted requestLayout
+     *  landed WHILE the animator still pinned the departed row's stale
+     *  slot, so on a long grid the gap was never reclaimed. For the
+     *  drag-join swap the animator is now taken OFF BEFORE the diff (the
+     *  layout pass that consumes the diff finds no animator, so cards snap
+     *  straight to their final slots — a hole cannot form) and restored
+     *  ~350 ms later, safely after the DefaultItemAnimator duration; a
+     *  same-tick restore would re-arm it before the traversal. A Diag
+     *  breadcrumb logs child count vs adapter item count (the count/layout
+     *  invariant evidence). The drag door LOSES the slide-away animation
+     *  by design: correctness over choreography, third round of this
+     *  report. The ⋯ doors keep their v1.4.17 helper. */
     protected void reloadDragNoVoid(long changedGroupId) {
         try { rv.stopScroll(); } catch (Throwable ignored) {}
+        // v1.4.19: the animator OFF for the swap, restored after the layout
+        // pass has consumed the diff without it (see the comment above)
+        androidx.recyclerview.widget.RecyclerView.ItemAnimator pa;
+        try { pa = rv.getItemAnimator(); } catch (Throwable t) { pa = null; }
+        final androidx.recyclerview.widget.RecyclerView.ItemAnimator prevAnim = pa;
+        try { rv.setItemAnimator(null); } catch (Throwable ignored) {}
         adapter.reloadDiff(changedGroupId);
         try {
             glm.getSpanSizeLookup().invalidateSpanIndexCache();
             glm.getSpanSizeLookup().invalidateSpanGroupIndexCache();
             glm.requestLayout();
+        } catch (Throwable ignored) {}
+        try {
+            rv.postDelayed(() -> {
+                try { rv.setItemAnimator(prevAnim); } catch (Throwable ignored) {}
+            }, 350L);
+        } catch (Throwable ignored) {}
+        // v1.4.19 — the void-evidence breadcrumb: post-drop, the board must
+        // hold a sane child count for the adapter's item count (see
+        // dragJoinVerdict, pure, probe-pinned)
+        try {
+            final int want = adapter.getItemCount();
+            rv.postDelayed(() -> {
+                try {
+                    int got = rv.getChildCount();
+                    com.bolt.browser.util.Diag.log(TabsActivity.this,
+                            "drag-join children=" + got + " adapter=" + want
+                                    + " " + dragJoinVerdict(got, want));
+                } catch (Throwable ignored) {}
+            }, 450L);
         } catch (Throwable ignored) {}
     }
 

@@ -30,13 +30,16 @@
         <!-- v1.4.12 — THE ENGINE CHIP: the old static search glyph is now a
              clickable chip (glyph + drop arrow) that opens the engine
              picker — Google / DuckDuckGo / Bing / Brave / Startpage — for
-             the query currently in the field. -->
+             the query currently in the field. v1.4.19: the glyph is the
+             ACTIVE engine's logo (see BrowserActivity.engineLogo) and the
+             chip carries a tooltip (the icon-only tooltip law). -->
         <LinearLayout android:id="@+id/omni_engine"
             android:orientation="horizontal"
             android:layout_width="wrap_content" android:layout_height="match_parent"
             android:gravity="center_vertical" android:paddingStart="10dp"
             android:paddingEnd="2dp" android:background="?attr/selectableItemBackground"
-            android:clickable="true" android:focusable="true">
+            android:clickable="true" android:focusable="true"
+            android:tooltipText="@string/search_engine">
             <ImageView android:id="@+id/iv_omni_search"
                 android:layout_width="20dp" android:layout_height="20dp"
                 android:src="@drawable/ic_search"
@@ -60,7 +63,7 @@
         <ImageButton android:id="@+id/btn_omni_clear"
             android:layout_width="40dp" android:layout_height="40dp"
             android:src="@drawable/ic_close" android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/clear"/>
+            android:contentDescription="@string/clear" android:tooltipText="@string/clear"/>
     </LinearLayout>
     <!-- ==================== ROW 2 — the action strip ====================
          v1.4.16: one evenly-weighted 44dp slot per action; the whole strip
@@ -74,12 +77,12 @@
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:src="@drawable/ic_copy"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/copy"/>
+            android:contentDescription="@string/copy" android:tooltipText="@string/copy"/>
         <ImageButton android:id="@+id/btn_omni_paste"
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:src="@drawable/ic_paste"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/paste"/>
+            android:contentDescription="@string/paste" android:tooltipText="@string/paste"/>
         <!-- v1.4.16 — DUPLICATE TAB: the tab switcher's per-card duplicate
              (same URL in a fresh tab, right beside the source) promoted to
              the omnibox strip. -->
@@ -87,19 +90,19 @@
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:src="@drawable/ic_open_new"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/duplicate_tab"/>
+            android:contentDescription="@string/duplicate_tab" android:tooltipText="@string/duplicate_tab"/>
         <!-- v1.4.12 — THE IMAGE-SEARCH DOOR: camera or gallery pick, the
              picture routes to the selected engine's visual search. -->
         <ImageButton android:id="@+id/btn_omni_cam"
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:src="@drawable/ic_camera"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Image search"/>
+            android:contentDescription="Image search" android:tooltipText="Image search"/>
         <ImageButton android:id="@+id/btn_omni_voice"
             android:layout_width="0dp" android:layout_height="match_parent"
             android:layout_weight="1" android:src="@drawable/ic_mic"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Voice search"/>
+            android:contentDescription="Voice search" android:tooltipText="Voice search"/>
     </LinearLayout>
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_suggest" android:layout_width="match_parent"

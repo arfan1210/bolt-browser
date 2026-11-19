@@ -1041,74 +1041,181 @@ relay, 2026-11-18):
    repin reports itself unbelievable). Suite: 73/73 release-pipeline
    check commands green (42 version gates + node checks + sim probes).
 
-**Known-good numbers** (v1.4.18, release build): APK
-2,769,465 B (budget 6,000,000; v1.4.17 was 2,767,561 — the six-pack
-cost 1,904 B); signature verifies (v2 scheme) against
-the pinned cert; suite: all 73 release-pipeline gate commands green (the
-new v1418 gate among them — its compiled probe runs transcriptions of
-all six fixes);
+**v1.4.19 — the root-cure ten-pack** (the thirteenth session of this
+relay, 2026-11-19):
+
+1. *The root-cause law.* Items 1 and 2 arrived with FIELD EVIDENCE — a
+   user diag.log and a captured URL — and both were root-caused before
+   a line changed: the fix targets the NAMED MECHANISM, not a guess.
+   The meta-law from v1.4.18 (a green gate proves code EXISTS, not that
+   a bug is CURED) gains its second half: when the evidence names the
+   mechanism, pin THE MECHANISM (the ordering, the corruption path),
+   and the field report becomes the regression test.
+2. *The suffix-first corpse (incognito crash loop).* The "app start"
+   Diag block called getCurrentWebViewPackage +
+   isPasskeySupportAvailable — BOTH load the WebView provider — and
+   setDataDirectorySuffix ran only AFTER, threw, and was SWALLOWED:
+   :incognito kept the shared data dir and every WebView construction
+   died on the main process's AwDataDirLock (four pids cycling
+   app-start → crash, each falling back to the normal tabs menu). The
+   suffix is now the FIRST WebView-related action in the process; a
+   failure is loud (Diag + a flag Tab.buildWeb reads to refuse
+   construction); the buildWeb fallback is guarded; and the EXIT
+   button finishes its activities BEFORE the kill (a kill without a
+   finish leaves the task record alive — the OS just restarts
+   IncognitoActivity into incognito home). Learnings, three: (a) a
+   "harmless diagnostics" call can be a landmine if it initializes
+   what a later guard depends on — ORDER IS THE CONTRACT; (b) a
+   swallowed exception around a security boundary is a silent
+   misconfiguration, not a resilience win; (c) killProcess is not
+   "exit" — exit is finish-first, kill-after.
+3. *The loadData URL corpse (offline error page).* onReceivedError
+   built the sad-page HTML and called view.loadData — loadData
+   REPLACES the WebView's URL with a data:text/html,… URL,
+   doUpdateVisitedHistory wrote it into t.url, tabs.json persisted it,
+   and the tab reloaded the ERROR PAGE forever (the captured URL was
+   literally the data: page). The error is now a native overlay with
+   Retry; BOTH URL-write hooks carry a data: guard (the render-crash
+   notice rode the same hole); and intent:// links with no app load
+   S.browser_fallback_url (pure extractor, probe-pinned) — the
+   Facebook app-link case that produced the error in the first place.
+   Learning: a display mechanism that MUTATES the identity of the
+   thing it displays (loadData rewrites the URL) can never be the
+   error path — render errors beside the content, never into it.
+4. *The animator bypass (drag-join void, round 3).* v1.4.18's posted
+   requestLayout lost on a ~40-tab grid: the DefaultItemAnimator's
+   predictive REMOVE (~250 ms) outlived the one-frame-later relayout
+   while the animator still pinned the departed row's stale slot. The
+   drag-join swap now runs with the animator OFF, restored ~350 ms
+   later (a same-tick restore re-arms it before the traversal); the
+   drag door loses its slide-away animation BY DESIGN (correctness
+   over choreography), and a child-count/adapter-count Diag breadcrumb
+   (dragJoinVerdict, pure) records the board's health for the next
+   report. Learning: when a race survives a "post it later" cure, the
+   cure is fighting the racy subsystem itself — take the subsystem
+   out of the path for the critical window instead of scheduling
+   around it.
+5. *The stroke visibility floor (forced dark).* invert(1) maps #ddd
+   (lum ~0.87) to ~#222 on the inverted ground — near-zero contrast
+   for thin lines, dividers and hamburger glyphs. The parity walk now
+   clamps light TEXT/BORDER colors down to lum 0.6 (never backgrounds,
+   never the media family; the same single getComputedStyle, the same
+   budgets); the inline writes store their originals in data-boltsv
+   and darkClearJs restores them exactly. Learning: an inversion
+   filter needs a FLOOR as well as a parity walk — the walk decides
+   WHO inverts, the floor decides what SURVIVES inversion.
+   (Corollary: no double quotes in MediaHook body comments —
+   check_dark_js extracts every quoted literal as JS.)
+6. *The token-cap ladder (AI translate).* Dense screens overflowed
+   maxOutputTokens 16384 mid-array — parseBoxes read the truncation as
+   "cut off". The cap now ladders 32768 → 65536 on an explicit
+   MAX_TOKENS finishReason (translateCapAction, pure); the standing
+   error survives as the honest end state. Learning: read the
+   provider's OWN truncation signal before inventing a heuristic —
+   finishReason was always in the envelope.
+7. *The real-origin intercept (Bing image search).* The saved file://
+   page could not run Bing's JS results runtime (opaque origin: XHR,
+   fetch and document.cookie all die). The body is armed for the REAL
+   results URL and shouldInterceptRequest answers that ONE main-frame
+   GET with the cached bytes — origin, cookies (the v1.4.18 pump) and
+   XHR all match; the take is one-shot so a later visit hits the
+   network. Learning: you cannot fake an origin with <base href> —
+   scripts trust document.origin, not the base; serve the bytes UNDER
+   the origin they were minted for.
+8. *The engine-chip logos.* The omnibox chip now shows the active
+   engine's brand mark (five new vectors, brand colors never
+   theme-tinted; the generic magnifier stays as the custom/unknown
+   fallback), re-applied on every switch (engineLogo, pure). The
+   toolbar URL-bar glyph and the home widget are the documented
+   follow-up candidates.
+9. *The icon-only tooltip law.* Every ImageButton in the five touched
+   layouts carries android:tooltipText (the find-bar and read-aloud
+   buttons were missing contentDescription entirely); the omnibox
+   strip rides the appcompat TooltipCompat backport because the XML
+   attribute only inflates on API 26+ (minSdk 24) — NOTE:
+   androidx.appcompat.widget.TooltipCompat, the core one was removed
+   from the artifact. The toolbar's long-press IS its quick action
+   (audited: those listeners legitimately consume). tooltipFor
+   (tooltip defaults to the contentDescription) is the pure pin.
+10. *The vault add/edit door.* "Add password" row + per-entry Edit,
+    riding saveEx — a hand-made entry is indistinguishable from a
+    captured one; a changed identity deletes the old row first (a
+    true edit, not a fork). Main process only, by construction.
+11. *The temporary AI attachments.* A paperclip in the Bolt AI input
+    row (browser faces, main process only): images as inline_data
+    through the SHARED capped decoder (one OOM ladder for the app),
+    text files as labeled parts, 3 attachments / 24k chars. MEMORY
+    ONLY — consumed by the send, wiped by Clear, dead with the
+    process; no restore path exists (attachCountAfter, pure). The
+    attachments ride ONLY their turn (re-sending an image every
+    follow-up would burn the budget).
+12. *The standing sweep, v1.4.19 edition.* 38 prior version gates
+    re-pinned 133/1.4.19 with dated notes (workspace
+    scripts/repin_gates_1419.py — SINGLE-RUN, idempotent); every
+    About-changelog position pin slid one slot down (1.4.19 landed at
+    [0]); SIX hand re-points where this release legitimately moved
+    pinned forms: test_screen (parseBoxes onto the ladder's per-rung
+    pair, the cap parameter, chatX), test_v1398 (the onPageStarted
+    window widened 3600 → 4600 — the data:-guard added lines), 
+    test_v1412 (the file:// Bing pin re-pointed at the intercept),
+    test_v1413 (the buildWeb fallback pin re-pointed at the guarded
+    form). TWO SWEEP CORPSES caught and recovered: the first draft
+    was not idempotent and a re-run DOUBLE-SLID 53 changelog pins
+    (recovered by git-restoring the gates and re-running the fixed
+    walk — the law: a re-point tool must skip lines already carrying
+    its own dated note, and its second run must report ZERO); and the
+    version-pin families number THREE, not two (plain, escaped-regex,
+    and extracted-comparison `== "132"` — the v1.4.18 "both families"
+    law undercounted). Suite: 69/69 release-pipeline check commands
+    green (43 version gates + node checks + sim probes).
+
+**Known-good numbers** (v1.4.19, release build): APK
+2,780,582 B (budget 6,000,000; v1.4.18 was 2,769,465 — the ten-pack
+cost 11,117 B, mostly the five engine-logo vectors); signature
+verifies (v2 scheme) against the pinned cert; suite: all 69
+release-pipeline gate commands green (the new v1419 gate among them —
+its compiled probe runs transcriptions of the suffix-first ordering,
+the data: guard, the intent fallback, dragJoinVerdict, the stroke
+clamp, translateCapAction, shouldServeIntercept, engineLogo,
+tooltipFor and attachCountAfter);
 filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
 **Plans / candidates for future versions:**
-- (landed in v1.4.18) The ungroup path (`remove_from_group`) — both
-  doors ride `reloadGridNoVoid()` now; the plans-section prediction was
-  swept together with the drag door's own helper.
-- The v1.4.18 invert-first pass trades a brief DOUBLE-DARK on sites that
-  ship their dark through async CSS after render for zero white hold on
-  every merely-declaring site — accepted knowingly. If a field report
-  ever names the double-dark, the ask can gain a second look at finish
-  (before the 2.5 s late re-probe clears) for pages that declared dark
-  and flipped late.
-- ACTION_VIEW links from other apps still resolve into whichever face
-  the OS picked (only the SEARCH doors are session-aware in v1.4.18).
-  If a field report names a link tap bouncing an incognito session, the
-  forward in `forwardToIncognitoIfLast` can grow a VIEW branch — the
-  session record already knows the answer.
-- The AI chain now toasts when a fallback answers ("AI fell back to…").
-  If that proves noisy in the field, a Settings toggle is the honest
-  cut — the logcat/Diag channel stays regardless (it is the evidence
-  channel, per the v1.4.17 law).
-- v1.4.13's NetSuggest endpoints are best-knowledge URLs — Startpage's
-  `suggestions?format=json` is the least certain (never field-verified);
+- The engine-chip logo (v1.4.19) could mirror on the toolbar URL-bar
+  glyph and the home search widget — both are one-setImageUrl calls
+  away from engineLogo(); the widget rebuild is the bigger half.
+- The Startpage chip mark is a simplified blue magnifier tile — the
+  exact brand vector is ONE drawable (ic_engine_startpage) to re-point
+  the day a faithful path is verified offline.
+- If a field report ever names a translate screen dense enough to
+  overflow even the 65536 rung, the next rung is TILING (split the
+  capture into regions, merge the boxes) — the finishReason→action
+  function is the single place to grow it.
+- The AI attachment door is browser-faces only by design (the pick
+  result routes through BrowserActivity.onActivityResult); a settings
+  surface could host its own ActivityResultLauncher if a report asks.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked (only the SEARCH doors are
+  session-aware); the forward in `forwardToIncognitoIfLast` can grow a
+  VIEW branch — the session record already knows the answer.
+- (carried) The AI chain's fallback toast ("AI fell back to…") may
+  prove noisy; a Settings toggle is the honest cut — the logcat/Diag
+  channel stays regardless (it is the evidence channel).
+- (carried) v1.4.13's NetSuggest endpoints are best-knowledge URLs;
   a dead endpoint degrades to no rows by design, and the map is ONE
-  function (NetSuggest.endpointFor) to re-point when a field report
-  names a silent engine.
-- The bundled EasyList/EasyPrivacy snapshot refresh stays a candidate (it
-  was on the v1.4.11 list and was DEFERRED — the stability four-pack took
-  the release; the in-app updater exists, but the APK baseline drifts).
-- v1.4.12's VisualSearch rides Google's classic search-by-image POST and
-  Bing's SBI — both are undocumented endpoints that can move. v1.4.18's
-  session continuity reduces but does not eliminate bot-gating; if a
-  field report names a dead route, the fallback ladder (engine home
-  page) keeps the door usable, and the endpoint map is ONE function
-  (endpointFor) to re-point; a Lens `uploadbyurl` path for images that
-  already have a URL (long-press an image → search by image) stays the
-  follow-up candidate.
-- The engine chip re-runs a live query on switch, but a prefilled URL
-  only switches silently — a small "engine: NAME" toast on every switch
-  (not just the URL case) would make the state change louder.
-- (landed in v1.4.14) The group sheet's drag restore — the
-  RecyclerView-backed sheet with ItemTouchHelper reordering the v1.4.12
-  notes predicted; a future polish could add swipe-to-close members on
-  the same callback (swipe dirs are 0 today).
-- The compound single-call sequences on tm.tabs (indexOf-then-add in the
-  TabsActivity drag paths, cached size()+get() in the swipe walk) remain
-  outside the monitor law — they are individually-atomic reads whose
-  worst case is a one-off cosmetic drift or a caught IOOBE, not the
-  iterator corpse; sweep them only if a field report ever names one.
-- `inferType` could grow a `Sec-Fetch-Dest` check the day WebView's
-  `getRequestHeaders()` starts exposing it (it is the authoritative
-  signal; Accept is the best available today).
-- The `byHost` maps are cleared+rebuilt in place during a filter-list
-  reload while match threads may be mid-read (pre-existing since the
-  first release; the automaton is already swapped atomically as one
-  volatile reference — the maps could ride the same pattern if it ever
-  bites).
-- On-device memory measurement of the pattern diet (the gate proves the
-  JVM ratio; a heap dump on a real device would put a hard number in the
-  release notes).
+  function (NetSuggest.endpointFor) to re-point.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate (deferred since v1.4.11; the in-app updater exists, but the
+  APK baseline drifts).
+- (carried) v1.4.12's VisualSearch rides Google's classic
+  search-by-image POST and Bing's SBI — undocumented endpoints that
+  can move; the fallback ladder (engine home page) keeps the door
+  usable, and endpointFor is ONE function to re-point.
+- (carried) The compound single-call sequences on tm.tabs remain
+  outside the monitor law (individually-atomic reads; sweep only if a
+  field report ever names one).
 
 ## License
 

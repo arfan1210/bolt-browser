@@ -511,6 +511,13 @@ python3 scripts/test_v1417.py
 
 python3 scripts/test_v1418.py
 
+# v1.4.19 gate: the root-cure ten-pack (suffix-first incognito fix + exit
+# leave, the offline error overlay + intent fallback, the drag-join
+# animator bypass, the dark stroke floor, the AI translate token ladder,
+# the Bing real-origin intercept, the engine-chip logos, the icon-only
+# tooltip law, the vault add/edit door, the temporary AI attachments)
+python3 scripts/test_v1419.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

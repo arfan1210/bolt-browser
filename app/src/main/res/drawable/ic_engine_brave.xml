@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.19 — THE ENGINE-CHIP LOGOS: Brave's shield in the brand orange
+     #FB542B with the simplified white inner mark (the lion's chevron —
+     the recognizable half of Brave's logo at chip size). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FB542B"
+        android:pathData="M12 2.1l7.4 2.7c0.3 0.1 0.5 0.4 0.4 0.7 -0.3 3.9 -1.4 10 -7.1 14.7 -0.2 0.2 -0.5 0.2 -0.7 0C6.3 15.5 5.2 9.4 4.9 5.5c0 -0.3 0.2 -0.6 0.4 -0.7z"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M12 6.4l2.9 5.8 -2.9 -1.6 -2.9 1.6z"/>
+    <path android:fillColor="#FFD0B0"
+        android:pathData="M12 12.2l1.9 3.8 -1.9 -1 -1.9 1z"/>
+</vector>

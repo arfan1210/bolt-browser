@@ -4,6 +4,139 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.19] — 2026-11-19
+
+**The root-cure ten-pack: items 1 and 2 were ROOT-CAUSED from the user's
+diag.log and a captured URL — the named mechanism was fixed, not re-guessed.
+Every fix carries a compiled+run behavior probe or a Diag breadcrumb; moved
+pins were re-pointed with dated notes.**
+
+### Fixed — INCOGNITO CRASH LOOP + EXIT BUTTON (root-caused from diag.log)
+- Evidence: `RuntimeException: Using WebView from more than one process at
+  once with the same data directory` on a Realme RMX2020 / Android 10
+  (SDK 29), the `:incognito` process cycling app-start → crash through four
+  pids, each crash falling back to the normal tabs menu.
+- Root cause: in `BoltApp.onCreate` the "app start" Diag block ran FIRST
+  and called `WebViewCompat.getCurrentWebViewPackage` +
+  `WebAuthnHelper.isPasskeySupportAvailable` — both LOAD THE WEBVIEW
+  PROVIDER. `setDataDirectorySuffix("boltinc")` ran only AFTER, threw
+  `IllegalStateException` (provider already loaded), and the
+  `catch (Throwable ignored)` swallowed it: incognito kept the DEFAULT
+  data dir and every WebView construction collided with the main process's
+  `AwDataDirLock`.
+- The suffix is now the FIRST WebView-related action in the `:incognito`
+  process (before any WebViewFeature/WebViewCompat/WebAuthnHelper call,
+  before UserscriptEngine.init, before the WebPool prewarm); a failure is
+  never silent (Diag line + the flag `Tab.buildWeb` reads to refuse
+  construction against the shared dir — graceful degradation instead of a
+  crash loop; the buildWeb fallback is try/catch-wrapped and both callers
+  null-check).
+- The EXIT button: `wipeIncognito()` ended with `killProcess` WITHOUT
+  finishing the activities — the OS simply restarted IncognitoActivity
+  (incognito home; each restart used to crash into the normal task). Exit
+  now finishes the activities and removes the task FIRST, wipes, and posts
+  the kill ~300 ms later so AMS has seen the finish transactions before
+  the death (onDestroy's wipe stays as the final backstop).
+
+### Fixed — OFFLINE ERROR PAGE CORRUPTED THE TAB URL (root-caused)
+- Evidence: a tab whose address bar literally read
+  `data:text/html,<html><body style='background:#1A1A22;…` with the
+  original intent:// Facebook URL embedded as text.
+- Root cause: `onReceivedError` built that HTML around `failingUrl` and
+  called `view.loadData(...)` — `loadData` REPLACES the WebView's URL with
+  a `data:text/html,…` URL, `doUpdateVisitedHistory` then wrote THAT into
+  `t.url`, and tabs.json / the phoenix restore persisted it: the tab
+  reloaded the ERROR PAGE forever, never the site.
+- The error is now a native OVERLAY on flContent with a Retry button; the
+  tab's URL, history entry and persisted url all keep the ORIGINAL page.
+  Both URL-write hooks (`onPageStarted`, `doUpdateVisitedHistory`) carry a
+  data: guard so no loadData artifact (the render-crash notice included)
+  can ever become a tab address again. A Diag breadcrumb records the URL
+  that must survive.
+- intent:// links: when no app services the intent,
+  `S.browser_fallback_url` is extracted (pure, probe-pinned) and LOADED in
+  the tab — Facebook-style app links open the web fallback instead of
+  dead-ending on "No app can open this".
+
+### Fixed — TAB VOID ON DRAG-TO-GROUP (third report, card view, long list)
+- v1.4.18's posted requestLayout lost the race on a ~40-tab grid: the
+  DefaultItemAnimator's predictive REMOVE (~250 ms) outlived the
+  one-frame-later relayout while the animator still pinned the departed
+  row's stale slot. For the drag-join swap the animator is now taken OFF
+  before the diff and restored ~350 ms later (after the layout pass
+  consumed the diff with no animator — cards snap straight to their final
+  slots, a hole cannot form). The drag door loses its slide-away
+  animation by design: correctness over choreography. A Diag breadcrumb
+  logs post-drop child count vs adapter item count (the count/layout
+  invariant evidence; `dragJoinVerdict`, pure, probe-pinned).
+
+### Fixed — FORCED DARK MADE THIN LINES / HAMBURGER ICONS TOO FAINT
+- `invert(1)` maps a light-gray stroke (#ddd, lum ~0.87) to ~#222 on the
+  inverted dark ground — near-zero contrast. The parity walk now carries
+  a STROKE VISIBILITY FLOOR: for elements that stay inverted, a computed
+  color or border color lighter than lum 0.8 is remapped DOWN to lum 0.6
+  so the post-inversion result is a visible mid-gray. Only text/border
+  colors (never backgrounds, never the media family); rides the existing
+  walk (same single getComputedStyle, same 3500 cap, same
+  MutationObserver — no extra budget); the inline writes store their
+  originals and `darkClearJs` restores them exactly when the inversion
+  lifts. The clamp arithmetic is the gate's probe-pinned transcription.
+
+### Fixed — AI SCREEN TRANSLATE "CUT OFF" ON DENSE SCREENS
+- A dense screen's JSON array of boxes overflowed the 16384
+  maxOutputTokens — the reply truncated mid-array and the parser said
+  "cut off". The output cap now rides a ladder: 32768 first, and when the
+  envelope's finishReason says MAX_TOKENS the SAME model is retried once
+  at 65536 (the 3.x flash ceiling) before the honest error. The decision
+  (`translateCapAction`) is pure, probe-pinned.
+
+### Fixed — BING IMAGE SEARCH STILL FAILED (Google route now works)
+- Bing's 200 results body was saved as a file:// page with a `<base
+  href>` — static resources loaded, but Bing's results are JS-DRIVEN:
+  scripts XHR/fetch and read document.cookie from a file:// (opaque)
+  origin, CORS blocks them, the results runtime never runs.
+- The body is now served UNDER THE REAL bing.com ORIGIN: the WebView
+  loads the real results URL and `shouldInterceptRequest` answers that
+  ONE main-document GET with the cached body (one-shot — any later visit
+  goes to the network). Origin, cookies (the v1.4.18 pump) and XHR all
+  match; subresources load from the network. The hit decision
+  (`shouldServeIntercept`) is pure, probe-pinned.
+
+### Added — THE ACTIVE ENGINE'S LOGO ON THE SEARCH BAR CHIP
+- The omnibox engine chip's left glyph is the active engine's brand mark
+  (Google G, DuckDuckGo roundel, Bing b, Brave shield, Startpage tile —
+  simplified vectors, brand colors never theme-tinted; a custom/unknown
+  engine falls back to the generic magnifier with tint). Updates the
+  moment you switch engines. `engineLogo`, pure, probe-pinned.
+
+### Fixed — LONG-PRESS TOOLTIPS MISSING ON SOME BUTTONS (regression)
+- Every icon-only button in the omnibox strip, the browser toolbar, the
+  tab switcher, the generic list header and the settings home now carries
+  `android:tooltipText` (plus the contentDescriptions the find-bar and
+  read-aloud buttons were missing entirely). The omnibox strip also gets
+  the programmatic `TooltipCompat` backport — the XML attribute only
+  inflates on API 26+ and Bolt's minSdk is 24. The toolbar's long-press
+  IS its quick action (those listeners legitimately consume — audited,
+  documented). The fallback law (`tooltipFor`) is pure, probe-pinned; the
+  gate audits every ImageButton in the touched layouts.
+
+### Added — MANUALLY ADD / EDIT SAVED PASSWORDS
+- The vault screen gains an "Add password" row and every entry's options
+  sheet gains Edit (host / username / password), riding `saveEx` — the
+  same encrypted upsert the site-driven save offer uses, so a hand-made
+  entry is indistinguishable from a captured one. A changed identity is a
+  true edit (the old row goes first). Main process only, by construction.
+
+### Added — BOLT AI IMAGE / FILE ATTACHMENTS (temporary)
+- A paperclip button in the Bolt AI input row (browser faces, main
+  process only): images ride the turn as inline_data (the shared capped
+  1280-px decoder, q85 JPEG), text files as labeled text parts
+  (24k-char cap, 3 attachments max, ACTION_GET_CONTENT — no bundled
+  picker lib, the size law). Attachments are MEMORY-ONLY: consumed by the
+  send, wiped by Clear, gone on process death — never persisted, no
+  restore path. The lifecycle verdict (`attachCountAfter`) is pure,
+  probe-pinned.
+
 ## [1.4.18] — 2026-11-19
 
 **The field-cure six-pack: v1.4.17 shipped 41/41 gates green but most field

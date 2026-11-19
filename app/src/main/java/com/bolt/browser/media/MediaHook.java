@@ -1518,13 +1518,58 @@ public class MediaHook {
      *  capped so a runaway page can never keep one alive forever). */
     public static String darkSmartJs() {
         return "(function(){try{if(window.__boltDKrun)return;window.__boltDKrun=1;"
-                + "var DK='__boltDK',NI='__boltNI';var n=0;"
+                + "var DK='__boltDK',NI='__boltNI',SV='__boltSV';var n=0;"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
                 + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
                 + "if(!m)return null;var a=m.length>4?parseFloat(m[4]):1;if(a<0.45)return null;"
                 + "return (0.2126*parseFloat(m[1])+0.7152*parseFloat(m[2])+0.0722*parseFloat(m[3]))/255;}catch(e){return null;}}"
+                // v1.4.19 — THE STROKE VISIBILITY FLOOR (the forced-dark
+                // thin-lines/hamburger-icons-too-faint report):
+                // invert(1) maps a light-gray stroke (#ddd, lum ~0.87) to
+                // ~#222 on the inverted dark ground — near-zero contrast.
+                // clampCss remaps a LIGHT source color DOWN to luminance
+                // 0.6 (153/255) so the post-inversion result is a visible
+                // mid-gray on black. PURE — the arithmetic is the gate's
+                // probe-pinned transcription (scripts/test_v1419.py).
+                // (NOTE: no double quotes in body comments — check_dark_js
+                // extracts every quoted literal as JS.)
+                + "function clampCss(c){try{"
+                + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
+                + "if(!m)return null;"
+                + "var r=parseFloat(m[1]),g=parseFloat(m[2]),b=parseFloat(m[3]);"
+                + "var a=m.length>4?parseFloat(m[4]):1;"
+                + "var y=0.2126*r+0.7152*g+0.0722*b;"
+                + "if(y<=153)return null;"
+                + "var f=153/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
+                + "return a<1?('rgba('+r+','+g+','+b+','+a+')'):('rgb('+r+','+g+','+b+')');"
+                + "}catch(e){return null}}"
+                // v1.4.19 — mark + remember: the inline writes are sticky, so
+                // the ORIGINAL inline values are stored on the element and
+                // darkClearJs restores them exactly when the inversion lifts
+                + "function svSave(el){try{"
+                + "if(el.classList.contains(SV))return;"
+                + "el.classList.add(SV);"
+                + "el.setAttribute('data-boltsv',JSON.stringify({c:el.style.color||null,b:el.style.borderColor||null}));"
+                + "}catch(e){}}"
+                // v1.4.19 — the stroke floor application: ONLY text color and
+                // border colors (the thin-strokes/icons/text surfaces),
+                // never backgrounds, never the media family (photos keep
+                // their pixels; isMedia is checked by parityEl's early return
+                // before this runs). Rides the existing walk — the same
+                // single getComputedStyle, the same 3500 cap, the same
+                // MutationObserver; no extra pass, no extra budget.
+                + "function strokeFloor(el,cs){try{"
+                + "var l=lumOf(cs.color);"
+                + "if(l!==null&&l>0.8){var nc=clampCss(cs.color);"
+                + "if(nc){svSave(el);el.style.color=nc;}}"
+                + "if(parseFloat(cs.borderTopWidth)>0||parseFloat(cs.borderBottomWidth)>0"
+                + "||parseFloat(cs.borderLeftWidth)>0||parseFloat(cs.borderRightWidth)>0){"
+                + "var bl=lumOf(cs.borderTopColor);"
+                + "if(bl!==null&&bl>0.8){var nb=clampCss(cs.borderTopColor);"
+                + "if(nb){svSave(el);el.style.borderColor=nb;}}}"
+                + "}catch(e){}}"
                 // the media family is un-inverted by CSS already — a leaf
                 + "function isMedia(el){var t=el.tagName;"
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
@@ -1541,6 +1586,11 @@ public class MediaHook {
                 + "}else{var l=lumOf(cs.backgroundColor);"
                 + "if(l!==null)want=(l<=0.35)?0:1;}}catch(x){}"
                 + "if(want!==inv){try{el.classList.add(DK);n++;}catch(x){}inv=want;}"
+                // v1.4.19 — a subtree that STAYS INVERTED gets the stroke
+                // floor: light text/border colors that would invert into
+                // near-black on the dark ground are clamped to a visible
+                // mid-gray BEFORE the global filter flips them
+                + "if(inv===1){try{strokeFloor(el,cs);}catch(x){}}"
                 + "var ch=el.children;"
                 + "for(var i=0;i<ch.length;i++){if(n>=3500)break;parityEl(ch[i],inv);}"
                 + "return inv;}"
@@ -1595,6 +1645,18 @@ public class MediaHook {
                 + "var cl=document.querySelectorAll('.__boltNI,.__boltDK');"
                 + "for(var i=0;i<cl.length;i++){cl[i].classList.remove('__boltNI');"
                 + "cl[i].classList.remove('__boltDK');}"
+                // v1.4.19 — THE STROKE-FLOOR RESTORE: the walk's inline
+                // color/border-color writes are sticky, so pulling the
+                // inversion must put the ORIGINAL inline values back (the
+                // exact pre-write strings are stored in data-boltsv; null
+                // means the property was never inline — remove it).
+                + "var sv=document.querySelectorAll('.__boltSV');"
+                + "for(var k=0;k<sv.length;k++){var el=sv[k];var o=null;"
+                + "try{o=JSON.parse(el.getAttribute('data-boltsv')||'{}');}catch(e){}"
+                + "try{if(o&&o.c)el.style.color=o.c;else el.style.removeProperty('color');}catch(e){}"
+                + "try{if(o&&o.b)el.style.borderColor=o.b;else el.style.removeProperty('border-color');}catch(e){}"
+                + "try{el.removeAttribute('data-boltsv');}catch(e){}"
+                + "el.classList.remove('__boltSV');}"
                 + "try{delete window.__boltDKrun;}catch(e){}"
                 + "}catch(e){}})();";
     }

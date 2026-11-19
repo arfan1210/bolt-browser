@@ -27,11 +27,65 @@ import java.net.URL
  * The upload is a hand-rolled multipart/form-data POST on
  * HttpURLConnection (no extra dependency): Java does not auto-follow a
  * POST's 3xx, so the redirect is read manually and re-GET; a direct 200
- * (Bing's shape) is saved as a local HTML result page. Both paths end in a
- * URL loadInTab() can render. On network failure the caller gets null and
+ * (Bing's shape) is served back UNDER ITS REAL ORIGIN via the v1.4.19
+ * intercept (shouldInterceptRequest answers the main-document GET with
+ * the cached body — see [armIntercept]). Both paths end in a URL
+ * loadInTab() can render. On network failure the caller gets null and
  * falls back to the engine's visual-search HOME page (manual upload there).
  */
 object VisualSearch {
+
+    /** v1.4.19 — THE BING INTERCEPT (the "Bing image search still fails"
+     *  report, root-caused): Bing's 200 results body was saved as a file://
+     *  page with a <base href> — static resources loaded, but Bing's results
+     *  are JS-DRIVEN: the scripts XHR/fetch and read document.cookie from a
+     *  file:// (opaque) origin, CORS blocks them, and the results runtime
+     *  never runs. The body is now served UNDER THE REAL bing.com ORIGIN:
+     *  the WebView loads the real results URL and BrowserClient's
+     *  shouldInterceptRequest returns this cached body for that ONE
+     *  main-document request — origin, cookies (the v1.4.18 pump) and XHR
+     *  all match, subresources load from the network. One-shot: the entry
+     *  is CONSUMED on the first main-frame hit, so a later normal visit to
+     *  the same URL goes to the network. */
+    private val intercepts =
+            java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+    /** arm the cached body for a results URL; returns the SAME url (the
+     *  caller loads it — the intercept serves the body). */
+    @JvmStatic
+    fun armIntercept(url: String, htmlBody: String): String {
+        try {
+            intercepts[url] = htmlBody.toByteArray(Charsets.UTF_8)
+        } catch (_: Throwable) {}
+        return url
+    }
+
+    /** v1.4.19 — PURE (probe-pinned): does a WebView request hit the armed
+     *  intercept? Main documents only (a subresource GET for the same URL
+     *  must go to the network), GET/HEAD only (the body-carrier law), and
+     *  the exact armed URL. */
+    internal fun shouldServeIntercept(isMainFrame: Boolean, method: String?,
+            requestUrl: String?, armedUrl: String?): Boolean {
+        if (!isMainFrame) return false
+        if (method != null && !method.equals("GET", ignoreCase = true)
+                && !method.equals("HEAD", ignoreCase = true)) return false
+        if (requestUrl == null || armedUrl == null) return false
+        return requestUrl == armedUrl
+    }
+
+    /** the one-shot take: the cached body when this request hits the armed
+     *  intercept (and the entry is consumed), else null. */
+    @JvmStatic
+    fun takeIntercept(isMainFrame: Boolean, method: String?, requestUrl: String?): ByteArray? {
+        if (requestUrl == null) return null
+        for ((url, body) in intercepts) {
+            if (shouldServeIntercept(isMainFrame, method, requestUrl, url)) {
+                intercepts.remove(url)
+                return body
+            }
+        }
+        return null
+    }
 
     /** result callback (a fun-interface so Java call sites can lambda it;
      *  Kotlin's (String?) -> Unit boxes its return and breaks Java lambdas) */
@@ -118,8 +172,10 @@ object VisualSearch {
      *  edges), then the fine scale to the exact cap. v1.4.14: an
      *  OutOfMemoryError on the sampled decode retries at double the sample
      *  (≤3 retries) — memory pressure degrades the resolution, it never
-     *  crashes the process. */
-    private fun decodeCapped(f: File, maxEdge: Int): Bitmap? {
+     *  crashes the process. v1.4.19: INTERNAL — Bolt AI's temporary chat
+     *  attachments decode through this same capped path (no second decoder
+     *  to drift, one OOM ladder). */
+    internal fun decodeCapped(f: File, maxEdge: Int): Bitmap? {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.absolutePath, opts)
         if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
@@ -217,16 +273,23 @@ object VisualSearch {
                 pumpSetCookies(conn)
                 val body = conn.inputStream.use { it.readBytes() }
                 if (body.isEmpty()) return null
-                // v1.4.18 — the saved-page base href (see ensureBaseHref):
-                // Bing's 200 body carries RELATIVE resource URLs that a
-                // file:// base cannot resolve — every image would die
-                val html = ensureBaseHref(
-                        String(body, Charsets.UTF_8), "https://www.bing.com/")
-                val dir = File(c.filesDir, "visual")
-                if (!dir.isDirectory) dir.mkdirs()
-                val f = File(dir, "visual-" + System.currentTimeMillis() + ".html")
-                f.writeBytes(html.toByteArray(Charsets.UTF_8))
-                return "file://" + f.absolutePath
+                // v1.4.19 — THE REAL-ORIGIN DOOR (see the intercept map
+                // above): the body is armed for the POST's own results URL
+                // and THAT URL is what loads in the tab — the WebView's
+                // main-document request is intercepted and answered with
+                // this body, so the page runs on https://www.bing.com with
+                // the pumped cookies and its XHR/fetch results runtime
+                // alive (a file:// origin could never run it — CORS saw an
+                // opaque origin and every results call died). The v1.4.18
+                // base href stays on the served body: it is now redundant
+                // (the base matches the real origin) but harmless, and it
+                // keeps the v1418 pin honest for any cached file:// page.
+                try {
+                    com.bolt.browser.util.Diag.log(c,
+                            "visual bing armed under real origin")
+                } catch (_: Throwable) {}
+                return armIntercept(ep.postUrl,
+                        ensureBaseHref(String(body, Charsets.UTF_8), "https://www.bing.com/"))
             }
             return null
         } finally {

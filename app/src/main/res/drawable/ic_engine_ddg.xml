@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.19 — THE ENGINE-CHIP LOGOS: DuckDuckGo's roundel — the brand
+     orange #DE5833 circle with the simplified white duck head (the mark
+     the DDG favicon carries; simplified to stay legible at 20dp). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#DE5833"
+        android:pathData="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0 -18.8z"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M14.2 7.3c-1.7 -0.7 -3.6 -0.1 -4.6 1.4 -0.5 0.8 -0.7 1.8 -0.4 2.7 0.1 0.3 0 0.6 -0.2 0.8l-1 1c-0.3 0.3 -0.1 0.8 0.3 0.8h2.2l0.9 2.1c0.1 0.3 0.5 0.4 0.7 0.1l1.2 -1.3c0.2 -0.2 0.5 -0.3 0.8 -0.2 1.9 0.6 4 -0.5 4.5 -2.4 0.6 -2.3 -1.5 -4.6 -4.4 -5z"/>
+</vector>

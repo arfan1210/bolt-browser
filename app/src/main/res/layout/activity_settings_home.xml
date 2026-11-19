@@ -31,7 +31,7 @@
             <ImageButton android:id="@+id/btn_sh_search_clear" android:layout_width="40dp"
                 android:layout_height="40dp" android:src="@drawable/ic_close"
                 android:background="?attr/selectableItemBackgroundBorderless" android:visibility="gone"
-                android:contentDescription="@string/clear"/>
+                android:contentDescription="@string/clear" android:tooltipText="@string/clear"/>
         </LinearLayout>
         <LinearLayout android:id="@+id/ll_sh_results" android:orientation="vertical"
             android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -50,9 +50,11 @@
                     android:layout_height="wrap_content" android:textColor="?attr/colorTextDim" android:textSize="14sp"/>
             </LinearLayout>
             <ImageButton android:id="@+id/btn_sh_gear" android:layout_width="44dp" android:layout_height="44dp"
-                android:src="@drawable/ic_gear" android:background="@drawable/bg_item_round"/>
+                android:src="@drawable/ic_gear" android:background="@drawable/bg_item_round"
+                android:contentDescription="Settings" android:tooltipText="Settings"/>
             <ImageButton android:id="@+id/btn_sh_exit" android:layout_width="44dp" android:layout_height="44dp"
-                android:src="@drawable/ic_power" android:background="@drawable/bg_item_round"/>
+                android:src="@drawable/ic_power" android:background="@drawable/bg_item_round"
+                android:contentDescription="@string/exit_browser" android:tooltipText="@string/exit_browser"/>
         </LinearLayout>
         <!-- v1.3.40 — THE HYBRID SURFACE (field task 11: card tier + list
              tier in the SAME surface): the four destination cards became a

@@ -316,25 +316,78 @@ object AiBridge {
      * custom models) is retried ONCE with the field removed. */
     private fun geminiCall(ctx: Context, mdl: String, p: String, b64: String,
                            iw: Int, ih: Int): ArrayList<AiBox>? {
-        var body = visionBody(p, b64, true)
-        var r = geminiPostRetry(ctx, mdl, body)
-        if (r.first == 400 && r.second.contains("thinking", true)) {
-            body = visionBody(p, b64, false)
-            r = geminiPostRetry(ctx, mdl, body)
+        // v1.4.19 — THE TOKEN-CAP LADDER (the "AI translate: the reply was
+        // cut off (try a less dense screen)" report, root-caused): a dense
+        // screen produces dozens of boxes, each with original + translation,
+        // and the JSON array overflowed the old 16384 maxOutputTokens — the
+        // reply truncated mid-array and parseBoxes failed exactly on that.
+        // The first try rides 32768; when the envelope's finishReason says
+        // MAX_TOKENS the SAME model is retried ONCE at 65536 (the 3.x flash
+        // ceiling) before the honest cut-off error. The decision is a PURE
+        // function ([translateCapAction], probe-pinned).
+        var lastCutOff = false
+        for (cap in intArrayOf(32768, 65536)) {
+            var r = postVision(ctx, mdl, p, b64, cap)
+            if (r.first != 200) {
+                lastError = shortErr(r.first, r.second)
+                return null
+            }
+            val fr = finishReason(r.second)
+            // v1.3.75 — the envelope is unwrapped FIRST (the v1.3.74 bug:
+            // the raw body went to the box parser and every run "found no
+            // text"), THEN the model's text is parsed for boxes
+            val boxes = parseBoxes(geminiText(r.second), iw, ih)
+            when (translateCapAction(boxes != null, fr, cap)) {
+                0 -> return boxes                    // parsed — done
+                1 -> {                              // truncated: raise the cap
+                    try { Diag.log(ctx, "ai translate MAX_TOKENS at $cap, retrying higher") } catch (_: Throwable) {}
+                    lastCutOff = true
+                }
+                else -> return null                 // a non-cap parse failure (its own lastError)
+            }
         }
-        val (code, txt) = r
-        if (code != 200) {
-            lastError = shortErr(code, txt)
-            return null
+        if (lastCutOff) {
+            lastError = "the AI reply was cut off (try a less dense screen)"
         }
-        // v1.3.75 — the envelope is unwrapped FIRST (the v1.3.74 bug:
-        // the raw body went to the box parser and every run "found no
-        // text"), THEN the model's text is parsed for boxes
-        return parseBoxes(geminiText(txt), iw, ih)
+        return null
     }
 
-    /** the vision request body (think=false strips thinkingConfig) */
-    private fun visionBody(p: String, b64: String, think: Boolean): JSONObject {
+    /** v1.4.19 — one vision POST at a token cap, with the thinking-400 retry */
+    private fun postVision(ctx: Context, mdl: String, p: String, b64: String,
+                           cap: Int): Pair<Int, String> {
+        var r = geminiPostRetry(ctx, mdl, visionBody(p, b64, true, cap))
+        if (r.first == 400 && r.second.contains("thinking", true)) {
+            r = geminiPostRetry(ctx, mdl, visionBody(p, b64, false, cap))
+        }
+        return r
+    }
+
+    /** v1.4.19 — the envelope's finishReason ("MAX_TOKENS" = the reply hit
+     *  the output cap; anything else / absent = ""). */
+    private fun finishReason(body: String): String {
+        return try {
+            org.json.JSONObject(body).optJSONArray("candidates")?.optJSONObject(0)
+                    ?.optString("finishReason", "") ?: ""
+        } catch (_: Throwable) { "" }
+    }
+
+    /** v1.4.19 — PURE (probe-pinned): the token-cap ladder verdict for one
+     *  translate attempt. 0 = parsed, return the boxes; 1 = the reply hit
+     *  the cap and a higher rung exists — retry the SAME model at 65536;
+     *  2 = fail with the standing error (a parse failure that was NOT a
+     *  cap hit has its own lastError already set by parseBoxes). */
+    @JvmStatic
+    internal fun translateCapAction(parseOk: Boolean, finishReason: String, cap: Int): Int {
+        if (parseOk) return 0
+        if (finishReason == "MAX_TOKENS" && cap < 65536) return 1
+        return 2
+    }
+
+    /** the vision request body (think=false strips thinkingConfig).
+     *  v1.4.19: the output cap is a PARAMETER — 32768 on the first rung
+     *  (dense screens overflowed the old 16384 mid-array), 65536 on the
+     *  MAX_TOKENS retry (see geminiCall's ladder). */
+    private fun visionBody(p: String, b64: String, think: Boolean, cap: Int): JSONObject {
         val body = JSONObject()
         val parts = JSONArray()
         parts.put(JSONObject().put("text", p))
@@ -343,11 +396,10 @@ object AiBridge {
         body.put("contents", JSONArray().put(
             JSONObject().put("role", "user").put("parts", parts)))
         // v1.3.75: responseMimeType json makes the model emit a raw
-        // JSON array (no fences, no commentary) and maxOutputTokens
-        // 16384 leaves room for thinking + dense pages (8192 could cut
-        // off busy manga — "the AI reply was cut off")
+        // JSON array (no fences, no commentary); the output cap rides
+        // the v1.4.19 ladder
         val gc = JSONObject()
-            .put("temperature", 0.1).put("maxOutputTokens", 16384)
+            .put("temperature", 0.1).put("maxOutputTokens", cap)
             .put("responseMimeType", "application/json")
         if (think) gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
         body.put("generationConfig", gc)
@@ -461,6 +513,13 @@ object AiBridge {
     /** one chat turn ("user" or "assistant" — mapped to "model" on Gemini) */
     class Msg(val role: String, val text: String)
 
+    /** v1.4.19 — one TEMPORARY chat attachment (the image/file upload ask):
+     *  an image as inline base64 (b64 != null) or a text file's extracted
+     *  content (text != null). In-memory only — BoltAi never persists
+     *  attachments, and they are wiped on send / clear / process death. */
+    class Attach(@JvmField val name: String, @JvmField val mime: String,
+            @JvmField val b64: String?, @JvmField val text: String?)
+
     /**
      * BLOCKING (worker thread only). Multi-turn text chat with the
      * configured provider. [system] is the assistant's standing instruction;
@@ -469,13 +528,24 @@ object AiBridge {
      * context arrives as plain text the caller already showed a confirm for.
      */
     @JvmStatic
-    fun chat(ctx: Context, system: String, history: List<Msg>): String? {
+    fun chat(ctx: Context, system: String, history: List<Msg>): String? =
+            chatX(ctx, system, history, null)
+
+    /** v1.4.19 — chat with TEMPORARY attachments: images ride the LAST user
+     *  turn as inline_data (Gemini) / image_url data URLs (OpenAI-compat),
+     *  text files as extra labeled text parts. Attachments ride ONLY the
+     *  turn they were sent with — the stored history keeps the plain text
+     *  (re-sending an image on every follow-up would burn the token
+     *  budget for no gain). */
+    @JvmStatic
+    fun chatX(ctx: Context, system: String, history: List<Msg>,
+            attaches: List<Attach>?): String? {
         lastError = ""
         return if (prov(ctx) == "gemini") {
             val m = model(ctx)
             val chain = buildChain(m)
             for (name in chain) {
-                val r = geminiChat(ctx, name, system, history)
+                val r = geminiChat(ctx, name, system, history, attaches)
                 if (r != null) {
                     noteAnsweredModel(ctx, m, name)
                     return r
@@ -484,7 +554,7 @@ object AiBridge {
             }
             null
         } else {
-            openaiChat(ctx, system, history)
+            openaiChat(ctx, system, history, attaches)
         }
     }
 
@@ -493,19 +563,33 @@ object AiBridge {
      * retry without it for models that reject the field, and the chat cap
      * trimmed 4096 -> 2048 (snappier turns, replies truncate gracefully). */
     private fun geminiChat(ctx: Context, mdl: String, system: String,
-                           history: List<Msg>): String? {
-        var reply = geminiChatPost(ctx, mdl, system, history, true)
+                           history: List<Msg>, attaches: List<Attach>? = null): String? {
+        var reply = geminiChatPost(ctx, mdl, system, history, true, attaches)
         if (reply == null && lastError.contains("thinking", true)) {
-            reply = geminiChatPost(ctx, mdl, system, history, false)
+            reply = geminiChatPost(ctx, mdl, system, history, false, attaches)
         }
         return reply
     }
 
     private fun geminiChatPost(ctx: Context, mdl: String, system: String,
-                               history: List<Msg>, think: Boolean): String? {
+                               history: List<Msg>, think: Boolean,
+                               attaches: List<Attach>? = null): String? {
         val contents = JSONArray()
-        for (m in history) {
+        for ((i, m) in history.withIndex()) {
             val parts = JSONArray().put(JSONObject().put("text", m.text))
+            // v1.4.19 — attachments ride the LAST user turn only
+            if (!attaches.isNullOrEmpty() && i == history.size - 1
+                    && m.role != "assistant") {
+                for (at in attaches) {
+                    if (at.b64 != null) {
+                        parts.put(JSONObject().put("inline_data",
+                            JSONObject().put("mime_type", at.mime).put("data", at.b64)))
+                    } else if (at.text != null) {
+                        parts.put(JSONObject().put("text",
+                            "[Attached file: " + at.name + "]\n" + at.text))
+                    }
+                }
+            }
             contents.put(JSONObject()
                 .put("role", if (m.role == "assistant") "model" else "user")
                 .put("parts", parts))
@@ -527,14 +611,33 @@ object AiBridge {
     }
 
     /** OpenAI-compatible chat: messages[system/user/assistant] */
-    private fun openaiChat(ctx: Context, system: String, history: List<Msg>): String? {
+    private fun openaiChat(ctx: Context, system: String, history: List<Msg>,
+                           attaches: List<Attach>? = null): String? {
         var c: HttpURLConnection? = null
         return try {
             val mdl = model(ctx)
             if (mdl.isBlank()) { lastError = "set a model in the AI settings"; return null }
             val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
-            for (m in history) {
-                msgs.put(JSONObject().put("role", m.role).put("content", m.text))
+            for ((i, m) in history.withIndex()) {
+                // v1.4.19 — attachments ride the LAST user turn only
+                if (!attaches.isNullOrEmpty() && i == history.size - 1
+                        && m.role != "assistant") {
+                    val content = JSONArray()
+                    content.put(JSONObject().put("type", "text").put("text", m.text))
+                    for (at in attaches) {
+                        if (at.b64 != null) {
+                            content.put(JSONObject().put("type", "image_url").put("image_url",
+                                JSONObject().put("url",
+                                    "data:" + at.mime + ";base64," + at.b64)))
+                        } else if (at.text != null) {
+                            content.put(JSONObject().put("type", "text").put("text",
+                                "[Attached file: " + at.name + "]\n" + at.text))
+                        }
+                    }
+                    msgs.put(JSONObject().put("role", m.role).put("content", content))
+                } else {
+                    msgs.put(JSONObject().put("role", m.role).put("content", m.text))
+                }
             }
             val body = JSONObject()
                 .put("model", mdl)

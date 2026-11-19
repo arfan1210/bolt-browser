@@ -1618,6 +1618,17 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     protected void wipeIncognito() {
+        wipeIncognitoData();
+        // separate process: leave no residue
+        android.os.Process.killProcess(android.os.Process.myPid());
+    }
+
+    /** v1.4.19 — the WIPE half of [wipeIncognito], split so the exit
+     *  button can finish its activities BEFORE the process dies (see
+     *  exitNow: a kill without a finish leaves the task record alive and
+     *  the OS simply restarts IncognitoActivity — the "exit lands on
+     *  incognito HOME" half of the crash-loop report). */
+    protected void wipeIncognitoData() {
         try {
             CookieManager cm = CookieManager.getInstance();
             cm.removeAllCookies(null);
@@ -1636,11 +1647,92 @@ public class BrowserActivity extends AppCompatActivity {
             }
         }
         synchronized (tm.tabs) { tm.tabs.clear(); }
-        // separate process: leave no residue
-        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     // ------------------------------------------------------------ wiring
+
+    /** v1.4.19 — THE OFFLINE ERROR OVERLAY. The old onReceivedError built a
+     *  sad-page HTML and called view.loadData(...) — loadData REPLACES the
+     *  WebView's URL with a data:text/html,... URL, doUpdateVisitedHistory
+     *  then wrote THAT into t.url, and tabs.json persisted it, so the tab
+     *  reloaded the ERROR PAGE forever on restart (the captured-URL corpse:
+     *  the tab's address bar literally read data:text/html,<html><body…).
+     *  The error is now a native overlay ON TOP of flContent: the tab's
+     *  WebView URL, history entry and persisted url all keep the ORIGINAL
+     *  page, the overlay carries a Retry button that re-loads it, and a
+     *  Diag breadcrumb records the URL that must survive. */
+    private android.view.View errOverlay = null;
+
+    protected void showErrorOverlay(WebView view, String origUrl) {
+        try {
+            Tab t = tabOf(view);
+            if (t != null) t.errUrl = origUrl;
+            hideErrorOverlay();
+            LinearLayout ov = new LinearLayout(this);
+            ov.setOrientation(LinearLayout.VERTICAL);
+            ov.setGravity(Gravity.CENTER);
+            ov.setBackgroundColor(Fx.webBg(this));
+            int pad = Fx.dp(this, 24);
+            ov.setPadding(pad, pad, pad, pad);
+            TextView face = new TextView(this);
+            face.setText(":(");
+            face.setTextSize(34f);
+            face.setGravity(Gravity.CENTER);
+            face.setTextColor(Fx.txt(this));
+            ov.addView(face, new LinearLayout.LayoutParams(-2, -2));
+            TextView msg = new TextView(this);
+            msg.setText("Can't reach this page");
+            msg.setTextSize(16f);
+            msg.setGravity(Gravity.CENTER);
+            msg.setTextColor(Fx.txt(this));
+            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-2, -2);
+            mp.topMargin = Fx.dp(this, 10);
+            ov.addView(msg, mp);
+            TextView url = new TextView(this);
+            url.setText(origUrl);
+            url.setTextSize(12f);
+            url.setGravity(Gravity.CENTER);
+            url.setMaxLines(2);
+            url.setTextColor(Fx.dim(this));
+            LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-1, -2);
+            up.topMargin = Fx.dp(this, 8);
+            up.leftMargin = Fx.dp(this, 12);
+            up.rightMargin = Fx.dp(this, 12);
+            ov.addView(url, up);
+            // v1.4.19 — the RETRY affordance (the spec's third leg): a
+            // failed load must be one tap from trying again
+            android.widget.Button retry = new android.widget.Button(this);
+            retry.setText("Retry");
+            retry.setTextColor(android.graphics.Color.WHITE);
+            GradientDrawable rbg = new GradientDrawable();
+            rbg.setColor(Fx.accent(this));
+            rbg.setCornerRadius(Fx.dp(this, 10));
+            retry.setBackground(rbg);
+            retry.setPadding(Fx.dp(this, 22), Fx.dp(this, 10), Fx.dp(this, 22), Fx.dp(this, 10));
+            final WebView w = view;
+            final String target = origUrl;
+            retry.setOnClickListener(b -> {
+                hideErrorOverlay();
+                try { w.loadUrl(target); } catch (Throwable ignored) {}
+            });
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, -2);
+            rp.topMargin = Fx.dp(this, 22);
+            ov.addView(retry, rp);
+            flContent.addView(ov, new android.view.ViewGroup.LayoutParams(-1, -1));
+            flContent.bringChildToFront(ov);
+            errOverlay = ov;
+        } catch (Throwable ignored) {}
+    }
+
+    protected void hideErrorOverlay() {
+        try {
+            if (errOverlay != null) {
+                android.view.ViewGroup p = (android.view.ViewGroup) errOverlay.getParent();
+                if (p != null) p.removeView(errOverlay);
+                errOverlay = null;
+            }
+        } catch (Throwable ignored) {}
+    }
 
     protected void wireViews() {
         flRoot = findViewById(R.id.fl_root);
@@ -4089,9 +4181,19 @@ public class BrowserActivity extends AppCompatActivity {
             flContent.bringChildToFront(homeView);
             settleHomeGrid();   // v1.3.44: un-stick any interrupted entrance
             shown = homeView;
+            hideErrorOverlay();   // v1.4.19: the home tab has no error face
         } else {
             JsBridge bridge = new JsBridge();
             WebView w = t.buildWeb(this, new BoltClient(), new BoltChrome(), bridge, incognito);
+            // v1.4.19 — THE REFUSAL PATH: buildWeb now returns null instead of
+            // crashing when WebView construction is impossible (the incognito
+            // data-dir collision — see Tab.buildWeb's construction guard).
+            // Degrade visibly: the tab list keeps the row, the user gets an
+            // honest toast, no process dies.
+            if (w == null) {
+                try { Fx.toast(this, "Can't create this page's view — try reopening the tab"); } catch (Throwable ignored) {}
+                return;
+            }
             // v1.3.30 — ADOPTED WEB: buildWeb returned an existing WebView
             // built by another context (the phoenix's headless resume, or a
             // zombie media web from a previous activity instance). Rewire it
@@ -4138,6 +4240,15 @@ public class BrowserActivity extends AppCompatActivity {
             // video (or PiP) is never touched.
             try { healRendererFullscreen(w, "showTab"); } catch (Throwable ignored) {}
             shown = w;
+            // v1.4.19 — THE OVERLAY RIDES ITS TAB: switching back to a tab
+            // whose last load failed re-shows the native error overlay (the
+            // overlay is per-activity; the per-tab errUrl marker is its
+            // memory); a healthy tab retires it.
+            if (t.errUrl != null && t.errUrl.startsWith("http")) {
+                showErrorOverlay(w, t.errUrl);
+            } else {
+                hideErrorOverlay();
+            }
             try { w.onResume(); } catch (Throwable ignored) {}
             if (t.url != null && !t.url.isEmpty() && w.getUrl() == null) {
                 t.applyUa(this, w);
@@ -5524,7 +5635,31 @@ public class BrowserActivity extends AppCompatActivity {
                         Intent i = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                         i.addCategory(Intent.CATEGORY_BROWSABLE);
                         i.setComponent(null);
-                        startActivity(i);
+                        try {
+                            startActivity(i);
+                        } catch (Throwable noApp) {
+                            // v1.4.19 — THE INTENT FALLBACK (root-caused from
+                            // the captured URL: an intent:// Facebook link with
+                            // S.browser_fallback_url=… whose web fallback was
+                            // NEVER loaded — no app installed meant "No app
+                            // can open this" AND a dead end). The Android
+                            // intent-URI contract says the fallback URL is the
+                            // page to open when no app services the intent —
+                            // Chrome's behavior, and the site's own honest
+                            // answer. Extract it (pure, probe-pinned) and LOAD
+                            // it in THIS tab instead of toasting.
+                            String fb = com.bolt.browser.util.IntentFallback
+                                    .fallbackUrl(url);
+                            if (fb != null) {
+                                try {
+                                    com.bolt.browser.util.Diag.log(BrowserActivity.this,
+                                            "intent fallback -> " + fb);
+                                } catch (Throwable ignored) {}
+                                view.loadUrl(fb);
+                            } else {
+                                Fx.toast(BrowserActivity.this, "No app can open this");
+                            }
+                        }
                     } else {
                         startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                     }
@@ -5583,6 +5718,29 @@ public class BrowserActivity extends AppCompatActivity {
                 Uri u = request.getUrl();
                 String url = u.toString();
                 if (!url.startsWith("http")) return null;
+                // v1.4.19 — THE VISUAL-SEARCH INTERCEPT DOOR: a Bing-shaped
+                // image-search result is armed BEFORE the tab loads it (see
+                // VisualSearch.armIntercept — the file:// saved-page corpse:
+                // a JS-driven results page cannot run from an opaque origin).
+                // The ONE main-document GET for the armed URL is answered
+                // with the cached body, so the page runs under the REAL
+                // bing.com origin with the pumped cookies; every other
+                // request (and any later visit to the same URL — the take is
+                // one-shot) goes to the network untouched.
+                try {
+                    String im = null;
+                    try { im = request.getMethod(); } catch (Throwable ignored) {}
+                    byte[] cached = com.bolt.browser.util.VisualSearch.takeIntercept(
+                            request.isForMainFrame(), im, url);
+                    if (cached != null) {
+                        try {
+                            com.bolt.browser.util.Diag.log(BrowserActivity.this,
+                                    "visual intercept served bytes=" + cached.length);
+                        } catch (Throwable ignored) {}
+                        return new WebResourceResponse("text/html", "utf-8",
+                                new java.io.ByteArrayInputStream(cached));
+                    }
+                } catch (Throwable ignored) {}
                 // v1.3.84 — THE BODY CARRIERS ARE OFF-LIMITS (the zai upload
                 // 401 field report: "uploading files through zai gave 401
                 // unauthorised"). zai's chat upload is a cross-origin
@@ -5704,7 +5862,19 @@ public class BrowserActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
             Tab t = tabOf(view);
             if (t != null) {
-                t.url = url;
+                // v1.4.19 — THE data: GUARD (the offline-error corpse's
+                // mechanism): a data: URL is never a tab's address — it is a
+                // loadData artifact (the render-crash notice, any legacy
+                // error page). Overwriting t.url with it would persist the
+                // ephemeral page over the tab's real address.
+                if (!(url != null && url.startsWith("data:")
+                        && t.url != null && t.url.startsWith("http"))) {
+                    t.url = url;
+                }
+                // v1.4.19 — a new navigation retires the offline error
+                // overlay (and its per-tab marker)
+                t.errUrl = null;
+                hideErrorOverlay();
                 t.isHome = false;
                 // v1.4.17 — THE DARK CANVAS FOLLOWS THE NEW DOMAIN: the
                 // site-dark decision is per-base-domain, and the navigation
@@ -5824,6 +5994,15 @@ public class BrowserActivity extends AppCompatActivity {
             Tab t = tabOf(view);
             if (t == null) return;
             if (url.equals(t.url)) return;
+            // v1.4.19 — THE data: GUARD (see onPageStarted): a data: URL is
+            // a loadData artifact, never the tab's navigable/persisted
+            // address — the offline-error corpse's exact corruption path
+            // (doUpdateVisitedHistory fired with data:text/html,… AFTER the
+            // old loadData error page, wrote it into t.url, and tabs.json
+            // kept it forever).
+            if (url.startsWith("data:") && t.url != null && t.url.startsWith("http")) {
+                return;
+            }
             t.url = url;
             t.isHome = false;
             // v1.3.88 — THE DOWNLOAD-COMMIT HOOK: an armed dlUrl arriving
@@ -6064,10 +6243,27 @@ public class BrowserActivity extends AppCompatActivity {
         @Override
         public void onReceivedError(WebView view, int code, String desc, String failingUrl) {
             if (failingUrl != null && failingUrl.equals(view.getUrl())) {
-                String html = "<html><body style='background:#1A1A22;color:#EDEDF2;font-family:sans-serif;"
-                        + "text-align:center;padding-top:40%'><h2>:(</h2><p>Can't reach this page</p>"
-                        + "<p style='color:#9A9AA8;font-size:12px'>" + failingUrl + "</p></body></html>";
-                view.loadData(html, "text/html", "utf-8");
+                // v1.4.19 — THE ERROR PAGE MUST NEVER BECOME THE TAB'S URL.
+                // The old body built the sad-page HTML around failingUrl and
+                // called view.loadData(html, "text/html", "utf-8") — loadData
+                // REPLACES the WebView's URL with a data:text/html,… URL,
+                // doUpdateVisitedHistory then wrote THAT into t.url, and
+                // tabs.json / the phoenix restore persisted it: on reconnect
+                // the tab reloaded the ERROR PAGE forever, never the site
+                // (the captured-URL corpse — the evidence was literally a
+                // tab whose address bar read data:text/html,<html><body…).
+                // The error is now the native OVERLAY on flContent; the
+                // tab's URL stays the original page (t.url, falling back to
+                // the failing URL when the tab has no http address), and the
+                // breadcrumb records the URL that must survive.
+                Tab et = tabOf(view);
+                String orig = (et != null && et.url != null && et.url.startsWith("http"))
+                        ? et.url : failingUrl;
+                try {
+                    com.bolt.browser.util.Diag.log(BrowserActivity.this,
+                            "offline fail code=" + code + " orig=" + orig);
+                } catch (Throwable ignored) {}
+                showErrorOverlay(view, orig);
             }
         }
 
@@ -12844,6 +13040,61 @@ public class BrowserActivity extends AppCompatActivity {
         return tabUrl;
     }
 
+    /** v1.4.19 — PURE (probe-pinned): the engine-chip logo resource for an
+     *  engine index (R.array.search_engine_names order: 0 Google,
+     *  1 DuckDuckGo, 2 Bing, 3 Brave, 4 Startpage). Brand logos keep their
+     *  own colors — the chip NEVER tints them; the generic magnifier (the
+     *  custom / unknown fallback) follows the theme tint instead. */
+    static int engineLogo(int engineIdx) {
+        switch (engineIdx) {
+            case 0: return R.drawable.ic_engine_google;
+            case 1: return R.drawable.ic_engine_ddg;
+            case 2: return R.drawable.ic_engine_bing;
+            case 3: return R.drawable.ic_engine_brave;
+            case 4: return R.drawable.ic_engine_startpage;
+            default: return R.drawable.ic_search;
+        }
+    }
+
+    /** v1.4.19 — may Bolt AI's ATTACHMENT picker run on this face? Main
+     *  process only, never the incognito face: a picked file's read grant
+     *  and its bytes must never enter :incognito (the identity-data law);
+     *  the result routing also rides this activity's onActivityResult. */
+    public boolean aiAttachAllowed() { return !incognito; }
+
+    /** v1.4.19 — PURE (probe-pinned): the label a long-press tooltip shows
+     *  — the explicit tooltip when present, the contentDescription otherwise
+     *  (every icon-only button carries at least one; the gate audits the
+     *  layouts). */
+    static String tooltipFor(String contentDesc, String tooltipText) {
+        if (tooltipText != null && !tooltipText.isEmpty()) return tooltipText;
+        return contentDesc == null ? "" : contentDesc;
+    }
+
+    /** v1.4.19 — the programmatic tooltip (androidx TooltipCompat): the
+     *  android:tooltipText XML attribute only inflates on API 26+ and
+     *  Bolt's minSdk is 24 — this backports the long-press tooltip to
+     *  24/25 for buttons with no consuming long-click listener (the
+     *  omnibox strip; the toolbar's long-press IS its quick action, which
+     *  is why those listeners legitimately consume). */
+    protected static void applyTooltip(View v, String label) {
+        try { androidx.appcompat.widget.TooltipCompat.setTooltipText(v, label); }
+        catch (Throwable ignored) {}
+    }
+
+    /** v1.4.19 — set the engine chip's glyph to the ACTIVE engine's logo
+     *  (brand marks untinted; the generic fallback keeps the theme tint).
+     *  Called when the omnibox opens and again on every engine switch. */
+    protected void applyEngineLogo(View lay) {
+        try {
+            ImageView iv = lay.findViewById(R.id.iv_omni_search);
+            if (iv == null) return;
+            int logo = engineLogo(prefs.searchEngine());
+            iv.setImageResource(logo);
+            iv.setColorFilter(logo == R.drawable.ic_search ? Fx.tint(this) : null);
+        } catch (Throwable ignored) {}
+    }
+
     /** v1.3.36 FIELD FIX ("the search bar should stay at top or animate
      *  coming down from top — popping out from the bottom breaks the
      *  immersion"): the omnibox is now a TOP-ANCHORED dropdown — it hangs
@@ -12869,8 +13120,23 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
         // icon tinting
         int dim = Fx.tint(this);
-        try { lay.<ImageView>findViewById(R.id.iv_omni_search).setColorFilter(dim); } catch (Throwable ignored) {}
+        // v1.4.19 — THE ENGINE LOGO ON THE CHIP: the left glyph is the
+        // ACTIVE engine's brand mark (Google / DuckDuckGo / Bing / Brave /
+        // Startpage — untinted brand colors; the generic magnifier fallback
+        // keeps the theme tint). Re-applied on every engine switch (see
+        // showEnginePicker).
+        applyEngineLogo(lay);
         try { lay.<ImageView>findViewById(R.id.iv_omni_engine_arrow).setColorFilter(dim); } catch (Throwable ignored) {}
+        // v1.4.19 — THE ICON-ONLY TOOLTIP LAW, programmatic half: the XML
+        // android:tooltipText only inflates on API 26+; these carry the
+        // backport for 24/25 (TooltipCompat)
+        applyTooltip(lay.findViewById(R.id.omni_engine), getString(R.string.search_engine));
+        applyTooltip(lay.findViewById(R.id.btn_omni_clear), getString(R.string.clear));
+        applyTooltip(lay.findViewById(R.id.btn_omni_copy), getString(R.string.copy));
+        applyTooltip(lay.findViewById(R.id.btn_omni_paste), getString(R.string.paste));
+        applyTooltip(lay.findViewById(R.id.btn_omni_dup), getString(R.string.duplicate_tab));
+        applyTooltip(lay.findViewById(R.id.btn_omni_cam), "Image search");
+        applyTooltip(lay.findViewById(R.id.btn_omni_voice), "Voice search");
         try { lay.<ImageButton>findViewById(R.id.btn_omni_clear).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_copy).setColorFilter(dim); } catch (Throwable ignored) {}
         try { lay.<ImageButton>findViewById(R.id.btn_omni_paste).setColorFilter(dim); } catch (Throwable ignored) {}
@@ -13082,6 +13348,10 @@ public class BrowserActivity extends AppCompatActivity {
         Ui.choiceSheet(this, getString(R.string.search_engine), names,
                 prefs.searchEngine(), idx -> {
                     try { prefs.set("searchEngine", idx); } catch (Throwable ignored) {}
+                    // v1.4.19 — the chip's logo follows the switch
+                    // immediately (the active engine is visible in the
+                    // field the user is still typing into)
+                    try { applyEngineLogo(lay); } catch (Throwable ignored) {}
                     String q = et == null ? "" : et.getText().toString().trim();
                     String cur = "";
                     try {
@@ -14303,7 +14573,28 @@ public class BrowserActivity extends AppCompatActivity {
         userExit = true;
         if (incognito) {
             try { stopService(new Intent(this, MediaControlService.class)); } catch (Throwable ignored) {}
-            wipeIncognito(); // ends with killProcess — separate process leaves no residue
+            // v1.4.19 — THE EXIT MUST LEAVE (the "exit/power button lands on
+            // incognito HOME" report): wipeIncognito ends with killProcess,
+            // and killing the process WITHOUT finishing its activities
+            // leaves the task record alive — the OS simply RESTARTS
+            // IncognitoActivity into a fresh :incognito process (incognito
+            // home; and before the suffix-first fix each restart crashed
+            // and fell back to the normal task). The activities are now
+            // finished and the task REMOVED first, the wipe runs, and the
+            // kill is POSTED 300 ms so AMS has seen the finish
+            // transactions before the death arrives — exit means LEAVE.
+            // (onDestroy still runs its own wipeIncognito as the final
+            // backstop; ordering finish-before-kill is the fix.)
+            try { finishAndRemoveTask(); } catch (Throwable ignored) {}
+            try { finishAffinity(); } catch (Throwable ignored) {}
+            try {
+                com.bolt.browser.util.Diag.log(this,
+                        "exit incognito: wipe + finish + leave");
+            } catch (Throwable ignored) {}
+            wipeIncognitoData();
+            ui.postDelayed(() -> {
+                try { android.os.Process.killProcess(android.os.Process.myPid()); } catch (Throwable ignored) {}
+            }, 300L);
             return;
         }
         // both exit flavours go through the SAME ordered routine: with the
@@ -14505,6 +14796,18 @@ public class BrowserActivity extends AppCompatActivity {
         // the result intent carries no data). Gallery pick (1022): the
         // content stream is copied into the cache dir first because the
         // decoder needs a seekable file.
+        if (requestCode == 1030) {
+            // v1.4.19 — Bolt AI's temporary attachment pick (ACTION_GET_CONTENT,
+            //  image or text): the result goes straight back to the AI panel
+            //  (decode + staging happen off-thread there)
+            try {
+                com.bolt.browser.util.BoltAi.onAttachmentResult(this,
+                        data == null ? null : data.getData());
+            } catch (Throwable t) {
+                Fx.toast(this, "Couldn't read the file");
+            }
+            return;
+        }
         if (requestCode == 1021) {
             File f = vsearchCapture;
             vsearchCapture = null;

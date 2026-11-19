@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.19 — THE ENGINE-CHIP LOGOS (the "show the active search engine's
+     logo in the search bar" ask): the omnibox engine chip's left glyph is
+     the ACTIVE engine's brand mark, not the generic magnifier. Google's
+     four-color G (brand colors kept: #4285F4 / #34A853 / #FBBC05 /
+     #EA4335 — never theme-tinted). Simplified vector rendition of the
+     public Google "G" mark; 24dp grid to match the icon family. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#4285F4"
+        android:pathData="M21.64 12.2c0 -0.64 -0.06 -1.25 -0.16 -1.84H12v3.48h4.84c-0.21 1.13 -0.84 2.09 -1.8 2.73v2.27h2.91c1.7 -1.57 2.69 -3.88 2.69 -6.64z"/>
+    <path android:fillColor="#34A853"
+        android:pathData="M12 22c2.43 0 4.47 -0.8 5.96 -2.17l-2.91 -2.27c-0.81 0.54 -1.84 0.86 -3.05 0.86 -2.34 0 -4.32 -1.58 -5.03 -3.7H3.95v2.35C5.43 19.06 8.43 22 12 22z"/>
+    <path android:fillColor="#FBBC05"
+        android:pathData="M6.97 13.72c-0.18 -0.54 -0.28 -1.11 -0.28 -1.72s0.1 -1.18 0.28 -1.72V7.93H3.95C3.34 9.14 3 10.53 3 12s0.34 2.86 0.95 4.07l3.02 -2.35z"/>
+    <path android:fillColor="#EA4335"
+        android:pathData="M12 5.98c1.32 0 2.5 0.46 3.44 1.35l2.58 -2.59C16.47 3.33 14.43 2.5 12 2.5 8.43 2.5 5.43 5.44 3.95 7.93l3.02 2.35C7.68 8.16 9.66 5.98 12 5.98z"/>
+</vector>

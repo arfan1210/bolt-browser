@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.19 — THE ENGINE-CHIP LOGOS: Startpage's mark, simplified — the
+     white magnifier on the brand blue round-cornered square (Startpage's
+     identity reads "private Google results"; the blue + magnifier is the
+     legible-at-20dp rendition). One drawable to re-point the day the
+     exact brand vector is needed. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#5B6EE8"
+        android:pathData="M5.5 2.5h13a3 3 0 0 1 3 3v13a3 3 0 0 1 -3 3h-13a3 3 0 0 1 -3 -3v-13a3 3 0 0 1 3 -3z"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M10.4 6.2a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0 -8.4z"/>
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M13.6 13.3a1.1 1.1 0 0 1 1.55 0.1l3.2 3.2a1.1 1.1 0 0 1 -1.56 1.56l-3.2 -3.2a1.1 1.1 0 0 1 0.01 -1.66z"/>
+</vector>

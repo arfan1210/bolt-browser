@@ -1883,6 +1883,10 @@ n     *  single background thread (8 s timeouts, ≤4 MB, downsampled to ≤512 
             PhoenixBridge bridge = new PhoenixBridge(idx);
             WebView w = t.buildWeb(getApplicationContext(), new PhoenixClient(idx),
                     new android.webkit.WebChromeClient(), bridge, false);
+            // v1.4.19 — buildWeb's construction guard can refuse (return
+            // null) instead of crashing; the phoenix gives up cleanly, the
+            // same as any other failed build
+            if (w == null) { phoenixGiveUp("web build refused"); return; }
             t.holdsMedia = true;      // after a successful build — never leave a stale flag on a failed one
             phoenixWeb = w;
             phoenixIdx = idx;

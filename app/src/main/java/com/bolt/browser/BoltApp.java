@@ -44,6 +44,13 @@ public class BoltApp extends Application {
     /** v1.3.16: true while at least one activity of THIS process is started. */
     public static boolean isAppForeground() { return startedActivities > 0; }
 
+    /** v1.4.19 — true when the :incognito process could NOT secure its own
+     *  WebView data directory (suffix raced a provider load and threw).
+     *  Tab.buildWeb reads this and refuses to construct a WebView against
+     *  the directory the MAIN process owns — the graceful degradation
+     *  instead of the AwDataDirLock crash loop (the diag.log corpse). */
+    public static volatile boolean incognitoSuffixFailed = false;
+
     /** v1.3.24: the currently resumed activity (null while backgrounded /
      *  in the incognito process — which has no callbacks and no passkeys). */
     public static android.app.Activity currentActivity() {
@@ -116,6 +123,44 @@ public class BoltApp extends Application {
     public void onCreate() {
         super.onCreate();
         String pn = processName();
+        // v1.4.19 — THE SUFFIX-FIRST LAW (the incognito crash-loop corpse,
+        // root-caused from the user's diag.log: "Using WebView from more
+        // than one process at once with the same data directory" on a
+        // Realme RMX2020 / SDK 29, four pids cycling app-start -> crash,
+        // each crash falling back to the NORMAL tabs menu). The OLD order
+        // ran the "app start" Diag block FIRST — and that block calls
+        // WebViewCompat.getCurrentWebViewPackage +
+        // WebAuthnHelper.isPasskeySupportAvailable (WebViewFeature.
+        // isFeatureSupported), BOTH of which LOAD THE WEBVIEW PROVIDER.
+        // Once the provider is loaded, setDataDirectorySuffix throws
+        // IllegalStateException, which the old `catch (Throwable ignored)`
+        // SWALLOWED — so :incognito kept the DEFAULT data dir and every
+        // WebView construction collided with the main process's
+        // AwDataDirLock. The suffix must be the FIRST WebView-related
+        // action in this process, before ANY WebViewFeature/WebViewCompat/
+        // WebAuthnHelper call, before UserscriptEngine.init, before the
+        // WebPool prewarm — and a failure is NEVER silent again: it logs
+        // to Diag and sets the flag Tab.buildWeb reads to refuse WebView
+        // construction against the shared dir (a graceful error beats a
+        // crash loop).
+        if (pn.endsWith(":incognito")) {
+            try {
+                WebView.setDataDirectorySuffix("boltinc");
+                incognitoSuffixFailed = false;
+                try {
+                    com.bolt.browser.util.Diag.logSync(this,
+                            "incognito data-dir suffix boltinc applied FIRST");
+                } catch (Throwable ignored) {}
+            } catch (Throwable t) {
+                incognitoSuffixFailed = true;
+                try {
+                    com.bolt.browser.util.Diag.logSync(this,
+                            "incognito data-dir suffix FAILED cls="
+                                    + t.getClass().getName() + " msg="
+                                    + (t.getMessage() == null ? "" : t.getMessage()));
+                } catch (Throwable ignored) {}
+            }
+        }
         // v1.3.20: persist every uncaught exception BEFORE the process dies —
         // field crash reports without a logcat capture were pure guesswork
         // through v1.3.19. The log is copied out via Bolt.copyDiag() from the
@@ -161,12 +206,9 @@ public class BoltApp extends Application {
                             + " dev=" + android.os.Build.MODEL
                             + wv + wa);
         } catch (Throwable ignored) {}
-        if (pn.endsWith(":incognito")) {
-            // True separate-process incognito: own WebView data dir (cookies, cache, storage)
-            try {
-                WebView.setDataDirectorySuffix("boltinc");
-            } catch (Throwable ignored) {}
-        }
+        // (the suffix block that used to live here moved to the TOP of
+        // onCreate — see the v1.4.19 suffix-first law above; this spot ran
+        // too late, after the Diag block had already loaded the provider)
         // userscript engine: capture the app context early so GM storage reads
         // (gmValues/wrap) work before the first GM_xmlhttpRequest
         com.bolt.browser.scripts.UserscriptEngine.init(this);

@@ -31,7 +31,8 @@
             <ImageButton android:id="@+id/btn_site_settings"
                 android:layout_width="46dp" android:layout_height="46dp"
                 android:src="@drawable/ic_tune" android:background="@drawable/bg_item"
-                android:contentDescription="@string/site_settings"/>
+                android:contentDescription="@string/site_settings"
+                android:tooltipText="@string/site_settings"/>
             <FrameLayout
                 android:layout_width="0dp" android:layout_height="44dp"
                 android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp">
@@ -51,11 +52,11 @@
             <ImageButton android:id="@+id/btn_reload"
                 android:layout_width="46dp" android:layout_height="46dp"
                 android:src="@drawable/ic_reload" android:background="@drawable/bg_item"
-                android:contentDescription="@string/reload"/>
+                android:contentDescription="@string/reload" android:tooltipText="@string/reload"/>
             <ImageButton android:id="@+id/btn_more"
                 android:layout_width="46dp" android:layout_height="46dp"
                 android:src="@drawable/ic_more" android:background="@drawable/bg_item"
-                android:contentDescription="@string/more_options"/>
+                android:contentDescription="@string/more_options" android:tooltipText="@string/more_options"/>
         </LinearLayout>
 
         <FrameLayout android:layout_width="match_parent" android:layout_height="2.5dp"
@@ -79,11 +80,14 @@
                 android:textColor="?attr/colorTextDim" android:textSize="13sp"
                 android:layout_marginStart="8dp"/>
             <ImageButton android:id="@+id/btn_find_prev" android:layout_width="38dp" android:layout_height="38dp"
-                android:src="@drawable/ic_arrow_up" android:background="@drawable/bg_item"/>
+                android:src="@drawable/ic_arrow_up" android:background="@drawable/bg_item"
+                android:contentDescription="Previous match" android:tooltipText="Previous match"/>
             <ImageButton android:id="@+id/btn_find_next" android:layout_width="38dp" android:layout_height="38dp"
-                android:src="@drawable/ic_arrow_down" android:background="@drawable/bg_item"/>
+                android:src="@drawable/ic_arrow_down" android:background="@drawable/bg_item"
+                android:contentDescription="Next match" android:tooltipText="Next match"/>
             <ImageButton android:id="@+id/btn_find_close" android:layout_width="38dp" android:layout_height="38dp"
-                android:src="@drawable/ic_close" android:background="@drawable/bg_item"/>
+                android:src="@drawable/ic_close" android:background="@drawable/bg_item"
+                android:contentDescription="@string/close" android:tooltipText="@string/close"/>
         </LinearLayout>
 
         <LinearLayout android:id="@+id/ttsbar" android:orientation="horizontal"
@@ -92,13 +96,15 @@
             android:background="@drawable/bg_urlbar" android:layout_margin="6dp"
             android:padding="8dp">
             <ImageButton android:id="@+id/btn_tts_play" android:layout_width="40dp" android:layout_height="40dp"
-                android:src="@drawable/ic_pause" android:background="@drawable/bg_item"/>
+                android:src="@drawable/ic_pause" android:background="@drawable/bg_item"
+                android:contentDescription="Pause read-aloud" android:tooltipText="Pause read-aloud"/>
             <TextView android:id="@+id/tv_tts_status"
                 android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
                 android:text="@string/tts_playing" android:textColor="?attr/colorText"
                 android:layout_marginStart="12dp" android:textSize="14sp"/>
             <ImageButton android:id="@+id/btn_tts_stop" android:layout_width="40dp" android:layout_height="40dp"
-                android:src="@drawable/ic_close" android:background="@drawable/bg_item"/>
+                android:src="@drawable/ic_close" android:background="@drawable/bg_item"
+                android:contentDescription="Stop read-aloud" android:tooltipText="Stop read-aloud"/>
         </LinearLayout>
         </LinearLayout>
 
@@ -124,24 +130,28 @@
                 <ImageButton android:id="@+id/btn_back"
                     android:layout_width="46dp" android:layout_height="46dp"
                     android:layout_gravity="center" android:src="@drawable/ic_back"
-                    android:background="@drawable/bg_item" android:contentDescription="@string/back"/>
+                    android:background="@drawable/bg_item" android:contentDescription="@string/back"
+                    android:tooltipText="@string/back"/>
             </FrameLayout>
             <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
                 <ImageButton android:id="@+id/btn_forward"
                     android:layout_width="46dp" android:layout_height="46dp"
                     android:layout_gravity="center" android:src="@drawable/ic_forward"
-                    android:background="@drawable/bg_item" android:contentDescription="@string/forward"/>
+                    android:background="@drawable/bg_item" android:contentDescription="@string/forward"
+                    android:tooltipText="@string/forward"/>
             </FrameLayout>
             <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
                 <ImageButton android:id="@+id/btn_home"
                     android:layout_width="46dp" android:layout_height="46dp"
                     android:layout_gravity="center" android:src="@drawable/ic_home"
-                    android:background="@drawable/bg_item" android:contentDescription="@string/home"/>
+                    android:background="@drawable/bg_item" android:contentDescription="@string/home"
+                    android:tooltipText="@string/home"/>
             </FrameLayout>
             <FrameLayout android:id="@+id/btn_tabs"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
                 android:clickable="true" android:focusable="true"
-                android:foreground="@drawable/bg_item">
+                android:foreground="@drawable/bg_item"
+                android:tooltipText="@string/tabs">
                 <!-- v1.3.35 — the tabs button IS the count square: a tinted
                      outline box with the open-tab number centered inside
                      (bg_tabcount). No more number-over-icon overlap; the box
@@ -166,7 +176,8 @@
                 <ImageButton android:id="@+id/btn_menu"
                     android:layout_width="46dp" android:layout_height="46dp"
                     android:layout_gravity="center" android:src="@drawable/ic_menu"
-                    android:background="@drawable/bg_item" android:contentDescription="@string/menu"/>
+                    android:background="@drawable/bg_item" android:contentDescription="@string/menu"
+                    android:tooltipText="@string/menu"/>
             </FrameLayout>
         </LinearLayout>
     </LinearLayout>
@@ -176,5 +187,6 @@
         android:layout_gravity="bottom|end" android:layout_margin="14dp"
         android:translationY="-140dp" android:src="@drawable/ic_volume"
         android:background="@drawable/bg_fab" android:visibility="gone"
-        android:contentDescription="@string/media_controls"/>
+        android:contentDescription="@string/media_controls"
+        android:tooltipText="@string/media_controls"/>
 </FrameLayout>

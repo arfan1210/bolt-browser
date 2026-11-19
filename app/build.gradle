@@ -29,8 +29,8 @@ android {
         // session continuity (cookie/UA jar law + Bing base href), the AI
         // chain law (custom models keep fallbacks, 5xx advances, 503
         // ladder), the session-aware external search (forward + widget).
-        versionCode 132
-        versionName "1.4.18"
+        versionCode 133
+        versionName "1.4.19"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand
