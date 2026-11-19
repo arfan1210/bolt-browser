@@ -50,6 +50,9 @@ public class DownloadsActivity extends BaseListActivity implements DownloadEngin
     private String cat = "all";
     private final java.util.HashMap<String, TextView> catChips = new java.util.HashMap<>();
     private TextView retryAllChip;
+    /** v1.4.20 — the ask-every-time toggle chip ("Ask every time" on /
+     *  "Direct download" off) at the head of the category row. */
+    private TextView askChip;
     /** v1.3.91 — the sort choice (0 newest / 1 oldest / 2 name A-Z /
      *  3 name Z-A / 4 largest / 5 smallest), persisted as "sortDl". */
     private int sortMode = 0;
@@ -221,8 +224,38 @@ public class DownloadsActivity extends BaseListActivity implements DownloadEngin
                 if (n > 0) Fx.toast(this, "Retrying " + n + " download" + (n == 1 ? "" : "s"));
             });
             row.addView(retryAllChip, new LinearLayout.LayoutParams(-2, -2));
+            // v1.4.20 — THE ASK-EVERY-TIME TOGGLE (user-approved default
+            // ASK): tapping flips the downloadAsk pref — every door (http,
+            // blob:, data:) rides the rename + destination dialog when on,
+            // and the v1.4.16 direct paths when off. The chip labels the
+            // STATE, not the action, so the row never lies.
+            askChip = new TextView(this);
+            askChip.setTextSize(13);
+            askChip.setTypeface(com.bolt.browser.util.Ui.medium());
+            askChip.setPadding(Fx.dp(this, 14), h, Fx.dp(this, 14), h);
+            askChip.setOnClickListener(v -> {
+                boolean nv = !prefs.downloadAsk();
+                prefs.setDownloadAsk(nv);
+                restyleAskChip();
+                com.bolt.browser.util.Ui.tap(v);
+                Fx.toast(this, nv ? "Downloads will ask every time"
+                        : "Downloads will save directly");
+            });
+            row.addView(askChip, new LinearLayout.LayoutParams(-2, -2));
+            restyleAskChip();
             root.addView(hsv, 1);   // between the header and the list
             restyleChips();
+        } catch (Throwable ignored) {}
+    }
+
+    /** the ask-every-time chip's label + look follows the live pref */
+    private void restyleAskChip() {
+        try {
+            if (askChip == null) return;
+            boolean on = prefs.downloadAsk();
+            askChip.setText(on ? "Ask every time" : "Direct download");
+            askChip.setBackgroundResource(on ? R.drawable.bg_chip_active : R.drawable.bg_chip);
+            askChip.setTextColor(on ? Fx.accent(this) : Fx.dim(this));
         } catch (Throwable ignored) {}
     }
 

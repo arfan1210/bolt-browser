@@ -654,6 +654,78 @@ object ScreenTranslate {
 
     // ---------------- v1.3.74: the AI stage (see AiBridge.kt) ----------------
 
+    /** v1.4.20 — PURE (probe-pinned): re-place a box that arrived as 0-1
+     *  fractions of ONE TILE onto the full image (the tile's pixel rect
+     *  within it — the right/bottom tiles eat the rounding remainder, so
+     *  the mapping is exact per tile, not a uniform 1/cols guess). */
+    internal fun tilePlace(bx: Float, by: Float, bw: Float, bh: Float,
+                           tx: Int, ty: Int, tw: Int, th: Int,
+                           iw: Int, ih: Int): FloatArray {
+        return floatArrayOf((tx + bx * tw) / iw, (ty + by * th) / ih,
+                (bw * tw) / iw, (bh * th) / ih)
+    }
+
+    /** v1.4.20 — PURE (probe-pinned): intersection-over-union of two 0-1
+     *  fraction boxes — the seam-dedup verdict (a box straddling a tile
+     *  border can come back from both sides; > 0.6 = the same text). */
+    internal fun iou(ax: Float, ay: Float, aw: Float, ah: Float,
+                     bx: Float, by: Float, bw: Float, bh: Float): Float {
+        val x0 = maxOf(ax, bx); val y0 = maxOf(ay, by)
+        val x1 = minOf(ax + aw, bx + bw); val y1 = minOf(ay + ah, by + bh)
+        if (x1 <= x0 || y1 <= y0) return 0f
+        val inter = (x1 - x0) * (y1 - y0)
+        val uni = aw * ah + bw * bh - inter
+        return if (uni <= 0f) 0f else inter / uni
+    }
+
+    /** v1.4.20 — THE TILE ROAD: one 2x2 pass over the capture. Each tile
+     *  reuses the SAME encoder + visionTranslate (its own cap ladder); a
+     *  tile that fails costs its region (logged), the boxes that return
+     *  are re-placed (tilePlace) and seam-deduped (iou > 0.6). Returns
+     *  null only when every region failed. */
+    private fun translateTiled(a: Activity, bmp: Bitmap, tl: String,
+                               g: Int): ArrayList<AiBridge.AiBox>? {
+        val merged = ArrayList<AiBridge.AiBox>()
+        val cols = 2
+        val rows = 2
+        val tw = bmp.width / cols
+        val th = bmp.height / rows
+        for (row in 0 until rows) {
+            for (col in 0 until cols) {
+                if (gen.get() != g || cancelled) return null
+                val x = col * tw
+                val y = row * th
+                val w = if (col == cols - 1) bmp.width - x else tw
+                val h = if (row == rows - 1) bmp.height - y else th
+                val tile = try {
+                    Bitmap.createBitmap(bmp, x, y, w, h)
+                } catch (_: Throwable) { null } ?: continue
+                val enc = encodeAi(tile)
+                try { tile.recycle() } catch (_: Throwable) {}
+                if (enc == null) continue
+                val part = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+                if (part == null) {
+                    try { Diag.log(a, "scr ai tile r$row c$col fail " +
+                            AiBridge.lastError.take(40)) } catch (_: Throwable) {}
+                    continue
+                }
+                for (b in part) {
+                    val f = tilePlace(b.x, b.y, b.w, b.h, x, y, w, h,
+                            bmp.width, bmp.height)
+                    var dup = false
+                    for (m in merged) {
+                        if (iou(m.x, m.y, m.w, m.h, f[0], f[1], f[2], f[3]) > 0.6f) {
+                            dup = true; break
+                        }
+                    }
+                    if (!dup) merged.add(AiBridge.AiBox(f[0], f[1], f[2], f[3],
+                            b.orig, b.trans, b.th, b.vert))
+                }
+            }
+        }
+        return if (merged.isEmpty()) null else merged
+    }
+
     /**
      * POOL thread. The AI script: config check (setup dialog when empty),
      * the one-time-per-process privacy confirm, then ONE vision request
@@ -704,8 +776,22 @@ object ScreenTranslate {
                         " model=" + aiModelForDiag(a))
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
-            val boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+            var boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
             if (gen.get() != g) return
+            // v1.4.20 — THE TILE ROAD (the dense-screen cure): when the
+            // single shot exhausted the 65536-token cap (shouldTile — the
+            // error string IS the contract), the bitmap the caller holds
+            // is split into a 2x2 grid and each region goes out as its own
+            // (half-as-dense) request; boxes are re-placed onto the full
+            // image (tilePlace, PURE) and seam duplicates merge away (iou,
+            // PURE). A failed tile costs its region, not the screen.
+            if (boxes == null && AiBridge.shouldTile(AiBridge.lastError)) {
+                try { Diag.log(a, "scr ai tile 2x2 after " +
+                        (System.currentTimeMillis() - t0) + "ms") } catch (_: Throwable) {}
+                pr.set("Dense screen \u2014 translating in regions\u2026", -1)
+                boxes = translateTiled(a, bmp, tl, g)
+                if (gen.get() != g) return
+            }
             if (boxes == null) {
                 failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
                     "AI translation failed — " + AiBridge.lastError.take(60))

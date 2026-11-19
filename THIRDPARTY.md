@@ -28,6 +28,18 @@ original headers intact. The license texts:
 | `com.google.zxing:core` | 3.5.3 | Apache-2.0 | QR encode/decode (pure-Java module) |
 | `org.jetbrains.kotlin:kotlin-stdlib` | 1.9.24 | Apache-2.0 | Kotlin support |
 
+## Dependencies (BSD-2-Clause)
+
+| Library | Version | License | Notes |
+|---|---|---|---|
+| `org.commonmark:commonmark` | 0.24.0 | BSD-2-Clause | Markdown parser for Bolt AI chat rendering (pure Java, zero resources) |
+| `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | BSD-2-Clause | GFM pipe-table extension for the same renderer |
+
+The engine logo drawables for DuckDuckGo, Brave and Startpage are rendered
+from the [simple-icons](https://simpleicons.org/) CC0 outlines with each
+brand's table color; Bing's mark is bing.com's own Fluent icon shape.
+Trademark rights in those marks belong to their respective owners.
+
 ## Downloaded at runtime (not bundled)
 
 - **tesseract.js** (Apache-2.0) + `tessdata_fast` models — fetched once on

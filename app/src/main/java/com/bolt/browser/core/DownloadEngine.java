@@ -86,7 +86,12 @@ public class DownloadEngine {
         JSONObject toJson() {
             try {
                 JSONObject o = new JSONObject();
-                o.put("id", id); o.put("url", url); o.put("name", name); o.put("mime", mime);
+                // v1.4.20 — the payload cap rides ONLY done items: a queued/
+                // running/paused/failed data: item still needs its bytes to
+                // (re)run the decode, so its url persists WHOLE; a DONE one
+                // is finished with them (see persistUrl).
+                o.put("id", id); o.put("url", status == ST_DONE ? persistUrl(url) : url);
+                o.put("name", name); o.put("mime", mime);
                 o.put("ua", ua); o.put("ref", referer); o.put("st", status);
                 o.put("done", done); o.put("total", total); o.put("uri", finalUri);
                 o.put("err", error); o.put("t", time);
@@ -248,13 +253,28 @@ public class DownloadEngine {
     private void load() {
         try {
             JSONArray a = Fx.readJsonArray(queueFile());
+            boolean trimmed = false;
             synchronized (lock) {
                 items.clear();
                 for (int i = 0; i < a.length(); i++) {
                     JSONObject o = a.optJSONObject(i);
-                    if (o != null) items.add(Item.fromJson(o));
+                    if (o == null) continue;
+                    Item it = Item.fromJson(o);
+                    // v1.4.20 — THE HISTORICAL-BLOAT TRIM (the 12 MB
+                    // downloads.json report): a pre-v1.4.20 file carries the
+                    // FULL base64 payload of every DONE image/blob save in
+                    // url; cap those once here (a non-done item keeps its
+                    // bytes — the revive/retry path decodes them) so the
+                    // file shrinks on the next persist, which this trim
+                    // itself forces.
+                    if (it.status == ST_DONE) {
+                        String t = persistUrl(it.url);
+                        if (!t.equals(it.url)) { it.url = t; trimmed = true; }
+                    }
+                    items.add(it);
                 }
             }
+            if (trimmed) persist();
         } catch (Throwable ignored) {}
     }
 
@@ -271,6 +291,36 @@ public class DownloadEngine {
     }
 
     // ------------------------------------------------------------ public API
+
+    /** v1.4.20 — PURE (probe-pinned): the URL a PERSISTED item may carry.
+     *  A data: URL's base64 tail is the download's BODY — the field's
+     *  downloads.json carried ~1.1 MB per saved image (12 MB total)
+     *  because saveDataUrl parked the whole payload in item.url and
+     *  toJson wrote it out. After the bytes reach the file the payload is
+     *  DEAD WEIGHT: it is replaced by a short marker that keeps the row
+     *  honest (it was a data: save, this many chars) without the
+     *  megabytes. Non-data: URLs pass through untouched. */
+    public static String persistUrl(String url) {
+        if (url == null) return "";
+        if (url.startsWith("data:") && url.length() > 96) {
+            return "data:(payload dropped, " + url.length() + " chars)";
+        }
+        return url;
+    }
+
+    /** v1.4.20 — PURE (probe-pinned): the pref-gated download ROUTER. Ask
+     *  (the default) sends every door — http, blob:, data: — through the
+     *  rename + choose-destination dialog; Direct keeps the v1.4.16 fast
+     *  paths (the blob rescue rides the bridge straight to the engine,
+     *  http skips the confirm). A null URL (no URL to route) falls back
+     *  to asking — the one doubt worth the richer door; schemes neither
+     *  door can save (file:, about:) keep the fast path and its honest
+     *  "Can't download this link type" toast. */
+    public static boolean dlDialogRoute(boolean askPref, String url) {
+        if (!askPref) return false;
+        if (url == null) return true;
+        return url.startsWith("http") || url.startsWith("blob:") || url.startsWith("data:");
+    }
 
     /** Enqueue an http/https download. Returns the item id. */
     public long enqueue(String url, String name, String mime, String ua, String referer) {
@@ -458,6 +508,12 @@ public class DownloadEngine {
                 Uri u = saveBytes(it, bytes);
                 it.finalUri = u == null ? "" : u.toString();
                 it.status = ST_DONE;
+                // v1.4.20 — THE PAYLOAD DROP (the 12 MB downloads.json
+                // report): the base64 body has been CONSUMED (the file is
+                // written); keep it out of the persisted item — persistUrl
+                // leaves a short marker, and the persist() below writes
+                // metadata only. A DONE item never re-decodes.
+                it.url = persistUrl(it.url);
                 try { part.delete(); } catch (Throwable ignored) {}
             } else {
                 // v1.3.90 — 4 attempts (was 3): the field's "a lot of

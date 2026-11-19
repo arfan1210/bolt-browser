@@ -1354,6 +1354,15 @@ public class MediaHook {
                 + ".__boltDK svg,.__boltDK iframe,.__boltDK embed,.__boltDK object,"
                 + ".__boltDK [role=\"img\"],.__boltDK [style*=\"background-image\"],"
                 + ".__boltDK .__boltNI{filter:none!important;}"
+                // v1.4.20 — THE UI-ICON RULE: the walk classes small svgs
+                // (<= 64 px — hamburger menus, chevrons, tool glyphs) with
+                // .__boltIC and this rule takes their OWN un-invert filter
+                // away, so they ride the page-level inversion like text: a
+                // dark glyph flips to light and reappears on the black
+                // ground (the faint-hamburger field report). Class beats the
+                // type selector above; inside .__boltDK the DK svg rule and
+                // this one agree on filter:none either way.
+                + ".__boltIC{filter:none!important;}"
                 + "html body *:not(img):not(video):not(picture):not(canvas)"
                 + ":not(svg):not(iframe):not(embed):not(object)"
                 + "{text-shadow:0 0 0.35px currentColor;}";
@@ -1518,7 +1527,7 @@ public class MediaHook {
      *  capped so a runaway page can never keep one alive forever). */
     public static String darkSmartJs() {
         return "(function(){try{if(window.__boltDKrun)return;window.__boltDKrun=1;"
-                + "var DK='__boltDK',NI='__boltNI',SV='__boltSV';var n=0;"
+                + "var DK='__boltDK',NI='__boltNI',SV='__boltSV',IC='__boltIC';var n=0;"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
@@ -1548,11 +1557,45 @@ public class MediaHook {
                 // v1.4.19 — mark + remember: the inline writes are sticky, so
                 // the ORIGINAL inline values are stored on the element and
                 // darkClearJs restores them exactly when the inversion lifts
+                // v1.4.20 — the store grew: stroke/fill/stroke-width (SVG UI
+                // icons), border-width (the thickness bump) and the icon-font
+                // text stroke ride the same one-shot save + exact restore
                 + "function svSave(el){try{"
                 + "if(el.classList.contains(SV))return;"
                 + "el.classList.add(SV);"
-                + "el.setAttribute('data-boltsv',JSON.stringify({c:el.style.color||null,b:el.style.borderColor||null}));"
+                + "el.setAttribute('data-boltsv',JSON.stringify({c:el.style.color||null,b:el.style.borderColor||null"
+                + ",s:el.style.stroke||null,f:el.style.fill||null,w:el.style.strokeWidth||null"
+                + ",W:el.style.borderWidth||null,t:el.style.webkitTextStroke||null}));"
                 + "}catch(e){}}"
+                // v1.4.20 — THE ICON-CLASSIFIER (pure; probe-pinned in
+                // scripts/test_v1420.py): a SMALL svg (longest edge <= 64 px)
+                // is a UI icon — hamburger menus, chevrons, tool glyphs;
+                // anything larger is CONTENT (charts, illustrations, big
+                // logos) and stays in the media family. The size cut is the
+                // classifier the field report asked for: dark-stroked UI
+                // icons were left un-inverted and vanished on the black
+                // ground, while content SVGs must never be inverted.
+                + "function uiIcon(el){try{"
+                + "if(!el||el.tagName!=='SVG')return false;"
+                + "var r=el.getBoundingClientRect();"
+                + "var m=Math.max(r.width,r.height);"
+                + "return m>0&&m<=64;}catch(e){return false}}"
+                // v1.4.20 — THE THICKNESS RESOLVER (pure; probe-pinned): a
+                // low-contrast UI stroke thinner than 1.5 px is bumped to
+                // 2 px so it reads clearly after the inversion; anything
+                // else keeps the site-drawn width
+                + "function bumpW(px){try{"
+                + "var w=parseFloat(px);"
+                + "if(!(w>0)||w>=1.5)return null;"
+                + "return '2px';}catch(e){return null}}"
+                // v1.4.20 — the icon-font detector (pure-ish): glyphs drawn
+                // by an icon FONT ride the text-color floor already; the
+                // matcher only decides whether the extra glyph-thickening
+                // (text stroke) is safe to apply (never on body text)
+                + "function iconFont(cs){try{"
+                + "var f=cs.fontFamily||'';"
+                + "return /icon|glyph|awesome|feather|typicon|octicon|remix|dashicons|icomoon/i.test(f);"
+                + "}catch(e){return false}}"
                 // v1.4.19 — the stroke floor application: ONLY text color and
                 // border colors (the thin-strokes/icons/text surfaces),
                 // never backgrounds, never the media family (photos keep
@@ -1560,18 +1603,92 @@ public class MediaHook {
                 // before this runs). Rides the existing walk — the same
                 // single getComputedStyle, the same 3500 cap, the same
                 // MutationObserver; no extra pass, no extra budget.
+                // v1.4.20 — TWO EXTENSIONS: (a) THICKNESS — a hairline
+                // (< 1.5 px) border whose color was clamped is bumped to
+                // 2 px (bumpW, pure): a mid-gray 1 px line is still faint on
+                // black; (b) ICON FONTS — a clamped glyph in an icon font
+                // also gets a 0.45 px text stroke so the glyph itself
+                // thickens (body text never matches iconFont).
                 + "function strokeFloor(el,cs){try{"
                 + "var l=lumOf(cs.color);"
+                + "var fontIc=iconFont(cs);"
                 + "if(l!==null&&l>0.8){var nc=clampCss(cs.color);"
-                + "if(nc){svSave(el);el.style.color=nc;}}"
+                + "if(nc){svSave(el);el.style.color=nc;"
+                + "if(fontIc){try{el.style.webkitTextStroke='0.45px currentColor';}catch(x){}}}}"
                 + "if(parseFloat(cs.borderTopWidth)>0||parseFloat(cs.borderBottomWidth)>0"
                 + "||parseFloat(cs.borderLeftWidth)>0||parseFloat(cs.borderRightWidth)>0){"
                 + "var bl=lumOf(cs.borderTopColor);"
                 + "if(bl!==null&&bl>0.8){var nb=clampCss(cs.borderTopColor);"
-                + "if(nb){svSave(el);el.style.borderColor=nb;}}}"
+                + "if(nb){svSave(el);el.style.borderColor=nb;"
+                + "var bw=bumpW(cs.borderTopWidth);"
+                + "if(bw){try{el.style.borderWidth=bw;}catch(x){}}}}}"
                 + "}catch(e){}}"
-                // the media family is un-inverted by CSS already — a leaf
+                // v1.4.20 — THE UI-ICON FLOOR (the SVG half of the faint-
+                // icons report): small svgs are now WALKED (isMedia below)
+                // and get the IC class, whose CSS (filter:none) lets them
+                // ride the page inversion — a dark hamburger glyph inverts
+                // to light and reappears on the black ground. LIGHT strokes
+                // or fills (a white glyph on an inverted-dark button) are
+                // clamped to the same 0.6 floor BEFORE the flip (clampCss),
+                // and thin strokes are bumped (bumpW). Inside a preserved
+                // dark subtree (inv 0) the icon was drawn FOR that ground —
+                // untouched. All writes ride svSave (exact restore).
+                + "function iconFloor(el,cs,inv){try{"
+                + "if(inv!==1)return;"
+                + "el.classList.add(IC);"
+                + "var st=cs.stroke,fl=cs.fill;"
+                + "var sl=(st&&st!=='none')?lumOf(st):null;"
+                + "var fll=(fl&&fl!=='none')?lumOf(fl):null;"
+                + "if(sl!==null&&sl>0.8){var ns=clampCss(st);"
+                + "if(ns){svSave(el);el.style.stroke=ns;}}"
+                + "if(fll!==null&&fll>0.8){var nf=clampCss(fl);"
+                + "if(nf){svSave(el);el.style.fill=nf;}}"
+                + "var sw=parseFloat(cs.strokeWidth)||0;"
+                + "if(sw>0&&sw<1.5&&(sl!==null||fll!==null)){"
+                + "svSave(el);try{el.style.strokeWidth='2';}catch(x){}}"
+                + "}catch(e){}}"
+                // v1.4.20 — THE PSEUDO FLOOR (bounded): ::before/::after
+                // glyph icons that set their OWN light color invert into
+                // near-black like every other thin stroke, but no inline
+                // write can reach a pseudo — those get a generated rule keyed
+                // on a data attribute (numeric, unquoted selector). Only
+                // LEAVES are probed (icon placeholders are empty elements),
+                // the lookups are capped (600) and the rules capped (150);
+                // pseudos that merely INHERIT the element color are already
+                // cured by the element-side clamp above.
+                + "var psLook=0,psN=0;"
+                + "function psRule(r){try{"
+                + "var s=document.getElementById('bolt-psfl');"
+                + "if(!s){s=document.createElement('style');s.id='bolt-psfl';"
+                + "(document.head||document.documentElement).appendChild(s);}"
+                + "s.textContent+=r;}catch(e){}}"
+                + "function pseudoFloor(el,cs){try{"
+                + "if(psLook>=600||psN>=150||el.children.length>0)return;"
+                + "psLook++;"
+                + "var pb=null;try{pb=getComputedStyle(el,'::before');}catch(x){}"
+                + "if(pb&&pb.content&&pb.content!=='none'&&pb.content!=='normal'"
+                + "&&pb.color&&pb.color!==cs.color){"
+                + "var pl=lumOf(pb.color);"
+                + "if(pl!==null&&pl>0.8){var nc=clampCss(pb.color);"
+                + "if(nc){psN++;var k=el.getAttribute('data-boltpb');"
+                + "if(!k){k=''+psN;el.setAttribute('data-boltpb',k);}"
+                + "psRule('[data-boltpb='+k+']::before{color:'+nc+'}');}}}"
+                + "var pa=null;try{pa=getComputedStyle(el,'::after');}catch(x){}"
+                + "if(pa&&pa.content&&pa.content!=='none'&&pa.content!=='normal'"
+                + "&&pa.color&&pa.color!==cs.color){"
+                + "var al=lumOf(pa.color);"
+                + "if(al!==null&&al>0.8){var na=clampCss(pa.color);"
+                + "if(na){psN++;var j=el.getAttribute('data-boltpa');"
+                + "if(!j){j=''+psN;el.setAttribute('data-boltpa',j);}"
+                + "psRule('[data-boltpa='+j+']::after{color:'+na+'}');}}}"
+                + "}catch(e){}}"
+                // the media family is un-inverted by CSS already — a leaf.
+                // v1.4.20: a SMALL svg is NOT media — it is a UI icon: the
+                // walk processes it (iconFloor) and it inverts with the page
+                // (the dark-glyph-on-black-ground vanish). Large svgs stay
+                // content (charts/illustrations keep their pixels).
                 + "function isMedia(el){var t=el.tagName;"
+                + "if(t==='SVG'&&uiIcon(el))return false;"
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
                 + "||t==='IFRAME'||t==='EMBED'||t==='OBJECT'||el.getAttribute('role')==='img';}"
                 // the per-element decision; inv = current filter parity of
@@ -1591,6 +1708,11 @@ public class MediaHook {
                 // near-black on the dark ground are clamped to a visible
                 // mid-gray BEFORE the global filter flips them
                 + "if(inv===1){try{strokeFloor(el,cs);}catch(x){}}"
+                // v1.4.20 — the icon + pseudo floors ride the SAME inverted-
+                // subtree gate (the parity law composes; a UI icon or pseudo
+                // glyph inside a preserved dark subtree keeps its pixels)
+                + "if(inv===1&&el.tagName==='SVG'){try{iconFloor(el,cs,inv);}catch(x){}}"
+                + "if(inv===1){try{pseudoFloor(el,cs);}catch(x){}}"
                 + "var ch=el.children;"
                 + "for(var i=0;i<ch.length;i++){if(n>=3500)break;parityEl(ch[i],inv);}"
                 + "return inv;}"
@@ -1642,20 +1764,34 @@ public class MediaHook {
     public static String darkClearJs() {
         return "(function(){try{"
                 + "var s=document.getElementById('bolt-darkcss');if(s)s.remove();"
-                + "var cl=document.querySelectorAll('.__boltNI,.__boltDK');"
+                // v1.4.20 — the pseudo-floor sheet rides out with the rest
+                + "var ps=document.getElementById('bolt-psfl');if(ps)ps.remove();"
+                + "var cl=document.querySelectorAll('.__boltNI,.__boltDK,.__boltIC');"
                 + "for(var i=0;i<cl.length;i++){cl[i].classList.remove('__boltNI');"
-                + "cl[i].classList.remove('__boltDK');}"
+                + "cl[i].classList.remove('__boltDK');"
+                + "cl[i].classList.remove('__boltIC');}"
                 // v1.4.19 — THE STROKE-FLOOR RESTORE: the walk's inline
                 // color/border-color writes are sticky, so pulling the
                 // inversion must put the ORIGINAL inline values back (the
                 // exact pre-write strings are stored in data-boltsv; null
                 // means the property was never inline — remove it).
+                // v1.4.20 — the store grew with the icon floor (stroke,
+                // fill, stroke-width), the thickness bump (border-width)
+                // and the icon-font text stroke — every field restores the
+                // same exact-or-remove way.
                 + "var sv=document.querySelectorAll('.__boltSV');"
                 + "for(var k=0;k<sv.length;k++){var el=sv[k];var o=null;"
                 + "try{o=JSON.parse(el.getAttribute('data-boltsv')||'{}');}catch(e){}"
                 + "try{if(o&&o.c)el.style.color=o.c;else el.style.removeProperty('color');}catch(e){}"
                 + "try{if(o&&o.b)el.style.borderColor=o.b;else el.style.removeProperty('border-color');}catch(e){}"
+                + "try{if(o&&o.s)el.style.stroke=o.s;else el.style.removeProperty('stroke');}catch(e){}"
+                + "try{if(o&&o.f)el.style.fill=o.f;else el.style.removeProperty('fill');}catch(e){}"
+                + "try{if(o&&o.w)el.style.strokeWidth=o.w;else el.style.removeProperty('stroke-width');}catch(e){}"
+                + "try{if(o&&o.W)el.style.borderWidth=o.W;else el.style.removeProperty('border-width');}catch(e){}"
+                + "try{if(o&&o.t)el.style.webkitTextStroke=o.t;else el.style.removeProperty('-webkit-text-stroke');}catch(e){}"
                 + "try{el.removeAttribute('data-boltsv');}catch(e){}"
+                + "try{el.removeAttribute('data-boltpb');}catch(e){}"
+                + "try{el.removeAttribute('data-boltpa');}catch(e){}"
                 + "el.classList.remove('__boltSV');}"
                 + "try{delete window.__boltDKrun;}catch(e){}"
                 + "}catch(e){}})();";

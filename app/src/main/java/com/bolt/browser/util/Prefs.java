@@ -269,6 +269,16 @@ public class Prefs {
     public String downloadDir() { return s("downloadDir", ""); }
     public void setDownloadDir(String uri) { set("downloadDir", uri == null ? "" : uri); }
 
+    /** v1.4.20 — ASK EVERY TIME (the user-approved DEFAULT): every
+     *  download door — http, blob:, data: — rides the rename +
+     *  choose-destination dialog before a byte is saved. OFF keeps the
+     *  v1.4.16 direct paths (the blob rescue saves straight through the
+     *  bridge, http skips the confirm). More options, not fewer: the
+     *  dialog was always the richer door; the toggle just decides which
+     *  door opens by default. */
+    public boolean downloadAsk() { return b("downloadAsk", true); }
+    public void setDownloadAsk(boolean v) { set("downloadAsk", v); }
+
     // SEPARATE SAF folder for saved offline pages ("saved pages") — kept
     // independent from the downloads folder on purpose (user request): ""
     // means the in-app offline dir, which is what the Saved pages list reads.

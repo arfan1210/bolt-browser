@@ -577,11 +577,26 @@ object BoltAi {
      *  instead of tap as It will cause accidental copying a lot") — a tap
      *  on a bubble fired mid-scroll or mid-read and the clipboard silently
      *  changed; the copy gesture is now a deliberate ~500 ms hold, with a
-     *  haptic tick at the moment it lands. */
+     *  haptic tick at the moment it lands.
+     *  v1.4.20 — MARKDOWN + LATEX (assistant bubbles only): AiRender
+     *  turns the reply into native Spanned (headings, lists, links,
+     *  tables, code blocks, math). The RAW text rides the view's tag —
+     *  long-press copy always yields the model's source, never the
+     *  rendered glyphs. User bubbles stay plain by design. */
     private fun addBubble(a: Activity, text: String, user: Boolean): TextView {
         val l = list ?: return TextView(a)
         val t = TextView(a)
-        t.text = text
+        if (user || !AiRender.looksMarkdown(text)) {
+            t.text = text
+        } else {
+            try {
+                t.text = AiRender.render(a, text)
+                t.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+            } catch (_: Throwable) {
+                t.text = text
+            }
+        }
+        t.tag = text
         t.textSize = 14.5f
         t.setTextColor(if (user) Color.WHITE else Fx.txt(a))
         val bg = GradientDrawable()
@@ -605,11 +620,14 @@ object BoltAi {
         lp.gravity = if (user) Gravity.END else Gravity.START
         lp.topMargin = Fx.dp(a, 8).toInt()
         t.layoutParams = lp
-        // v1.3.92: long-press -> this bubble's text goes to the clipboard
+        // v1.3.92: long-press -> this bubble's RAW text goes to the clipboard
+        // (v1.4.20: the tag carries the pre-render source — copy never
+        // yields placeholder glyphs or flattened math)
         t.setOnLongClickListener {
             try {
+                val raw = (t.tag as? String) ?: t.text.toString()
                 val cm = a.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("Bolt AI", t.text.toString()))
+                cm.setPrimaryClip(ClipData.newPlainText("Bolt AI", raw))
                 try { com.bolt.browser.util.Ui.tap(t) } catch (_: Throwable) {}
                 Fx.toast(a, "Copied")
             } catch (_: Throwable) {
@@ -682,7 +700,17 @@ object BoltAi {
                                     " chars=" + reply.length)
                         } catch (_: Throwable) {}
                         history.add(AiBridge.Msg("assistant", reply))
-                        thinking.text = reply
+                        // v1.4.20 — the reply re-renders as it lands (the
+                        // stream completion of this non-streaming chat):
+                        // markdown + LaTeX through AiRender, raw in the tag
+                        try {
+                            thinking.text = AiRender.render(a, reply)
+                            thinking.movementMethod =
+                                    android.text.method.LinkMovementMethod.getInstance()
+                        } catch (_: Throwable) {
+                            thinking.text = reply
+                        }
+                        thinking.tag = reply
                         thinking.setTextColor(Fx.txt(a))
                     }
                 } catch (_: Throwable) {}

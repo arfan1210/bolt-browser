@@ -1282,13 +1282,93 @@ public class MediaControlService extends Service {
      *  Android versions below 13 too (the v1.3.22 SDK>=33 gate saved the
      *  crashes but also killed the thumbnail on the field-reported Android
      *  10: its SystemUI renders media art from the session METADATA, and the
-     *  builder large icon alone shows nothing there). */
+     *  builder large icon alone shows nothing there).
+     *  v1.4.20: on API <= 29 the copy also rides the artwork CAP — see
+     *  api29ArtCap(); a copy that cannot be made safe returns null and the
+     *  notification goes out TEXT-ONLY (no artwork beats an app kill). */
     private Bitmap artCopy() {
         Bitmap b = safeArt();
         if (b == null) return null;
         try {
-            return b.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+            Bitmap out = b.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+            return api29SafeArt(out);
         } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * v1.4.20 — the API<=29 artwork cap (the crash that survived the 1px
+     * shrink).
+     *
+     * FIELD ROOT CAUSE (Realme RMX2020, SDK 29, diag.log): media autoplay
+     * (scrolling Google image/video results) posted artwork whose dimensions
+     * disagreed with what that OEM's SystemUI crop pipeline expected —
+     * "RemoteServiceException: Bad notification(tag=null, id=42) ... Couldn't
+     * inflate contentViews ... The given region must intersect with the
+     * Bitmap's dimensions" — killing the whole process, repeatedly. The
+     * exception is posted back by the system ASYNC, so no try/catch around
+     * nm.notify() can ever catch it: the BITMAP must be made safe before it
+     * leaves the process. The v1.3.22/27 guards (fresh ARGB_8888 copy + the
+     * 1px avoidApi29SysUiSize shrink) reduce but do NOT eliminate the
+     * failure — a 1px miss is still a near-fatal size, and OEM crops vary.
+     *
+     * The cure, per the v1.4.20 field order: every artwork that leaves this
+     * service on API <= 29 is SMALL (cap below), validated (non-null,
+     * non-recycled, positive dimensions, ARGB_8888), and a whole margin
+     * below the device's fatal 1/6-screen sizes — and the moment anything
+     * cannot be guaranteed, the artwork is dropped and the notification
+     * goes out text-only. Pure resolver (probe-pinned): given the device's
+     * largest fatal size, the longest-edge cap for all artwork.
+     */
+    static int api29ArtCap(int fatalMax) {
+        if (fatalMax <= 0) return 256;              // unknown device: plain cap
+        int cap = Math.min(256, fatalMax - 48);     // a whole margin below fatal
+        return Math.max(cap, 64);                   // paranoid floor
+    }
+
+    /**
+     * v1.4.20 — validate + cap one artwork bitmap for API <= 29. Returns a
+     * bitmap whose longest edge is within api29ArtCap, config ARGB_8888,
+     * dimensions positive, never recycled — or null when in doubt (the
+     * caller then ships text-only). On API > 29 this is the identity (the
+     * copy discipline alone has kept those versions crash-free).
+     */
+    private Bitmap api29SafeArt(Bitmap b) {
+        try {
+            if (b == null || b.isRecycled() || b.getWidth() <= 0 || b.getHeight() <= 0)
+                return null;
+            if (Build.VERSION.SDK_INT > 29) return b;
+            int[] fatal = avoidArtSizes();
+            int fatalMax = 0;
+            for (int f : fatal) if (f > fatalMax) fatalMax = f;
+            int cap = api29ArtCap(fatalMax);
+            int w = b.getWidth(), h = b.getHeight();
+            if (Math.max(w, h) > cap) {
+                int nw = Math.max(1, (int) Math.round(w * (cap / (double) Math.max(w, h))));
+                int nh = Math.max(1, (int) Math.round(h * (cap / (double) Math.max(w, h))));
+                Bitmap s = Bitmap.createScaledBitmap(b, nw, nh, true);
+                if (s != b) {
+                    try { b.recycle(); } catch (Throwable ignored) { }
+                    b = s;
+                }
+            }
+            if (b == null || b.isRecycled() || b.getWidth() <= 0 || b.getHeight() <= 0)
+                return null;
+            if (b.getConfig() != android.graphics.Bitmap.Config.ARGB_8888) {
+                Bitmap c = b.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+                if (c != b) {
+                    try { b.recycle(); } catch (Throwable ignored) { }
+                    b = c;
+                }
+            }
+            if (b == null || b.isRecycled() || b.getConfig() != android.graphics.Bitmap.Config.ARGB_8888) {
+                com.bolt.browser.util.Diag.log(this, "art drop unsafe");
+                return null;
+            }
+            return b;
+        } catch (Throwable t) {
+            com.bolt.browser.util.Diag.log(this, "art drop exc");
             return null;
         }
     }
@@ -1378,8 +1458,19 @@ n     *  single background thread (8 s timeouts, ≤4 MB, downsampled to ≤512 
                 } catch (Throwable ignored) { }
                 final Bitmap bmp = b;
                 ui.post(() -> {
-                    if (gen != artGen || bmp == null) return;   // stale or failed
-                    artBitmap = bmp;
+                    if (gen != artGen) return;         // stale fetch
+                    // v1.4.20: the MASTER itself rides the API<=29 cap, so
+                    // both publish channels (large icon + session metadata)
+                    // start from a small, validated bitmap; a fetch that
+                    // cannot be made safe is DROPPED — text-only beats the
+                    // async Bad-notification process kill.
+                    Bitmap safe = api29SafeArt(bmp);
+                    if (safe == null) {
+                        com.bolt.browser.util.Diag.log(this,
+                                "art cap drop gen=" + gen);
+                        return;
+                    }
+                    artBitmap = safe;
                     // force a session-metadata re-publish (metaChanged dedup
                     // would otherwise swallow the new ART bitmap)
                     lastPublishedTitle = null;

@@ -395,6 +395,13 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.20 (2026-11-20): the evidence-pack — the API-29
+         media-notification artwork cap, the forced-dark icon + thickness
+         floor, the translate thinking-off + tile road, the single-route
+         image search, the ask-every-time download door, the
+         downloads.json payload drop, the official engine marks, the
+         Markdown + LaTeX chat rendering -->
+    <item>1.4.20|Media autoplay no longer kills the app on Android 10 (every notification artwork on API 29 and below is kept small and validated, and anything doubtful ships a text-only notification instead of a crashing one); forced dark mode keeps hamburger icons and SVG icons visible (small icons now invert with the page instead of staying dark-on-dark) and thin low-contrast lines are thickened so they read clearly; AI screen translate no longer fails with \"the AI reply was cut off\" (thinking is disabled for translate so the whole reply budget goes to the answer, dense screens are split into regions when truly needed, and a single malformed reply fragment no longer burns the whole translation); image search now routes every engine through Google\'s search-by-image (the one path that works reliably — Bing\'s upload endpoint kept hanging and is retired, and a toast names the route used); downloads ask every time by default (rename + choose where to save — including images and AI chat saves, with a Direct download toggle on the Downloads screen); the downloads list no longer stores the full contents of every saved image (a bug that grew its data file to 12 MB); the search engine logos are the official brand marks; and Bolt AI chat replies now render Markdown (headings, lists, tables, code blocks) and LaTeX math natively — long-press still copies the raw text.</item>
     <!-- v1.4.19 (2026-11-19): the root-cure ten-pack — the incognito
          crash-loop fix (suffix-first), the offline error overlay +
          intent fallback, the drag-join animator bypass, the dark stroke

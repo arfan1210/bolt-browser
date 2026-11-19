@@ -79,6 +79,14 @@ object BlobDownload {
      * download — the bytes can only be read by the page that owns them).
      * Safe from any thread: evaluateJavascript must run on the UI thread,
      * so we post there.
+     *
+     * v1.4.20 — THE ASK DOOR RIDES THE BRIDGE, NOT THE CHAIN: the chain is
+     * byte-identical to v1.3.58 (it always delivers to Bolt.gmSaveBlob);
+     * the ask-every-time pref is consulted JAVA-SIDE inside the bridge —
+     * Ask opens the rename + destination dialog with the rescued bytes,
+     * Direct saves at once. One delivery contract, two doors, zero
+     * divergence between rescue callers (the download listener AND the
+     * long-press fetch rescue both land here).
      */
     @JvmStatic
     fun start(web: WebView?, url: String, name: String, mime: String?) {

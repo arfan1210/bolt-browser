@@ -272,7 +272,9 @@ def main():
                   # v1.4.19 re-point (2026-11-19): the token-cap ladder moved
                   # the call onto the per-rung response pair (r.second) and
                   # the cap became a parameter (32768 -> 65536 on MAX_TOKENS)
-                  "parseBoxes(geminiText(r.second), iw, ih)",
+                  # v1.4.20 re-point (2026-11-20): the evidence lines extract
+                  # txt once (usageDiag) and parseBoxes reads the local
+                  "parseBoxes(txt, iw, ih)",
                   'val GEMINI_DEFAULT = "gemini-3.5-flash-lite"',
                   '"gemini-flash-latest", "gemini-3.8-flash"',
                   '"responseMimeType", "application/json"',

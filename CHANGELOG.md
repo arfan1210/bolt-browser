@@ -4,6 +4,150 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.20] — 2026-11-20
+
+**The evidence-pack: the media-notification kill and the 12 MB
+downloads.json arrived with diag.log evidence; the single-route image
+search and the ask-every-time download door were user-approved product
+calls. Every fix carries a compiled+run behavior probe or a Diag
+breadcrumb; the retired Bing upload path took its pins with it (dated
+re-points, no green pins over dead doors).**
+
+### Fixed — MEDIA-NOTIFICATION CRASH (root-caused from diag.log, critical)
+- Evidence: `RemoteServiceException: Bad notification(tag=null, id=42)
+  ... Couldn't inflate contentViews ... The given region must intersect
+  with the Bitmap's dimensions` on the Realme RMX2020 / Android 10, firing
+  when media autoplays (scrolling Google image/video results) and killing
+  the whole process repeatedly. The exception is posted back by the system
+  ASYNC — no try/catch around `notify()` can ever catch it; the bitmap
+  itself must be made safe. The v1.3.22/27 guards (fresh ARGB_8888 copy +
+  the 1px SysUI-size shrink) reduce but do not eliminate the API-29
+  SystemUI artwork-crop failure.
+- Every artwork that leaves `MediaControlService` on API <= 29 is now
+  SMALL: `api29ArtCap` caps the longest edge at 256 px AND keeps a 48 px
+  margin below the device's fatal 1/6-screen sizes (the 1px shrink proved
+  insufficient — a near-fatal size is still fatal on some OEM crops),
+  with a 64 px paranoid floor. The master bitmap is capped at fetch time
+  and the per-publish copy re-validates: non-null, non-recycled, positive
+  dimensions, ARGB_8888 — and the moment anything cannot be guaranteed,
+  the artwork is DROPPED and the notification goes out text-only (no
+  artwork beats an app kill). API > 29 keeps the fresh-copy discipline
+  alone (those versions stayed crash-free).
+
+### Fixed — FORCED DARK: thin lines and hamburger icons (v1.4.19 pass was incomplete)
+- Two verified gaps: (a) `isMedia()` included SVG, so SVG icons (most
+  hamburger menus) were skipped by the parity walk AND left un-inverted —
+  a dark-stroked icon stayed dark on the now-black page, invisible; (b)
+  nothing helped THICKNESS — a 1 px hairline at mid-gray is still faint.
+- Small monochrome UI-icon SVGs (longest edge <= 64 px, `uiIcon`) are now
+  distinguished from content SVGs (charts/illustrations stay un-inverted
+  media): UI icons are walked and classed `.__boltIC` (filter:none), so
+  they ride the page inversion — a dark hamburger glyph inverts to light
+  and reappears on the black ground. Light strokes/fills (a white glyph
+  on an inverted-dark button) clamp to the 0.6 luminance floor BEFORE
+  the flip.
+- THE THICKNESS BUMP (`bumpW`, pure): a low-contrast UI stroke thinner
+  than 1.5 px is bumped to 2 px — clamped hairline borders, thin SVG
+  strokes, and icon-font glyphs (a 0.45 px text-stroke, never on body
+  text). Self-colored `::before/::after` glyph icons get generated
+  per-element rules (bounded: 600 lookups / 150 rules). Everything rides
+  the existing 3500-element cap + MutationObserver; photos are never
+  touched; darkClearJs restores every new write exactly (stroke, fill,
+  stroke-width, border-width, text-stroke) and strips the IC class.
+
+### Fixed — AI SCREEN TRANSLATE "the AI reply was cut off"
+- New evidence: the failure ~3 s after "scr ai ask" — far too fast to be
+  a 32768-token generation. The v1.4.19 cap ladder was not the cure:
+  `thinkingLevel "minimal"` still THINKS (and on models that reject the
+  field, the no-config retry thinks FULLY) — either way the thinking
+  tokens raid `maxOutputTokens` and the visible JSON truncates
+  mid-array. Chat image questions worked because their replies are short.
+- Translate now sends `thinkingConfig: thinkingBudget 0` — the HARD off;
+  the whole output cap goes to the visible JSON. (The chat body keeps
+  its own shape untouched.)
+- The evidence channel: every attempt logs `finishReason` +
+  `thoughtsTokenCount` vs `candidatesTokenCount` + reply length
+  (`usageDiag`, pure) — a real cap cut reads MAX_TOKENS with cand at the
+  cap; a thinking raid reads STOP with th large and cand small; a shape
+  mismatch reads all-small with the parse still failing (the reply head
+  rides out right after it).
+- `parseBoxes` hardening — the LENIENT SALVAGE (`salvageObjects`, pure):
+  a strict JSONArray parse used to burn the WHOLE reply as "cut off"
+  when ONE object was malformed (a shape mismatch mislabeled as
+  truncation). Complete `{...}` objects (balanced braces, string-aware)
+  are now recovered and parsed; one bad box costs one box, not the
+  screen. A salvaged parse under MAX_TOKENS still takes the ladder/tile
+  road — never a half screen.
+- THE TILE ROAD: when the 65536 rung is exhausted on MAX_TOKENS
+  (`shouldTile`, pure — the error string IS the contract),
+  ScreenTranslate splits the capture into a 2x2 grid and sends each
+  region as its own (half-as-dense) request; boxes re-place onto the
+  full image (`tilePlace`, pure) and seam duplicates merge away
+  (`iou > 0.6`, pure). A failed tile costs its region, not the screen.
+
+### Changed — IMAGE SEARCH: ALL ENGINES THROUGH GOOGLE (user-approved)
+- Evidence: Bing still showed a black loading screen even though the
+  v1.4.19 real-origin intercept fired and served the full 835 KB body —
+  the saved HTML shell's JS results runtime needs the LIVE upload
+  session the static shell lacks. Bing mobile visual search is a dead
+  end that way; Google search-by-image works reliably.
+- Every engine's image search now rides Google's search-by-image POST
+  (the cookie/UA-continuity path), with a toast naming the route
+  actually used. The Bing SBI upload path, the DDG/Brave -> Bing
+  fallback, AND the v1.4.19 real-origin intercept that served it are
+  RETIRED — no dead doors, no green pins over retired code. The camera
+  and gallery doors are unchanged; upload failure falls back to
+  https://lens.google.com/ for manual upload.
+
+### Added — DOWNLOAD "ASK EVERY TIME" TOGGLE (user-approved, default ASK)
+- The rename + choose-destination dialog existed for http downloads, but
+  since v1.4.16 blob: downloads (Google images, AI chat output — every
+  download in the field logs) routed straight through the JS bridge
+  before the dialog: direct save + toast, no dialog.
+- A toggle on the Downloads screen — "Ask every time" (default) vs
+  "Direct download" — gates every door. When Ask is on, blob downloads
+  route through the rescue chain FIRST (the bytes are read out of the
+  page exactly as before) and are then OFFERED to the dialog
+  (`Bolt.dlOfferBlob`): rename, size, destination. data: anchors ride
+  the dialog too; http keeps it. When Direct, everything saves at once.
+  More options, not fewer.
+
+### Fixed — downloads.json BLOAT (root-caused: 12 MB in every cache-guard line)
+- `DownloadEngine.saveDataUrl` parked the FULL base64 payload in
+  `item.url` and `toJson()` wrote it out — every ~1.1 MB saved image
+  permanently stored its entire base64 string in downloads.json.
+- After the bytes are written, a DONE item's url is replaced by a short
+  marker (`persistUrl`, pure); toJson caps DONE items only — a queued/
+  failed item keeps its bytes (the revive/retry path decodes them); load
+  trims the historical bloat once.
+
+### Changed — OFFICIAL SEARCH-ENGINE LOGOS
+- The v1.4.19 Bing/DuckDuckGo/Brave/Startpage marks were hand-authored
+  approximations. They are replaced with the official brand outlines:
+  simple-icons (CC0) for DuckDuckGo (#DE5833), Brave (#FB542B) and
+  Startpage (#6563FF per the simple-icons brand table), and bing.com's
+  own Fluent mark for Bing (#008373 brand teal). Google keeps its
+  four-color drawable unchanged; the chip + picker wiring is untouched.
+
+### Added — MARKDOWN + LATEX RENDERING IN BOLT AI CHAT
+- Assistant replies now render with Markdown (headings, bullet/numbered
+  lists, bold/italic, links, tables as aligned grids, code blocks with
+  monospace + background) and LaTeX math (inline `$...$` / `\(...\)` and
+  block `$$...$$` / `\[...\]` — superscripts, subscripts, greek letters,
+  operators, \frac flattening, \sqrt, \text).
+- Native rendering: commonmark-java core + the GFM-tables extension
+  (~130 KB, zero fonts) parse the reply into Android Spanned — the chat
+  stays TextViews, never a WebView. LaTeX rides hand-rolled spans on the
+  SYSTEM font: the 6 MB law's "no heavy bundled font packs" clause rules
+  out jlatexmath-android's ~1.5 MB Latin Modern pack for a chat nicety;
+  unrecognized LaTeX renders verbatim (the honest subset).
+- Math is held out of the parser as placeholder chars (`codeProtect`,
+  pure) so `x_i * y` never becomes italic; code spans and fences are
+  masked first (a `$...$` inside backticks is literal). Assistant
+  messages only — user input stays plain; long-press copy yields the RAW
+  source (the bubble's tag), never the rendered glyphs; the reply
+  re-renders the moment it replaces the thinking bubble.
+
 ## [1.4.19] — 2026-11-19
 
 **The root-cure ten-pack: items 1 and 2 were ROOT-CAUSED from the user's

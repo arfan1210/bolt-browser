@@ -60,6 +60,11 @@ import java.net.URL
  */
 object AiBridge {
 
+    /** v1.4.20 — the standing cut-off error as a CONTRACT (the tile door in
+     * ScreenTranslate keys on it; the literal is the one the v1.4.19 gate
+     * pinned — it lives here now). */
+    const val CUT_OFF_ERR = "the AI reply was cut off (try a less dense screen)"
+
     /**
      * v1.3.75 — Java-friendly link opener (BrowserActivity implements it
      * with its openNewTab path; a Kotlin (String)->Unit would force Java
@@ -84,6 +89,12 @@ object AiBridge {
 
     /** last short error (toast-safe, key-free) */
     @Volatile var lastError: String = ""
+
+    /** v1.4.20 — set by parseBoxes when the array parse FAILED but the
+     *  LENIENT SALVAGE recovered complete objects (a partial reply): the
+     *  ladder reads it to prefer the tile road over showing half a screen
+     *  when the envelope says MAX_TOKENS. */
+    @Volatile private var lastParseSalvaged: Boolean = false
         private set
 
     // ---------------- config (SharedPreferences "bolt_ai") ----------------
@@ -313,7 +324,11 @@ object AiBridge {
      * default and the field called Bolt AI "kind of slow and performance
      * pretty mediocre"; minimal is the floor the models allow and it
      * cuts the visible latency hard. A 400 that names thinking (older /
-     * custom models) is retried ONCE with the field removed. */
+     * custom models) is retried ONCE with the field removed.
+     * v1.4.20 — THINKING IS NOW OFF FOR TRANSLATE (see visionBody): the
+     * ~3 s field cut-offs were never 32768-token generations — the
+     * thinking tokens raid maxOutputTokens and the visible JSON
+     * truncates mid-array long before the cap. */
     private fun geminiCall(ctx: Context, mdl: String, p: String, b64: String,
                            iw: Int, ih: Int): ArrayList<AiBox>? {
         // v1.4.19 — THE TOKEN-CAP LADDER (the "AI translate: the reply was
@@ -325,6 +340,12 @@ object AiBridge {
         // MAX_TOKENS the SAME model is retried ONCE at 65536 (the 3.x flash
         // ceiling) before the honest cut-off error. The decision is a PURE
         // function ([translateCapAction], probe-pinned).
+        // v1.4.20 — THE EVIDENCE LINES: every attempt logs finishReason +
+        // thoughtsTokenCount vs candidatesTokenCount + reply length
+        // ([usageDiag], pure) — the pair that separates a real token-cap
+        // cut (MAX_TOKENS, cand at the cap) from a thinking-budget raid
+        // (STOP, th large, cand small) from a shape mismatch (everything
+        // small, parse still failing — the reply head rides out after).
         var lastCutOff = false
         for (cap in intArrayOf(32768, 65536)) {
             var r = postVision(ctx, mdl, p, b64, cap)
@@ -336,9 +357,27 @@ object AiBridge {
             // v1.3.75 — the envelope is unwrapped FIRST (the v1.3.74 bug:
             // the raw body went to the box parser and every run "found no
             // text"), THEN the model's text is parsed for boxes
-            val boxes = parseBoxes(geminiText(r.second), iw, ih)
+            val txt = geminiText(r.second)
+            try {
+                Diag.log(ctx, usageDiag(fr,
+                        usageInt(r.second, "thoughtsTokenCount"),
+                        usageInt(r.second, "candidatesTokenCount"), txt.length))
+            } catch (_: Throwable) {}
+            val boxes = parseBoxes(txt, iw, ih)
+            if (boxes == null) {
+                try { Diag.log(ctx, "ai translate head " + txt.take(160)) } catch (_: Throwable) {}
+            }
             when (translateCapAction(boxes != null, fr, cap)) {
-                0 -> return boxes                    // parsed — done
+                0 -> {
+                    // v1.4.20 — a SALVAGED parse (lenient object recovery)
+                    // under MAX_TOKENS is a partial reply of a genuinely
+                    // truncated one: the ladder / the tile road beats
+                    // showing half a screen
+                    if (fr == "MAX_TOKENS" && lastParseSalvaged) {
+                        try { Diag.log(ctx, "ai translate MAX_TOKENS at $cap, retrying higher") } catch (_: Throwable) {}
+                        lastCutOff = true
+                    } else return boxes
+                }
                 1 -> {                              // truncated: raise the cap
                     try { Diag.log(ctx, "ai translate MAX_TOKENS at $cap, retrying higher") } catch (_: Throwable) {}
                     lastCutOff = true
@@ -347,7 +386,11 @@ object AiBridge {
             }
         }
         if (lastCutOff) {
-            lastError = "the AI reply was cut off (try a less dense screen)"
+            // v1.4.20 — THE TILE HANDOFF: the ladder exhausted on MAX_TOKENS
+            // is the one honest cut left, and the CALLER (ScreenTranslate)
+            // holds the bitmap it can tile into regions — the error string
+            // IS the contract (shouldTile, pure)
+            lastError = CUT_OFF_ERR
         }
         return null
     }
@@ -383,10 +426,48 @@ object AiBridge {
         return 2
     }
 
+    /** v1.4.20 — the usage-evidence reader: one int out of the envelope's
+     *  usageMetadata (thoughtsTokenCount vs candidatesTokenCount — the pair
+     *  that pins a thinking-budget raid vs a real token-cap cut). */
+    private fun usageInt(body: String, key: String): Int = try {
+        org.json.JSONObject(body).optJSONObject("usageMetadata")?.optInt(key, 0) ?: 0
+    } catch (_: Throwable) { 0 }
+
+    /** v1.4.20 — PURE (probe-pinned): the one-line evidence form for a
+     *  translate attempt — finishReason, the thinking/visible token pair
+     *  and the reply length. A real cap cut reads fr=MAX_TOKENS with cand
+     *  AT the cap; a thinking raid reads fr=STOP with th large and cand
+     *  small; a shape mismatch reads all-small with the parse still
+     *  failing (the reply head rides out right after it). */
+    @JvmStatic
+    internal fun usageDiag(fr: String, thoughts: Int, candidates: Int, len: Int): String {
+        return "ai translate fr=" + (if (fr.isEmpty()) "?" else fr) +
+                " th=" + thoughts + " cand=" + candidates + " len=" + len
+    }
+
+    /** v1.4.20 — PURE (probe-pinned): after a failed visionTranslate, does
+     *  the error call for TILING? The cap ladder exhausted on MAX_TOKENS
+     *  is the one failure more (smaller) requests can cure — the caller
+     *  holds the bitmap and splits it into regions. */
+    @JvmStatic
+    internal fun shouldTile(err: String): Boolean = err == CUT_OFF_ERR
+
     /** the vision request body (think=false strips thinkingConfig).
      *  v1.4.19: the output cap is a PARAMETER — 32768 on the first rung
      *  (dense screens overflowed the old 16384 mid-array), 65536 on the
-     *  MAX_TOKENS retry (see geminiCall's ladder). */
+     *  MAX_TOKENS retry (see geminiCall's ladder).
+     *  v1.4.20 — THINKING HARD OFF FOR TRANSLATE: thinkingLevel minimal
+     *  still THINKS, and on models where the level field is rejected the
+     *  no-config retry thinks FULLY — either way the thinking tokens raid
+     *  maxOutputTokens and the visible JSON truncates mid-array in ~3 s
+     *  (the field report's failure was far too fast to be a 32768-token
+     *  generation). thinkingBudget 0 is the hard off: the WHOLE output
+     *  cap goes to the visible JSON. A model that rejects the config
+     *  outright (400 naming thinking) still gets the no-config retry —
+     *  and the usageDiag evidence line names it when it raids the
+     *  budget anyway. The CHAT body keeps thinkingLevel minimal (chat
+     *  image questions work — the report said so — and its 2048 cap
+     *  rides a different budget entirely). */
     private fun visionBody(p: String, b64: String, think: Boolean, cap: Int): JSONObject {
         val body = JSONObject()
         val parts = JSONArray()
@@ -401,7 +482,7 @@ object AiBridge {
         val gc = JSONObject()
             .put("temperature", 0.1).put("maxOutputTokens", cap)
             .put("responseMimeType", "application/json")
-        if (think) gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "minimal"))
+        if (think) gc.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
         body.put("generationConfig", gc)
         return body
     }
@@ -709,11 +790,29 @@ object AiBridge {
      * per box: mixed scales inside one reply are nonsense). Legacy
      * [x,y,w,h] dialects stay supported for OpenAI-compatible endpoints.
      * Everything leaves normalized to 0-1 fractions of the sent image so
-     * the overlay never cares who answered. */
+     * the overlay never cares who answered.
+     * v1.4.20 — THE LENIENT SALVAGE (the "cut off" that was not always a
+     * cut): a strict JSONArray parse fails on ONE malformed object and
+     * used to burn the WHOLE reply as "cut off" even when finishReason
+     * said STOP — a shape mismatch mislabeled as truncation. Now the
+     * complete {...} objects are salvaged out of the text (balanced-brace
+     * scan, string-aware — [salvageObjects], PURE) and the good ones
+     * parse on: one bad box costs ONE box, not the screen. Only a reply
+     * with no salvageable object keeps the standing cut-off error. */
     private fun parseBoxes(txt: String, iw: Int, ih: Int): ArrayList<AiBox>? {
+        lastParseSalvaged = false
         val text = extractJsonArray(txt) ?: run { lastError = "the AI reply was not JSON"; return null }
         val arr = try { JSONArray(text) } catch (_: Throwable) {
-            lastError = "the AI reply was cut off (try a less dense screen)"; return null
+            // v1.4.20 — the lenient salvage first: recover the COMPLETE
+            // objects and parse those (one malformed box must cost one box,
+            // not the screen); the standing cut-off error survives only
+            // when nothing at all could be recovered
+            val salvaged = salvageObjects(text)
+            if (salvaged == null) {
+                lastError = CUT_OFF_ERR; return null
+            }
+            lastParseSalvaged = true
+            salvaged
         }
         // ---- response-level dialect detection (v1.3.77) ----
         // box_2d: [ymin,xmin,ymax,xmax]. Any value > 1000 in ANY box_2d →
@@ -827,6 +926,45 @@ object AiBridge {
         }
         if (out.isEmpty()) { lastError = "the AI found no text"; return null }
         return out
+    }
+
+    /** v1.4.20 — PURE (probe-pinned): the lenient salvage. Scan the reply
+     *  for COMPLETE top-level {...} objects (balanced braces, string- and
+     *  escape-aware, so a brace inside a translation string never counts)
+     *  and return them as a JSONArray; the trailing object of a genuinely
+     *  truncated reply is dropped by construction (it never closes), and a
+     *  reply with ZERO recoverable objects returns null (the standing
+     *  cut-off error). One malformed box now costs one box, not the screen. */
+    @JvmStatic
+    internal fun salvageObjects(text: String): JSONArray? {
+        val out = JSONArray()
+        var depth = 0
+        var start = -1
+        var inStr = false
+        var esc = false
+        for (i in text.indices) {
+            val c = text[i]
+            if (inStr) {
+                if (esc) esc = false
+                else if (c == '\\') esc = true
+                else if (c == '"') inStr = false
+                continue
+            }
+            when (c) {
+                '"' -> inStr = true
+                '{' -> { if (depth == 0) start = i; depth++ }
+                '}' -> {
+                    if (depth > 0) {
+                        depth--
+                        if (depth == 0 && start >= 0) {
+                            try { out.put(JSONObject(text.substring(start, i + 1))) } catch (_: Throwable) {}
+                            start = -1
+                        }
+                    }
+                }
+            }
+        }
+        return if (out.length() > 0) out else null
     }
 
     /** strips markdown fences; returns the outermost [...] slice */

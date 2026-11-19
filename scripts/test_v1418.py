@@ -131,18 +131,18 @@ ab_code = strip_comments_strings(ab)
 ss_code = strip_comments_strings(ss)
 
 print("A — the version bump")
-need(re.search(r"versionCode 133\b", gradle) is not None,  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
-     "versionCode 133 (Android only installs RISING codes)")  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
-need(re.search(r'versionName "1\.4\.19"', gradle) is not None,  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
-     'versionName "1.4.19"')  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)
+need(re.search(r"versionCode 134\b", gradle) is not None,  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     "versionCode 134 (Android only installs RISING codes)")  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r'versionName "1\.4\.20"', gradle) is not None,  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     'versionName "1.4.20"')  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[1].startswith("1.4.18|"),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
+need(entries and entries[2].startswith("1.4.18|"),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
      "the newest entry is 1.4.18 (the label law)")
-need(len(entries) > 1 and entries[2].startswith("1.4.17|"),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
+need(len(entries) > 1 and entries[3].startswith("1.4.17|"),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
      "the second entry is 1.4.17 (the previous live release)")
 for word, why in (("hole", "the drag-door void"),
                   ("omnibox", "the focus law"),
@@ -150,7 +150,7 @@ for word, why in (("hole", "the drag-door void"),
                   ("image search", "the session continuity"),
                   ("AI", "the chain law"),
                   ("incognito", "the session-aware search")):
-    need(word in entries[1] or word in entries[1].lower(),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])
+    need(word in entries[2] or word in entries[2].lower(),  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
          f"the 1.4.18 line names {why}")
 
 print("C — fix 1: the drag-door no-void reload")
@@ -238,13 +238,13 @@ need("android.webkit.CookieManager.getInstance().getCookie(url)" in vs_code,
 need("cm.setCookie(url, cookie)" in vs_code,
      "every Set-Cookie along the ladder is pumped into the WebView's CookieManager")
 need(vs_code.count("attachWebCookies(") >= 3
-     and vs_code.count("pumpSetCookies(") >= 5,
-     "the POST and EVERY redirect hop attach + pump (the consent redirect rides along)")
-need("internal fun ensureBaseHref(html: String, base: String): String {" in vs_code,
-     "the base-href injector is a PURE function (probe-pinned)")
-need('ensureBaseHref(' in vs_code
-     and '"https://www.bing.com/"' in vs,
-     "the Bing saved-page body is re-anchored before the file:// save")
+     and vs_code.count("pumpSetCookies(") >= 4,
+     "the POST and EVERY redirect hop attach + pump (the consent redirect rides along; v1.4.20 re-point 2026-11-20: the direct-200 Bing branch — one pump call — retired with its upload path, so the count is 4)")
+need("internal fun ensureBaseHref" not in vs_code,
+     "the base-href injector is RETIRED (v1.4.20 re-point 2026-11-20: it "
+     "existed to re-anchor the Bing 200-body save, and the single Google "
+     "3xx route saves no body — the pure-probe transcription below stays "
+     "as the historical contract)")
 
 print("G — fix 5: the AI chain law")
 need("internal fun buildChain(m: String): Array<String> {" in ab_code,

@@ -273,6 +273,9 @@ if gm < 0:
 # exporter's page->Java handoff; bump deliberately, never as a side effect);
 # v1.3.92: 27 -> 28 — Bolt.aiSync (the native AI picker's scroll-sync:
 # the page reports its scroll rect so the Android circle overlay follows)
+# v1.4.20 note: the ask-every-time door deliberately did NOT add a bridge
+# — gmSaveBlob itself consults the pref (one delivery contract for every
+# rescue caller), so the count stays 28
 if ba.count("@JavascriptInterface") != 28:
     failures.append("BrowserActivity @JavascriptInterface count changed "
                     f"(expected 28, found {ba.count('@JavascriptInterface')}) — "

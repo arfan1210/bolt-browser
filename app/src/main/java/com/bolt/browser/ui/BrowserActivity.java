@@ -5718,29 +5718,11 @@ public class BrowserActivity extends AppCompatActivity {
                 Uri u = request.getUrl();
                 String url = u.toString();
                 if (!url.startsWith("http")) return null;
-                // v1.4.19 — THE VISUAL-SEARCH INTERCEPT DOOR: a Bing-shaped
-                // image-search result is armed BEFORE the tab loads it (see
-                // VisualSearch.armIntercept — the file:// saved-page corpse:
-                // a JS-driven results page cannot run from an opaque origin).
-                // The ONE main-document GET for the armed URL is answered
-                // with the cached body, so the page runs under the REAL
-                // bing.com origin with the pumped cookies; every other
-                // request (and any later visit to the same URL — the take is
-                // one-shot) goes to the network untouched.
-                try {
-                    String im = null;
-                    try { im = request.getMethod(); } catch (Throwable ignored) {}
-                    byte[] cached = com.bolt.browser.util.VisualSearch.takeIntercept(
-                            request.isForMainFrame(), im, url);
-                    if (cached != null) {
-                        try {
-                            com.bolt.browser.util.Diag.log(BrowserActivity.this,
-                                    "visual intercept served bytes=" + cached.length);
-                        } catch (Throwable ignored) {}
-                        return new WebResourceResponse("text/html", "utf-8",
-                                new java.io.ByteArrayInputStream(cached));
-                    }
-                } catch (Throwable ignored) {}
+                // v1.4.20 — the v1.4.19 visual-search intercept door is
+                // RETIRED with the Bing SBI upload path it served (see
+                // VisualSearch's header): every engine rides Google's
+                // 302-shaped search-by-image route now, and a 3xx needs no
+                // body carrier. No armed map, no serve, nothing to consume.
                 // v1.3.84 — THE BODY CARRIERS ARE OFF-LIMITS (the zai upload
                 // 401 field report: "uploading files through zai gave 401
                 // unauthorised"). zai's chat upload is a cross-origin
@@ -6857,8 +6839,17 @@ public class BrowserActivity extends AppCompatActivity {
             // data: downloads (some pages hand these to the listener directly)
             if (url != null && url.startsWith("data:")) {
                 String dname = downloadAnchorName(url);
-                enqueueDownload(url, userAgent,
-                        dname != null ? dname : android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype), mimetype);
+                String dn = dname != null ? dname
+                        : android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+                // v1.4.20 — the ask-every-time router (default ASK): the
+                // data: door rides the rename + destination dialog too;
+                // Direct keeps the old silent save
+                if (DownloadEngine.dlDialogRoute(prefs.downloadAsk(), url)) {
+                    showDownloadDialog(url, userAgent, contentDisposition, mimetype,
+                            contentLength, dn);
+                } else {
+                    enqueueDownload(url, userAgent, dn, mimetype);
+                }
                 return;
             }
             // v1.4.16 — BLOB: DOWNLOADS GO STRAIGHT THROUGH THE JS BRIDGE.
@@ -6881,14 +6872,23 @@ public class BrowserActivity extends AppCompatActivity {
                             android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype));
                 }
                 Tab bt = activeTab();
+                // v1.4.20 — the ask-every-time door rides INSIDE the
+                // delivery bridge (gmSaveBlob consults the pref): the
+                // rescue chain starts here and reads the bytes exactly as
+                // before; Ask OFFERS them to the dialog when they arrive,
+                // Direct saves at once. No toast under Ask — the dialog
+                // itself is the feedback.
+                boolean blobAsk = DownloadEngine.dlDialogRoute(prefs.downloadAsk(), url);
                 com.bolt.browser.util.BlobDownload.start(
                         bt == null ? null : bt.web, url, bname, mimetype);
                 try {
                     com.bolt.browser.util.Diag.log(BrowserActivity.this, "blobdl start name=" + bname
-                            + " mime=" + mimetype);
+                            + " mime=" + mimetype + " ask=" + blobAsk);
                 } catch (Throwable ignored) {}
                 ensureDlShelfListener();
-                Fx.toast(BrowserActivity.this, getString(R.string.download_started) + ": " + bname);
+                if (!blobAsk) {
+                    Fx.toast(BrowserActivity.this, getString(R.string.download_started) + ": " + bname);
+                }
                 return;
             }
             // userscript install: Greasy Fork / OpenUserJS .user.js links
@@ -6901,7 +6901,18 @@ public class BrowserActivity extends AppCompatActivity {
             // pair is armed synchronously, so a save racing the posted
             // goBack still persists the real page)
             repairDownloadPage(url);
-            showDownloadDialog(url, userAgent, contentDisposition, mimetype, contentLength);
+            // v1.4.20 — the ask-every-time router: Direct skips the
+            // confirm and enqueues with the honest guessed name (the
+            // engine refines mime/extension on the response anyway);
+            // Ask (the default) keeps the rename + destination dialog
+            if (DownloadEngine.dlDialogRoute(prefs.downloadAsk(), url)) {
+                showDownloadDialog(url, userAgent, contentDisposition, mimetype, contentLength);
+            } else {
+                enqueueDownload(url, userAgent,
+                        DownloadEngine.humanName(url,
+                                android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype)),
+                        mimetype);
+            }
         }
     };
 
@@ -7000,6 +7011,15 @@ public class BrowserActivity extends AppCompatActivity {
     /** download confirm dialog: rename + choose destination (public Downloads or SAF folder) */
     protected void showDownloadDialog(final String url, final String ua, String cd,
             final String mime, long len) {
+        showDownloadDialog(url, ua, cd, mime, len, null);
+    }
+
+    /** v1.4.20 — the full form: nameHint is the honest name a rescue
+     *  already chose (the blob chain's anchor/download attribute — the
+     *  data: URL it hands over would otherwise guess garbage); the info
+     *  line names the SAVED BYTES for data: offers instead of a host. */
+    protected void showDownloadDialog(final String url, final String ua, String cd,
+            final String mime, long len, final String nameHint) {
         int dim = Fx.dim(this);
         int txt = Fx.txt(this);
         // v1.3.86 — the REAL filename, in order of trust: (1) the anchor's
@@ -7009,9 +7029,13 @@ public class BrowserActivity extends AppCompatActivity {
         // host-YYYYMMDD-HHMM, the v1.3.78 law, now applied on the dialog
         // path too — it previously only ran when enqueue got an empty
         // name, which the dialog never sends).
+        // v1.4.20: (1.5) a caller-supplied nameHint (the blob rescue's
+        // chosen name) sits between them.
         String attr = downloadAnchorName(url);
-        String guessed = attr != null ? attr : DownloadEngine.humanName(url,
-                android.webkit.URLUtil.guessFileName(url, cd, mime));
+        String guessed = attr != null ? attr
+                : (nameHint != null && !nameHint.isEmpty() ? nameHint
+                : DownloadEngine.humanName(url,
+                        android.webkit.URLUtil.guessFileName(url, cd, mime)));
         if (attr != null) {
             try {
                 com.bolt.browser.util.Diag.log(this, "dl via anchor " + attr);
@@ -7026,7 +7050,10 @@ public class BrowserActivity extends AppCompatActivity {
         String size = len > 0 ? android.text.format.Formatter.formatShortFileSize(this, len)
                 : "unknown size";
         TextView info = new TextView(this);
-        info.setText(Fx.hostOf(url) + "  •  " + size);
+        // v1.4.20: a data: offer has no host — the info line names the
+        // bytes (the rescue fetched them from the page)
+        info.setText((url != null && url.startsWith("data:") ? "saved from page" : Fx.hostOf(url))
+                + "  •  " + size);
         info.setTextColor(dim);
         info.setTextSize(13);
         info.setPadding(0, Fx.dp(this, 8), 0, 0);
@@ -7201,9 +7228,15 @@ public class BrowserActivity extends AppCompatActivity {
         // appends the correct extension (jpeg/webp/png/gif) at save time.
         final String nm = name;
         if (pageUrl.startsWith("data:")) {
-            DownloadEngine.get(this).saveDataUrl(pageUrl, nm, null);
-            ensureDlShelfListener();   // v1.3.40 download shelf
-            Fx.toast(this, getString(R.string.download_started));
+            // v1.4.20 — the ask-every-time router rides the long-press data:
+            // door too (the name this path derived is the dialog's hint)
+            if (DownloadEngine.dlDialogRoute(prefs.downloadAsk(), pageUrl)) {
+                showDownloadDialog(pageUrl, null, null, null, 0, nm);
+            } else {
+                DownloadEngine.get(this).saveDataUrl(pageUrl, nm, null);
+                ensureDlShelfListener();   // v1.3.40 download shelf
+                Fx.toast(this, getString(R.string.download_started));
+            }
             return;
         }
         if (pageUrl.startsWith("blob:")) {
@@ -7212,11 +7245,14 @@ public class BrowserActivity extends AppCompatActivity {
             // the old single fetch() died on strict-CSP sites (Gemini's
             // connect-src has no blob:) and evalMedia could inject into a
             // background media tab instead of the one showing the image.
+            // v1.4.20: the ask-every-time door rides inside gmSaveBlob.
             com.bolt.browser.util.BlobDownload.start(t.web, pageUrl, nm, null);
             ensureDlShelfListener();   // v1.3.40 download shelf
             Fx.toast(this, getString(R.string.download_started));
             return;
         }
+        // v1.4.20 — the fetch rescue delivers to gmSaveBlob, which consults
+        // the ask pref itself (one delivery contract for every rescue)
         String js = "(function(){try{fetch(" + JSONObject.quote(pageUrl) + ")"
                 + ".then(function(r){return r.blob();})"
                 + ".then(function(b){var fr=new FileReader();fr.onload=function(){"
@@ -7300,8 +7336,16 @@ public class BrowserActivity extends AppCompatActivity {
                 final String img = extra;
                 opts.add(getString(R.string.download_image));
                 acts.add(() -> {
-                    if (img.startsWith("http"))
-                        showDownloadDialog(img, null, null, mimeOf(img), 0);
+                    if (img.startsWith("http")) {
+                        // v1.4.20 — the ask-every-time router on the long-press
+                        // http door: Direct skips the confirm (the in-page
+                        // fetch rescue saves straight through); Ask keeps the
+                        // rename + destination dialog
+                        if (DownloadEngine.dlDialogRoute(prefs.downloadAsk(), img))
+                            showDownloadDialog(img, null, null, mimeOf(img), 0);
+                        else
+                            downloadInPageImage(img, null);
+                    }
                     else
                         downloadInPageImage(img, null); // blob:/data: via in-page fetch
                 });
@@ -7992,7 +8036,13 @@ public class BrowserActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
         }
 
-        /** in-page fetched blob/data image save (long-press download) */
+        /** in-page fetched blob/data image save (long-press download).
+         *  v1.4.20 — THE ASK-EVERY-TIME ROUTER RIDES THE BRIDGE: every
+         *  rescue caller (the blob chain, the long-press fetch rescue)
+         *  delivers here unchanged — the v1.3.58 contract — and the pref
+         *  picks the door: Ask opens the rename + destination dialog
+         *  with the rescued bytes (name + approx size from the data
+         *  URL), Direct saves at once with the toast. */
         @JavascriptInterface
         public void gmSaveBlob(final String name, final String mime, final String dataUrl) {
             // v1.3.57 — field evidence: bytes came back from a page-side
@@ -8002,9 +8052,17 @@ public class BrowserActivity extends AppCompatActivity {
                         + (dataUrl == null ? 0 : dataUrl.length()) + "B name=" + name);
             } catch (Throwable ignored) {}
             ui.post(() -> {
-                DownloadEngine.get(BrowserActivity.this).saveDataUrl(dataUrl, name, mime);
-                ensureDlShelfListener();   // v1.3.40 download shelf
-                Fx.toast(BrowserActivity.this, getString(R.string.download_started) + ": " + name);
+                if (dataUrl == null || !dataUrl.startsWith("data:")) return;
+                if (DownloadEngine.dlDialogRoute(prefs.downloadAsk(), dataUrl)) {
+                    int comma = dataUrl.indexOf(',');
+                    long approx = (long) ((dataUrl.length() - Math.max(0, comma)) * 3L / 4L);
+                    showDownloadDialog(dataUrl, null, null,
+                            (mime == null || mime.isEmpty()) ? null : mime, approx, name);
+                } else {
+                    DownloadEngine.get(BrowserActivity.this).saveDataUrl(dataUrl, name, mime);
+                    ensureDlShelfListener();   // v1.3.40 download shelf
+                    Fx.toast(BrowserActivity.this, getString(R.string.download_started) + ": " + name);
+                }
             });
         }
 
@@ -13428,9 +13486,14 @@ public class BrowserActivity extends AppCompatActivity {
         String name = names[Math.max(0, Math.min(names.length - 1, ei))];
         final com.bolt.browser.util.VisualSearch.Endpoint ep =
                 com.bolt.browser.util.VisualSearch.endpointFor(ei);
+        // v1.4.20 — the single-route toast: EVERY engine rides Google's
+        // search-by-image (the field-tested cookie/UA-continuity door); the
+        // toast names the route actually used, exactly as the approval
+        // asked, so a Bing/DDG/Brave pick never looks like it uploaded
+        // somewhere it did not.
         Fx.toast(this, ep.via == null
                 ? "Visual search: " + name
-                : "Via " + ep.via + " — " + name + " has no image upload");
+                : "Via " + ep.via + " — " + name + " image search rides Google");
         com.bolt.browser.util.VisualSearch.search(this, ei, imageFile, url -> {
             if (url != null) {
                 try { loadInTab(url); } catch (Throwable ignored) {}

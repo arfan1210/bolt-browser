@@ -29,8 +29,15 @@ android {
         // session continuity (cookie/UA jar law + Bing base href), the AI
         // chain law (custom models keep fallbacks, 5xx advances, 503
         // ladder), the session-aware external search (forward + widget).
-        versionCode 133
-        versionName "1.4.19"
+        // v1.4.20 (2026-11-20): the evidence-pack — the API-29 artwork
+        // cap (the media-notification process kill), the forced-dark icon
+        // + thickness floor, the translate thinking-off + tile road, the
+        // single-route image search (Google for every engine, the Bing SBI
+        // retired), the ask-every-time download door, the downloads.json
+        // payload drop, the official engine marks, the Markdown+LaTeX
+        // chat rendering.
+        versionCode 134
+        versionName "1.4.20"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand
@@ -135,6 +142,17 @@ dependencies {
     // flow (screenshot import + per-account export QR). Pure-Java core
     // module only — no camera, no Activity, ~500 KB.
     implementation 'com.google.zxing:core:3.5.3'
+    // v1.4.20: MARKDOWN IN BOLT AI — commonmark-java core + the GFM tables
+    // extension are the parser behind AiRender.kt (chat replies render as
+    // native Spanned, never a WebView). Pure Java, zero fonts, zero
+    // resources — ~130 KB of class files before R8 tree-shakes the
+    // untouched half. The LaTeX half is hand-rolled spans on the SYSTEM
+    // font (the 6 MB law's "no heavy bundled font packs" clause rules out
+    // jlatexmath-android's ~1.5 MB Latin Modern pack for a chat nicety).
+    // NOTE the artifact id: the tables extension rides the GFM module
+    // (commonmark-ext-gfm-tables — plain -ext-tables does not exist).
+    implementation 'org.commonmark:commonmark:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
     // v1.3.73: NO ML Kit — the bundled OCR models cost +20.9 MB of APK
     // (17.8 MB native .so across ARM ABIs + 3.5 MB model assets) and the
     // budget law is ≤ 6 MB. Translate screen now OCRs through tesseract.js

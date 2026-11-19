@@ -142,18 +142,18 @@ mh_code = strip_comments_strings(mh)
 ifb_code = strip_comments_strings(ifb)
 
 print("A — the version bump")
-need(re.search(r"versionCode 133\b", gradle) is not None,
-     "versionCode 133 (Android only installs RISING codes)")
-need(re.search(r'versionName "1\.4\.19"', gradle) is not None,
-     'versionName "1.4.19"')
+need(re.search(r"versionCode 134\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     "versionCode 134 (Android only installs RISING codes)")  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r'versionName "1\.4\.20"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     'versionName "1.4.20"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[0].startswith("1.4.19|"),
+need(entries and entries[1].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
      "the newest entry is 1.4.19 (the label law)")
-need(len(entries) > 1 and entries[1].startswith("1.4.18|"),
+need(len(entries) > 1 and entries[2].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
      "the second entry is 1.4.18 (the previous live release)")
 for word, why in (("incognito", "the crash-loop cure"),
                   ("error", "the offline overlay"),
@@ -164,7 +164,7 @@ for word, why in (("incognito", "the crash-loop cure"),
                   ("tooltip", "the icon-only tooltip law"),
                   ("password", "the vault add/edit"),
                   ("attachment", "the temporary AI attachments")):
-    need(word in entries[0] or word in entries[0].lower(),
+    need(word in entries[1] or word in entries[1].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
          f"the 1.4.19 line names {why}")
 
 print("C — fix 1: the suffix-first law (the root-caused crash loop)")
@@ -292,30 +292,36 @@ need("private fun visionBody(p: String, b64: String, think: Boolean, cap: Int): 
 need('"ai translate MAX_TOKENS at $cap, retrying higher"' in ab,
      "the ladder Diag breadcrumb (RAW source)")
 
-print("H — fix 6: the Bing real-origin intercept")
-need("private val intercepts =" in vs_code
-     and "ConcurrentHashMap<String, ByteArray>()" in vs_code,
-     "the armed-intercept map exists (thread-safe: shouldInterceptRequest is a binder thread)")
-need("internal fun shouldServeIntercept(isMainFrame: Boolean, method: String?," in vs_code,
-     "the hit decision is PURE (probe-pinned)")
-need("fun armIntercept(url: String, htmlBody: String): String {" in vs_code
-     and "fun takeIntercept(isMainFrame: Boolean, method: String?, requestUrl: String?): ByteArray?" in vs_code,
-     "arm + one-shot take exist")
-need("return armIntercept(ep.postUrl," in vs_code,
-     "the Bing 200 body is armed for the POST's own results URL (the REAL origin loads)")
-need("intercepts.remove(url)" in vs_code,
-     "the take is one-shot (a later visit to the same URL goes to the network)")
-need('"visual bing armed under real origin"' in vs,
-     "the arm Diag breadcrumb (RAW source)")
+print("H — fix 6: the Bing real-origin intercept (v1.4.20 re-point "
+      "2026-11-20: RETIRED with the Bing SBI upload path it served — the "
+      "835 KB real-origin shell still hung because its JS results runtime "
+      "needs the LIVE upload session; every engine now rides Google's "
+      "search-by-image 3xx, which needs no body carrier. The section pins "
+      "the RETIREMENT itself: no armed map, no take, no serve — dead doors "
+      "out, no green pins over retired code)")
+need("private val intercepts" not in vs_code
+     and "ConcurrentHashMap<String, ByteArray>()" not in vs_code,
+     "the armed-intercept map is GONE (nothing arms, nothing serves)")
+need("shouldServeIntercept" not in vs_code,
+     "the v1.4.19 hit-decision pure is GONE (its only caller was the take)")
+need("fun armIntercept" not in vs_code
+     and "fun takeIntercept" not in vs_code,
+     "arm + one-shot take are GONE")
+need("if (code == 200)" not in vs_code,
+     "the direct-200 body branch is GONE from the POST (Google's route "
+     "answers 3xx; anything else is an honest failure -> manual-upload home)")
+need('"visual bing armed under real origin"' not in vs,
+     "the arm Diag breadcrumb is GONE (nothing arms)")
 sir = ba[ba.find("public WebResourceResponse shouldInterceptRequest("):]
 sir = sir[:sir.find("public WebResourceResponse empty()")] if "public WebResourceResponse empty()" in sir else sir
-need("VisualSearch.takeIntercept(" in sir
-     and 'new WebResourceResponse("text/html", "utf-8",' in sir,
-     "BrowserClient serves the cached body for the armed main-document GET (RAW source)")
-need('"visual intercept served bytes="' in ba,
-     "the serve Diag breadcrumb (RAW source)")
-need("request.isForMainFrame()" in sir,
-     "the intercept serves MAIN documents only (subresources go to the network)")
+need("VisualSearch.takeIntercept(" not in sir
+     and "RETIRED with the Bing SBI upload path" in sir,
+     "BrowserClient's serve door is GONE and says so at the site (v1.4.20 "
+     "re-point: the retirement is documented where the door stood)")
+need('"visual intercept served bytes="' not in ba,
+     "the serve Diag breadcrumb is GONE (nothing serves)")
+need("https://lens.google.com/" in vs,
+     "the manual-upload fallback home is Google Lens for every engine now")
 # the v1418 session-continuity pins survive
 need("android.webkit.WebSettings.getDefaultUserAgent(c)" in vs_code
      and "cm.setCookie(url, cookie)" in vs_code
@@ -518,16 +524,10 @@ public class RootCureProbe {
         return 2;
     }
 
-    // ===== TRANSCRIPTION 7 — shouldServeIntercept (VisualSearch, v1.4.19,
-    // pure): main document + GET/HEAD + the exact armed URL.
-    static boolean shouldServeIntercept(boolean isMainFrame, String method,
-            String requestUrl, String armedUrl) {
-        if (!isMainFrame) return false;
-        if (method != null && !method.equalsIgnoreCase("GET")
-                && !method.equalsIgnoreCase("HEAD")) return false;
-        if (requestUrl == null || armedUrl == null) return false;
-        return requestUrl == armedUrl;
-    }
+    // ===== TRANSCRIPTION 7 — shouldServeIntercept — REMOVED (v1.4.20
+    // re-point 2026-11-20: the intercept it tested RETIRED with the Bing
+    // SBI upload path; a probe over retired code is a green pin over a
+    // dead door — the section-H file pins now pin the retirement itself).
 
     // ===== TRANSCRIPTION 8 — engineLogo (BrowserActivity, v1.4.19, pure —
     // resource ids transcribed as names; the static pin checks the ids).
@@ -631,19 +631,8 @@ public class RootCureProbe {
         check("a non-token parse failure fails with its own error",
                 translateCapAction(false, "STOP", 32768) == 2
                         && translateCapAction(false, "", 32768) == 2);
-        // --- 7: the intercept hit ---
-        String armed = "https://www.bing.com/images/search?view=detailv2&iss=sbi";
-        check("the armed main-document GET hits",
-                shouldServeIntercept(true, "GET", armed, armed));
-        check("a subresource GET for the same URL does NOT hit",
-                !shouldServeIntercept(false, "GET", armed, armed));
-        check("a POST for the same URL does NOT hit (the body-carrier law)",
-                !shouldServeIntercept(true, "POST", armed, armed));
-        check("a different URL does NOT hit",
-                !shouldServeIntercept(true, "GET", armed + "&x=1", armed));
-        check("null method / null url never hit",
-                !shouldServeIntercept(true, null, armed, armed)
-                        || shouldServeIntercept(true, null, armed, armed)); // null method allowed
+        // --- 7: the intercept hit — REMOVED (v1.4.20 re-point 2026-11-20:
+        // the door retired with the Bing SBI path; see the H section)
         // --- 8: the engine logos ---
         check("the five engines map to their marks",
                 engineLogo(0).equals("ic_engine_google")

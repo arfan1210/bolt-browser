@@ -12,80 +12,26 @@ import java.net.URL
 /**
  * v1.4.12 — OMNIBOX IMAGE SEARCH (the camera/gallery door).
  *
- * Routes a picture to the SELECTED engine's visual-search endpoint. The
- * built-in engine list (R.array.search_engine_names) is the index space:
- *
- *   0 Google      -> Google's classic search-by-image POST (field
- *                    "encoded_image"), which 302s to a stable results URL.
- *   1 DuckDuckGo  -> has NO public reverse-image upload of its own; DDG's
- *                    image index is Bing-sourced, so the picture rides
- *                    Bing's visual search (field "imageBin").
- *   2 Bing        -> Bing visual search POST (field "imageBin").
- *   3 Brave       -> no public upload endpoint either; Bing as well.
- *   4 Startpage   -> serves Google results; the Google endpoint it is.
+ * v1.4.20 — THE SINGLE ROUTE (user-approved): EVERY engine's image
+ * search rides Google's search-by-image POST — the one door the field
+ * has never broken (its v1.4.18 cookie/UA-continuity path answers
+ * reliably). Bing's SBI upload is RETIRED: even served under its real
+ * origin (the v1.4.19 intercept) the 835 KB HTML shell hung — its JS
+ * results runtime needs the LIVE upload session the static shell lacks,
+ * and Bing mobile visual search is a dead end that way; DDG and Brave
+ * never had an upload of their own (they rode Bing's). The intercept
+ * machinery went WITH the path that armed it — no dead doors, no green
+ * pins over retired code. Engines other than Google name the route in
+ * the toast (Endpoint.via).
  *
  * The upload is a hand-rolled multipart/form-data POST on
  * HttpURLConnection (no extra dependency): Java does not auto-follow a
- * POST's 3xx, so the redirect is read manually and re-GET; a direct 200
- * (Bing's shape) is served back UNDER ITS REAL ORIGIN via the v1.4.19
- * intercept (shouldInterceptRequest answers the main-document GET with
- * the cached body — see [armIntercept]). Both paths end in a URL
- * loadInTab() can render. On network failure the caller gets null and
- * falls back to the engine's visual-search HOME page (manual upload there).
+ * POST's 3xx, so the redirect is read manually and re-GET'd to the
+ * final stable results URL — a shape the WebView renders directly. On
+ * network failure the caller gets null and falls back to the manual
+ * upload home (https://lens.google.com/).
  */
 object VisualSearch {
-
-    /** v1.4.19 — THE BING INTERCEPT (the "Bing image search still fails"
-     *  report, root-caused): Bing's 200 results body was saved as a file://
-     *  page with a <base href> — static resources loaded, but Bing's results
-     *  are JS-DRIVEN: the scripts XHR/fetch and read document.cookie from a
-     *  file:// (opaque) origin, CORS blocks them, and the results runtime
-     *  never runs. The body is now served UNDER THE REAL bing.com ORIGIN:
-     *  the WebView loads the real results URL and BrowserClient's
-     *  shouldInterceptRequest returns this cached body for that ONE
-     *  main-document request — origin, cookies (the v1.4.18 pump) and XHR
-     *  all match, subresources load from the network. One-shot: the entry
-     *  is CONSUMED on the first main-frame hit, so a later normal visit to
-     *  the same URL goes to the network. */
-    private val intercepts =
-            java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
-
-    /** arm the cached body for a results URL; returns the SAME url (the
-     *  caller loads it — the intercept serves the body). */
-    @JvmStatic
-    fun armIntercept(url: String, htmlBody: String): String {
-        try {
-            intercepts[url] = htmlBody.toByteArray(Charsets.UTF_8)
-        } catch (_: Throwable) {}
-        return url
-    }
-
-    /** v1.4.19 — PURE (probe-pinned): does a WebView request hit the armed
-     *  intercept? Main documents only (a subresource GET for the same URL
-     *  must go to the network), GET/HEAD only (the body-carrier law), and
-     *  the exact armed URL. */
-    internal fun shouldServeIntercept(isMainFrame: Boolean, method: String?,
-            requestUrl: String?, armedUrl: String?): Boolean {
-        if (!isMainFrame) return false
-        if (method != null && !method.equals("GET", ignoreCase = true)
-                && !method.equals("HEAD", ignoreCase = true)) return false
-        if (requestUrl == null || armedUrl == null) return false
-        return requestUrl == armedUrl
-    }
-
-    /** the one-shot take: the cached body when this request hits the armed
-     *  intercept (and the entry is consumed), else null. */
-    @JvmStatic
-    fun takeIntercept(isMainFrame: Boolean, method: String?, requestUrl: String?): ByteArray? {
-        if (requestUrl == null) return null
-        for ((url, body) in intercepts) {
-            if (shouldServeIntercept(isMainFrame, method, requestUrl, url)) {
-                intercepts.remove(url)
-                return body
-            }
-        }
-        return null
-    }
 
     /** result callback (a fun-interface so Java call sites can lambda it;
      *  Kotlin's (String?) -> Unit boxes its return and breaks Java lambdas) */
@@ -93,21 +39,22 @@ object VisualSearch {
 
     class Endpoint(@JvmField val postUrl: String, @JvmField val field: String,
             @JvmField val via: String?) {
-        /** the engine's visual-search landing page (manual-upload fallback) */
-        @JvmField val home: String = if (field == "encoded_image")
-            "https://lens.google.com/" else "https://www.bing.com/images?q=&tsc=ImageBasicUpload"
+        /** the manual-upload fallback home (the single route is Google's) */
+        @JvmField val home: String = "https://lens.google.com/"
     }
 
-    /** engine index (R.array.search_engine_names order) -> endpoint */
+    /** v1.4.20 — THE SINGLE-ROUTE RESOLVER (user-approved, PURE — probe-
+     *  pinned in scripts/test_v1420.py): EVERY engine index (Google,
+     * DuckDuckGo, Bing, Brave, Startpage, and any future slot) resolves to
+     * Google's search-by-image POST. The Bing SBI upload path (and the
+     * DDG/Brave -> Bing fallback) is RETIRED — its 200-body shell hangs
+     * even under the real origin (see the header). via names the route in
+     * the toast for every engine but Google itself. */
     @JvmStatic
-    fun endpointFor(engineIdx: Int): Endpoint = when (engineIdx) {
-        0, 4 -> Endpoint("https://www.google.com/searchbyimage/upload",
-                "encoded_image", if (engineIdx == 4) "Google" else null)
-        2 -> Endpoint("https://www.bing.com/images/search?view=detailv2&iss=sbi&form=SBIVPV",
-                "imageBin", null)
-        else -> Endpoint("https://www.bing.com/images/search?view=detailv2&iss=sbi&form=SBIVPV",
-                "imageBin", "Bing")   // DDG (1) and Brave (3)
-    }
+    fun endpointFor(engineIdx: Int): Endpoint = Endpoint(
+            "https://www.google.com/searchbyimage/upload",
+            "encoded_image",
+            if (engineIdx == 0) null else "Google")
 
     /**
      * Downscale + JPEG the picked picture and POST it, handing the loadable
@@ -210,10 +157,10 @@ object VisualSearch {
     /**
      * The multipart POST. Returns the URL to load:
      *   - 3xx: the Location target (re-GET'd with redirects followed to the
-     *     final stable URL — Google's shape);
-     *   - 200: the response body is the results page itself (Bing's shape)
-     *     — saved to cache and returned as a file:// URL.
+     *     final stable URL — Google's shape, the single route since v1.4.20);
      *   - anything else / IOException: null (caller falls back to home).
+     *     (v1.4.20: the direct-200 Bing body shape is retired with its
+     *     upload path — see the header note.)
      *
      * v1.4.18 — THE SESSION-CONTINUITY LAW (the "grey/broken image
      * results" report, Google route). The upload used to ride a bare
@@ -269,28 +216,10 @@ object VisualSearch {
                 }
                 return follow(loc, ua)
             }
-            if (code == 200) {
-                pumpSetCookies(conn)
-                val body = conn.inputStream.use { it.readBytes() }
-                if (body.isEmpty()) return null
-                // v1.4.19 — THE REAL-ORIGIN DOOR (see the intercept map
-                // above): the body is armed for the POST's own results URL
-                // and THAT URL is what loads in the tab — the WebView's
-                // main-document request is intercepted and answered with
-                // this body, so the page runs on https://www.bing.com with
-                // the pumped cookies and its XHR/fetch results runtime
-                // alive (a file:// origin could never run it — CORS saw an
-                // opaque origin and every results call died). The v1.4.18
-                // base href stays on the served body: it is now redundant
-                // (the base matches the real origin) but harmless, and it
-                // keeps the v1418 pin honest for any cached file:// page.
-                try {
-                    com.bolt.browser.util.Diag.log(c,
-                            "visual bing armed under real origin")
-                } catch (_: Throwable) {}
-                return armIntercept(ep.postUrl,
-                        ensureBaseHref(String(body, Charsets.UTF_8), "https://www.bing.com/"))
-            }
+            // v1.4.20 — the direct-200 branch is RETIRED with the Bing path
+            // (it existed for Bing's 200-body shape alone; Google's route
+            // always answers 3xx — see the header note). Anything else is a
+            // failure and the caller falls back to the manual-upload home.
             return null
         } finally {
             conn.disconnect()
@@ -334,27 +263,6 @@ object VisualSearch {
                 }
             }
         } catch (_: Throwable) {}
-    }
-
-    /** v1.4.18 — inject a <base href> into a saved-page body (PURE,
-     *  probe-pinned per the v1.4.11 parse-gate law). Bing's 200-body
-     *  results page is saved as a local file:// page, but its HTML
-     *  carries RELATIVE resource URLs (//www.bing.com/…, /fd/ls/…);
-     *  against a file:// base they resolve into the local directory
-     *  and every image and stylesheet dies. Inserted after <head…> when
-     *  the tag exists (both cases), prepended otherwise; idempotent when
-     *  the page already carries the same base. */
-    internal fun ensureBaseHref(html: String, base: String): String {
-        val tag = "<base href=\"$base\">"
-        if (html.contains(tag)) return html
-        val hi = html.indexOf("<head", ignoreCase = true)
-        if (hi >= 0) {
-            val gt = html.indexOf('>', hi)
-            if (gt >= 0) {
-                return html.substring(0, gt + 1) + tag + html.substring(gt + 1)
-            }
-        }
-        return tag + html
     }
 
     /** GET a redirect target following further 3xx to the final URL.

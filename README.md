@@ -1169,50 +1169,175 @@ relay, 2026-11-19):
     law undercounted). Suite: 69/69 release-pipeline check commands
     green (43 version gates + node checks + sim probes).
 
-**Known-good numbers** (v1.4.19, release build): APK
-2,780,582 B (budget 6,000,000; v1.4.18 was 2,769,465 — the ten-pack
-cost 11,117 B, mostly the five engine-logo vectors); signature
-verifies (v2 scheme) against the pinned cert; suite: all 69
-release-pipeline gate commands green (the new v1419 gate among them —
-its compiled probe runs transcriptions of the suffix-first ordering,
-the data: guard, the intent fallback, dragJoinVerdict, the stroke
-clamp, translateCapAction, shouldServeIntercept, engineLogo,
-tooltipFor and attachCountAfter);
+**v1.4.20 — the evidence-pack** (the fourteenth session of this relay,
+2026-11-20):
+
+1. *The async-crash law.* The API-29 media-notification kill arrived
+   with diag.log evidence: `RemoteServiceException: Bad notification
+   ... Couldn't inflate contentViews ... region must intersect with the
+   Bitmap's dimensions`, posted by the system ASYNC — uncatchable at
+   notify(), so the guards that "wrap the post" were never in the path.
+   The v1.3.22/27 fresh-copy + 1px-shrink guards REDUCED but did not
+   eliminate the OEM artwork-crop failure; v1.4.19's phoenix null-guard
+   touched a different corpse entirely. The cure is pre-emptive:
+   EVERY artwork leaving MediaControlService on API <= 29 is capped
+   (api29ArtCap — <=256 px, a 48 px margin below the device's fatal
+   1/6-screen sizes, because a 1 px miss is still a near-fatal size),
+   validated (non-recycled, positive dims, ARGB_8888), and the moment
+   anything cannot be guaranteed the artwork is DROPPED — text-only
+   beats an app kill. Learning: an exception the system posts back
+   asynchronously can only be prevented, never caught — and a guard
+   that narrows the failure window is not a cure, it is a slower
+   crash. (Corollary: the sandbox's recycled SDK platform dir lost
+   android.jar and AGP answered with the anonymous "provider has no
+   value available" — environmental corpses can wear gate-clothes;
+   verify the toolchain before blaming the code.)
+2. *The media-family carve-out had a hole (forced dark, round 2).*
+   isMedia() included SVG, so every small UI icon (hamburgers,
+   chevrons) was BOTH skipped by the parity walk AND un-inverted by the
+   CSS media rule — a dark glyph on the now-black ground, invisible.
+   The classifier (uiIcon: <=64 px longest edge) now splits UI icons
+   from content SVGs; UI icons get .__boltIC (filter:none — they ride
+   the page inversion) plus a stroke/fill floor for the light-glyph
+   case, and the THICKNESS bump (bumpW: <1.5 px low-contrast strokes
+   -> 2 px) covers borders, svg strokes and icon-font glyphs; bounded
+   generated rules cover self-colored pseudo-glyphs. Everything rides
+   the same walk + budgets; darkClearJs restores the five new inline
+   writes exactly and strips the class. Learning: a "media family" is
+   a heuristic with edges — when a family is EXEMPT from a fix, ask
+   which members of the family the exemption was never about.
+3. *The thinking raid (AI translate).* The ~3 s "cut off" was never a
+   32768-token generation — it was thinkingLevel "minimal" still
+   thinking (and the no-config retry thinking FULLY on models that
+   reject the field), raiding maxOutputTokens so the visible JSON
+   truncated mid-array. Translate now sends thinkingBudget 0 (the hard
+   off); usageDiag (finishReason + thoughts vs candidates + length)
+   rides every attempt as the evidence line; parseBoxes gained the
+   LENIENT SALVAGE (one malformed box costs one box, not the screen —
+   balanced-brace scan, string-aware); and the 65536 rung hands the
+   CALLER the tile contract (shouldTile — the error string IS the
+   contract): ScreenTranslate splits 2x2, re-places (tilePlace) and
+   seam-dedups (iou > 0.6). Learning: when a failure is too FAST for
+   its explanation, the budget is being spent somewhere the reply does
+   not show — and read the envelope's OWN accounting
+   (usageMetadata) before inventing a heuristic.
+4. *The single route (image search, user-approved).* The v1.4.19
+   real-origin intercept fired and served the full 835 KB Bing body —
+   and the page still hung: the shell's JS results runtime needs the
+   LIVE upload session the static shell lacks. Retired: the Bing SBI
+   upload path, the DDG/Brave -> Bing fallback, AND the intercept
+   machinery that served it — every engine now rides Google's
+   search-by-image 3xx (the cookie/UA-continuity path that has never
+   broken in the field), with a toast naming the route. Learning:
+   when a cure keeps needing one more layer (file:// -> base href ->
+   real origin -> ...), the honest question is whether the DOOR was
+   ever viable — and retiring code takes its PINS with it (six gates
+   re-pointed with dated notes; a green pin over a dead door is the
+   meta-law's exact lie).
+5. *The ask-every-time door (downloads, user-approved, default ASK).*
+   Since v1.4.16 every blob: download (Google images, AI saves — every
+   download in the field logs) bypassed the rename + destination
+   dialog through the JS bridge. The toggle now gates every door —
+   and the design lesson is the DELIVERY BRIDGE: the first draft
+   added a second bridge (dlOfferBlob) beside gmSaveBlob and the
+   blobdl gate's literal reconstruction broke on the if/else; the
+   shipped shape keeps ONE bridge (the v1.3.58 contract, untouched
+   chain) and consults the pref JAVA-SIDE inside gmSaveBlob. One
+   delivery contract, two doors, zero divergence between rescue
+   callers. Learning: prefer widening an existing contract's
+   behavior over adding a parallel surface — gates that reconstruct
+   payloads are canaries for contract sprawl.
+6. *The 12 MB downloads.json (root-caused).* saveDataUrl parked the
+   FULL base64 payload in item.url and toJson wrote it out — ~1.1 MB
+   per saved image. persistUrl caps DONE items to a short marker;
+   non-done items keep their bytes (revive/retry decode them — the
+   first draft capped toJson unconditionally and would have broken
+   every revived data: download); load() trims the historical bloat
+   once. Learning: an object that carries its own INPUT after the
+   work is done is a persistence bomb — persisted state should hold
+   what the NEXT run needs, nothing more.
+7. *The official marks.* The v1.4.19 engine logos were hand-authored
+   approximations; the simple-icons (CC0) outlines now carry
+   DuckDuckGo (#DE5833), Brave (#FB542B) and Startpage (#6563FF, per
+   the simple-icons brand table — the approximation had #5B6EE8);
+   Bing rides bing.com's own Fluent mark in the brand teal (Bing is
+   NOT in simple-icons). Note for the next session: the tables
+   extension artifact is commonmark-ext-gfm-TABLES and its 0.24.0
+   package is org.commonmark.ext.gfm.tables — plain -ext-tables does
+   not exist, and 404s from mirrors look identical to missing
+   artifacts.
+8. *Markdown + LaTeX, natively (Bolt AI).* Assistant replies render
+   through commonmark-java core + GFM tables (~130 KB pre-R8, zero
+   fonts) into Spanned — the chat stays TextViews, never a WebView;
+   the LaTeX half is hand-rolled spans on the SYSTEM font (the 6 MB
+   law's "no heavy bundled font packs" clause rules out
+   jlatexmath-android's ~1.5 MB pack; unrecognized LaTeX renders
+   verbatim). codeProtect holds math out as private-use placeholders
+   so `x_i * y` never becomes italic, with fences and inline code
+   masked first; the bubble's tag carries the RAW text so long-press
+   copy never yields rendered glyphs. Learning: a rendering layer
+   must never own the text it renders — the source outlives the
+   presentation (the loadData corpse of v1.4.19, one layer up).
+9. *The standing sweep, v1.4.20 edition.* 40 prior version gates
+   re-pinned 134/1.4.20 with dated notes (workspace
+   scripts/repin_gates_1420.py — single-run, idempotent, second run
+   reported ZERO); 56 About-changelog position pins slid one slot
+   down; SIX hand re-points where this release legitimately moved
+   pinned forms: test_v1412 (the Bing endpoint pins re-pointed at the
+   single-route retirement), test_v1416 (the blob-order pin re-pointed
+   at the 5-arg dialog call — the ask door), test_v1418 (the pump
+   count 5 -> 4 with the retired 200-branch; ensureBaseHref pins
+   re-pointed at its retirement), test_v1419 (section H pins the
+   RETIREMENT — no armed map, no take, no serve; transcription 7
+   REMOVED from the B-probe: a probe over retired code is a green
+   pin over a dead door), test_blobdl (the interface-count note: the
+   ask door deliberately added NO bridge), test_screen (parseBoxes
+   onto the txt local). Suite: 72/72 release-pipeline check commands
+   green (61 python gates + 11 node/js gates).
+
+**Known-good numbers** (v1.4.20, release build): APK
+2,826,337 B (budget 6,000,000; v1.4.19 was 2,780,582 — the evidence-pack
+cost 45,755 B, all of it the commonmark-java parser + GFM tables after
+R8 tree-shaking); signature verifies (v2 scheme) against the pinned cert;
+suite: all 72 release-pipeline gate commands green (the new v1420 gate
+among them — its compiled probe runs transcriptions of api29ArtCap,
+uiIcon + bumpW, usageDiag + shouldTile + salvageObjects, dlDialogRoute +
+persistUrl, tilePlace + iou, and codeProtect + texMap + fracFlat +
+renderTable);
 filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
 **Plans / candidates for future versions:**
-- The engine-chip logo (v1.4.19) could mirror on the toolbar URL-bar
-  glyph and the home search widget — both are one-setImageUrl calls
-  away from engineLogo(); the widget rebuild is the bigger half.
-- The Startpage chip mark is a simplified blue magnifier tile — the
-  exact brand vector is ONE drawable (ic_engine_startpage) to re-point
-  the day a faithful path is verified offline.
-- If a field report ever names a translate screen dense enough to
-  overflow even the 65536 rung, the next rung is TILING (split the
-  capture into regions, merge the boxes) — the finishReason→action
-  function is the single place to grow it.
-- The AI attachment door is browser-faces only by design (the pick
-  result routes through BrowserActivity.onActivityResult); a settings
-  surface could host its own ActivityResultLauncher if a report asks.
+- The translate tile road ships at 2x2; if a field report ever names a
+  screen dense enough to overflow a QUADRANT, the next rung is per-tile
+  recursion (tile the failing tile) — translateTiled is the single
+  place to grow it, and the usageDiag line will say which rung fired.
+- The forced-dark pseudo floor is bounded at 150 generated rules; a
+  page with more self-colored glyph icons than that keeps its extras
+  un-floored — raise the cap only on a field report (the budget laws
+  exist to keep the walk off the jank cliff).
+- The ask-every-time door could grow a "remember for this site" row
+  in the dialog (per-host pref beside the global toggle) if the
+  dialogs ever read as friction — the router is one function.
+- AiRender's LaTeX subset covers the common chat shapes (greek,
+  operators, frac, sqrt, sub/sup, text); matricies, cases and
+  align environments render verbatim by design — grow texMap, never
+  the font pack, and keep the raw-text fallback the honest floor.
+- (carried) The engine-chip logo (v1.4.19) could still mirror on the
+  toolbar URL-bar glyph and the home search widget — both are one
+  setImageUrl call away from engineLogo(); the widget rebuild is the
+  bigger half.
 - (carried) ACTION_VIEW links from other apps still resolve into
   whichever face the OS picked (only the SEARCH doors are
   session-aware); the forward in `forwardToIncognitoIfLast` can grow a
   VIEW branch — the session record already knows the answer.
-- (carried) The AI chain's fallback toast ("AI fell back to…") may
-  prove noisy; a Settings toggle is the honest cut — the logcat/Diag
-  channel stays regardless (it is the evidence channel).
 - (carried) v1.4.13's NetSuggest endpoints are best-knowledge URLs;
   a dead endpoint degrades to no rows by design, and the map is ONE
   function (NetSuggest.endpointFor) to re-point.
 - (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
   candidate (deferred since v1.4.11; the in-app updater exists, but the
   APK baseline drifts).
-- (carried) v1.4.12's VisualSearch rides Google's classic
-  search-by-image POST and Bing's SBI — undocumented endpoints that
-  can move; the fallback ladder (engine home page) keeps the door
-  usable, and endpointFor is ONE function to re-point.
 - (carried) The compound single-call sequences on tm.tabs remain
   outside the monitor law (individually-atomic reads; sweep only if a
   field report ever names one).

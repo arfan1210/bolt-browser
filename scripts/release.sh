@@ -518,6 +518,13 @@ python3 scripts/test_v1418.py
 # tooltip law, the vault add/edit door, the temporary AI attachments)
 python3 scripts/test_v1419.py
 
+# v1.4.20 gate: the evidence-pack (the API-29 artwork cap, the forced-dark
+# icon + thickness floor, the translate thinking-off + salvage + tile road,
+# the single-route image search, the ask-every-time download door, the
+# downloads.json payload drop, the official engine marks, the Markdown +
+# LaTeX chat rendering)
+python3 scripts/test_v1420.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment
