@@ -5573,6 +5573,7 @@ public class BrowserActivity extends AppCompatActivity {
         // it. Returning to a genuinely slept tab still restores history:
         // that path never assigns a fresh t.url.
         t.clearHist();
+        String host = Fx.hostOf(url);
         t.applyUa(this, t.web);
         if (t.web == null) {
             showTab(tm.active); // builds web and loads
