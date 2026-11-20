@@ -279,6 +279,21 @@ public class Prefs {
     public boolean downloadAsk() { return b("downloadAsk", true); }
     public void setDownloadAsk(boolean v) { set("downloadAsk", v); }
 
+    /** v1.4.21 — SHOW MEDIA ARTWORK (the media-notification artwork gate).
+     *  DEFAULT: OFF on API <= 29, ON above (artworkDefaultOn mirrors this
+     *  in the probe). The Android-10 SystemUI artwork-recycle family killed
+     *  the user's process three times (v1.3.22 guard, v1.3.27 fresh copy +
+     *  1px shrink, v1.4.20 size cap — each reduced, none cured); the OFF
+     *  default is the only shape that CANNOT crash (no bitmap leaves the
+     *  process). Opting in accepts the risk knowingly on the per-channel
+     *  fresh-copy + capped path. Read by MediaControlService (any process).
+     */
+    public boolean mediaArtwork() {
+        return b("mediaArtwork", com.bolt.browser.media.MediaControlService
+                .artworkDefaultOn(android.os.Build.VERSION.SDK_INT));
+    }
+    public void setMediaArtwork(boolean v) { set("mediaArtwork", v); }
+
     // SEPARATE SAF folder for saved offline pages ("saved pages") — kept
     // independent from the downloads folder on purpose (user request): ""
     // means the in-app offline dir, which is what the Saved pages list reads.

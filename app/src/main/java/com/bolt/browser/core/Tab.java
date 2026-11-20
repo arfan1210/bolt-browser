@@ -108,6 +108,28 @@ public class Tab {
     // BoltClient.onPageFinished hands the reading position back (TabSleep).
     public boolean sleeping = false;
     public int sleepScrollY = 0;
+    /** v1.4.21 — BACK-HISTORY SURVIVAL (the TabSleep corpse: "back history
+     *  lost after tab/app switch"). sleep() destroyed the WebView keeping
+     *  only sleepScrollY; the rebuilt view loaded t.url with an EMPTY
+     *  back/forward list, so Back fell out of the tab to the home screen —
+     *  and the device's trimMemory level=15 on every app switch made every
+     *  background tab sleep constantly. sleepState is the WebView's own
+     *  saveState() Bundle captured at destroy time (the WARM path: same
+     *  process, same provider, restoreState is exact — it restores the
+     *  back/forward list AND the current item AND the scroll). */
+    public Bundle sleepState = null;
+    /** v1.4.21 — the COLD path: the same Bundle parcel-marshalled to
+     *  Base64 and persisted in tabs.json ("hist"), capped at
+     *  HIST_BLOB_CAP chars (a fat history degrades to loadUrl, never to a
+     *  fat tabs.json — the downloads.json lesson). A blob written by an
+     *  older WebView provider makes restoreState return null and the tab
+     *  falls back to t.url exactly as before. Runtime-only in incognito
+     *  (TabManager.save never persists incognito tabs). */
+    public String histBlob = null;
+    /** v1.4.21 — the persistence cap for one tab's history blob. 128 KB
+     *  of Base64 covers deep histories (dozens of entries ≈ a few KB
+     *  compressed); beyond it the tab keeps today's behavior. */
+    static final int HIST_BLOB_CAP = 131072;
     /** v1.3.40 — TAB SEARCH BY PAGE CONTENT (round-4 #7): a transient slice
      *  of the page's visible text (≤4000 chars, captured in onPageFinished).
      *  Deliberately NOT persisted — it is a search aid, not history; and it
@@ -161,6 +183,96 @@ public class Tab {
      *  tab's identity (an anchor must never point at the wrong row). */
     public static void bumpTidSeq(long restoredMax) {
         TID_SEQ.updateAndGet(v -> Math.max(v, restoredMax));
+    }
+
+    /** v1.4.21 — capture the WebView's navigation state for survival.
+     *  Call on EVERY path that destroys (or is about to lose) a tab's
+     *  WebView, BEFORE the destroy (a destroyed view cannot save). Also
+     *  refreshes histBlob so the next tabs.json write carries a FRESH
+     *  history (the save path calls this for awake tabs too — main thread
+     *  only). Never throws; an empty capture (dead renderer, unloaded
+     *  view) keeps whatever older state the tab already holds. */
+    public void saveHist(WebView w) {
+        if (w == null) return;
+        try {
+            Bundle st = new Bundle();
+            w.saveState(st);
+            if (st.isEmpty()) return;
+            sleepState = st;
+            String blob = histToBlob(st);
+            if (blob != null) histBlob = blob;
+        } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.21 — restore the captured state into a FRESH WebView (the
+     *  rebuild half of the survival law). Returns true when the
+     *  back/forward list came back (the current item navigates itself —
+     *  do NOT loadUrl on top); false = fall back to loadUrl(t.url). The
+     *  warm Bundle is preferred; a cold start rebuilds it from histBlob. */
+    public boolean restoreHist(WebView w) {
+        if (w == null) return false;
+        try {
+            Bundle st = sleepState != null ? sleepState : blobToHist(histBlob);
+            if (st == null) return false;
+            android.webkit.WebBackForwardList l = w.restoreState(st);
+            return l != null && l.getSize() > 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** v1.4.21 — the number of back/forward entries a restore would bring
+     *  back (0 when nothing is held). The Diag line on the rebuild path
+     *  names the door that actually opened. */
+    public int histSize() {
+        try {
+            if (sleepState != null) return 1;   // opaque Bundle — non-empty counts
+        } catch (Throwable ignored) {}
+        return histBlob == null ? 0 : 1;
+    }
+
+    /** v1.4.21 — Bundle -> Base64 parcel blob (null when empty/oversize).
+     *  The blob is opaque to us — WebView's own versioned serialization,
+     *  the same bytes the system round-trips for instance-state saves
+     *  across process death. The cap is on the BASE64 STRING (the thing
+     *  tabs.json carries): raw bytes are pre-capped at 3/4 of it. */
+    public static String histToBlob(Bundle st) {
+        if (st == null) return null;
+        try {
+            android.os.Parcel p = android.os.Parcel.obtain();
+            try {
+                st.writeToParcel(p, 0);
+                byte[] raw = p.marshall();
+                if (raw == null || raw.length == 0) return null;
+                if (raw.length > (HIST_BLOB_CAP * 3) / 4) return null;   // the cap law
+                return android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP);
+            } finally {
+                p.recycle();
+            }
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.21 — Base64 parcel blob -> Bundle (null when undecodable —
+     *  a stale/mismatched blob degrades to loadUrl, never to a crash). */
+    public static Bundle blobToHist(String blob) {
+        if (blob == null || blob.isEmpty() || blob.length() > HIST_BLOB_CAP) return null;
+        try {
+            byte[] raw = android.util.Base64.decode(blob, android.util.Base64.NO_WRAP);
+            android.os.Parcel p = android.os.Parcel.obtain();
+            try {
+                p.unmarshall(raw, 0, raw.length);
+                p.setDataPosition(0);
+                Bundle b = new Bundle();
+                b.readFromParcel(p);
+                return b.isEmpty() ? null : b;
+            } finally {
+                p.recycle();
+            }
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     public WebView buildWeb(Context c, WebViewClient vc, WebChromeClient cc,
@@ -661,6 +773,15 @@ public class Tab {
                     && dlFromUrl.length() > 0 && url != null && dlUrl.equals(url)) {
                 o.put("dlu", dlUrl);
                 o.put("dlf", dlFromUrl);
+            }
+            // v1.4.21 — BACK-HISTORY SURVIVAL: the capped saveState blob rides
+            // tabs.json so a COLD start restores the back/forward list too
+            // (the warm sleepState Bundle dies with the process). Refreshed
+            // by TabManager.save for awake tabs (main thread) and at every
+            // destroy path for sleeping ones; absent = the loadUrl fallback
+            // exactly as before.
+            if (histBlob != null && histBlob.length() <= HIST_BLOB_CAP) {
+                o.put("hist", histBlob);
             }
             return o;
         } catch (Throwable e) {

@@ -406,6 +406,23 @@ public class MediaControlService extends Service {
 
     public static boolean isRunning() { return instance != null; }
 
+    /** v1.4.21 — settings hook: the Show-media-artwork toggle flipped;
+     *  re-publish NOW so the notification adopts (or drops) its artwork on
+     *  the spot instead of waiting for the next title/state beat. No-op
+     *  when the service is not running (the pref is read fresh at every
+     *  publish anyway). */
+    public static void requestPublish(Context c) {
+        MediaControlService s = instance;
+        if (s != null) s.ui.post(() -> {
+            try {
+                // the artwork presence itself is the visible change — age
+                // the art bookkeeping so notifyUi's repost gate fires
+                s.lastNotifArtGen = -1;
+                s.notifyUi();
+            } catch (Throwable ignored) {}
+        });
+    }
+
     public static boolean isPlaying() {
         MediaControlService s = instance;
         return s != null && s.playing;
@@ -1193,6 +1210,12 @@ public class MediaControlService extends Service {
                 // FRESH COPY per post goes to the large icon (per-post parcel
                 // copy = safe channel on every version) and another to the
                 // session metadata (below) — see artCopy().
+                // v1.4.21: THE THREE-CHANNEL LAW — largeIcon, METADATA_KEY_ART
+                // and METADATA_KEY_ALBUM_ART each take their OWN artCopy()
+                // (three independent instances per publish). Sharing one
+                // instance across the two metadata keys was the v1.4.20
+                // crash's true shape: SystemUI recycles one processed
+                // bitmap and the twin key then parcels a RECYCLED bitmap.
                 .setLargeIcon(artCopy())
                 // swiping the (paused) notification dismisses it and pauses media
                 .setDeleteIntent(dismissPi())
@@ -1285,8 +1308,19 @@ public class MediaControlService extends Service {
      *  builder large icon alone shows nothing there).
      *  v1.4.20: on API <= 29 the copy also rides the artwork CAP — see
      *  api29ArtCap(); a copy that cannot be made safe returns null and the
-     *  notification goes out TEXT-ONLY (no artwork beats an app kill). */
+     *  notification goes out TEXT-ONLY (no artwork beats an app kill).
+     *  v1.4.21 — THE GUARANTEED LEG: on API <= 29 artwork leaves this
+     *  service AT ALL only when the user opted in (the Show media artwork
+     *  setting, default OFF there — three artwork fixes failed to stop the
+     *  process kills: the shared-instance recycle root-caused this round
+     *  rides the per-channel copies, and the OFF default guarantees the
+     *  user's device). Suppression logs once per artwork generation so the
+     *  next diag.log names the door. */
     private Bitmap artCopy() {
+        if (!artworkAllowed()) {
+            if (safeArt() != null) logArtSuppressed();
+            return null;
+        }
         Bitmap b = safeArt();
         if (b == null) return null;
         try {
@@ -1296,6 +1330,39 @@ public class MediaControlService extends Service {
             return null;
         }
     }
+
+    /** v1.4.21 — the artwork master-switch resolver. PURE in its inputs
+     *  (pref, API level): the default is OFF on API <= 29 (the SystemUI
+     *  artwork-recycle family lives there — the user's Android 10 died
+     *  three times over it) and ON above. A user who opts in accepts the
+     *  risk knowingly; the per-channel fresh copies (v1.4.21) + the size
+     *  cap (v1.4.20) keep even that path as guarded as it can be. */
+    public static boolean artworkDefaultOn(int sdkInt) { return sdkInt >= 30; }
+
+    /** v1.4.21 — is ANY artwork allowed to leave the service right now? */
+    private boolean artworkAllowed() {
+        try {
+            return com.bolt.browser.util.Prefs.get(this).mediaArtwork();
+        } catch (Throwable t) {
+            return artworkDefaultOn(android.os.Build.VERSION.SDK_INT);
+        }
+    }
+
+    /** v1.4.21 — the suppression breadcrumb: artwork EXISTS but the API-29
+     *  gate holds it back. Once per artwork generation (the rate the
+     *  60-second diag cadence tolerates — a per-publish line would spam the
+     *  1 Hz state beats). */
+    private void logArtSuppressed() {
+        try {
+            long gen = artGen;
+            if (gen == lastArtSuppressedGen) return;
+            lastArtSuppressedGen = gen;
+            com.bolt.browser.util.Diag.log(this,
+                    "art suppressed api<=29 gen=" + gen + " (settings: media artwork)");
+        } catch (Throwable ignored) {}
+    }
+
+    private long lastArtSuppressedGen = -1;
 
     /**
      * v1.4.20 — the API<=29 artwork cap (the crash that survived the 1px
@@ -1616,11 +1683,24 @@ n     *  single background thread (8 s timeouts, ≤4 MB, downsampled to ≤512 
                 // decode-time 1px shrink keeps the SysUI-fatal 1/6-screen sizes
                 // closed (avoidApi29SysUiSize, Google's own fix mirrored), and
                 // safeArt() still drops any master that somehow got recycled.
+                // v1.4.21 — THE SHARED-INSTANCE KILL (root-caused from the
+                // v1.4.20 diag.log): the OLD shape parked the SAME artCopy()
+                // instance into BOTH METADATA_KEY_ART and METADATA_KEY_ALBUM_
+                // ART. API-29 SystemUI recycles one processed bitmap; the
+                // other key then holds a RECYCLED bitmap and the next
+                // notification inflation throws "The given region must
+                // intersect with the Bitmap's dimensions" — the async
+                // RemoteServiceException that killed the process. Every
+                // artwork channel now takes its OWN fresh copy (three
+                // independent instances per publish — see build() for the
+                // large icon) so no channel can ever hold what another was
+                // handed. And per artworkAllowed(): on API <= 29 the whole
+                // artwork pipeline is OFF unless the user opts in (stability
+                // beats album art after three failed artwork fixes).
                 Bitmap art = artCopy();
-                if (art != null) {
-                    mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);
-                    mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art);
-                }
+                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);
+                Bitmap art2 = artCopy();
+                if (art2 != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art2);
                 session.setMetadata(mb.build());
             }
         } catch (Throwable ignored) { }

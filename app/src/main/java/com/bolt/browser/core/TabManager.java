@@ -98,6 +98,13 @@ public class TabManager {
                 if (!dlu.isEmpty() && !dlf.isEmpty() && dlu.equals(t.url)) {
                     t.url = dlf;
                 }
+                // v1.4.21 — the cold-start half of BACK-HISTORY SURVIVAL:
+                // the capped saveState blob ("hist") becomes the tab's
+                // restore source when showTab rebuilds its WebView. Absent
+                // (every legacy save) or oversize/fat = null and the tab
+                // keeps today's loadUrl(t.url) behavior.
+                String hb = o.optString("hist", null);
+                if (hb != null && hb.length() <= 131072) t.histBlob = hb;
                 tabs.add(t);
             }
             try {
@@ -238,6 +245,12 @@ public class TabManager {
         try {
             JSONArray a = new JSONArray();
             synchronized (tabs) {
+                // v1.4.21 — the main-thread guard for the hist refresh below:
+                // save() normally rides the main-looper handler (saveH), but
+                // flushSave() calls it inline from its caller — WebView
+                // methods demand the UI thread, so a background flush keeps
+                // each tab's last captured blob instead of touching webs.
+                boolean onMain = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
                 for (Tab t : tabs) {
                 // v1.3.18: persist EVERY tab — including pure home/new-tab pages.
                 // The old filter (skip isHome tabs with empty url) is exactly how
@@ -247,6 +260,14 @@ public class TabManager {
                 // always handled home tabs; the placeholder auto-created at
                 // launch only appears when the list is empty, so removing the
                 // filter cannot accumulate stray tabs either.
+                // v1.4.21 — BACK-HISTORY SURVIVAL: an AWAKE tab refreshes its
+                // saveState capture HERE (a sleeping tab's was captured at
+                // its sleep) so tabs.json always carries a FRESH history —
+                // a cold start then restores the back/forward list (the
+                // "hist" blob), not just the current url.
+                if (onMain && t.web != null && !t.isHome) {
+                    try { t.saveHist(t.web); } catch (Throwable ignored) {}
+                }
                 JSONObject o = t.toJson();
                 // v1.3.27: playing-media tabs persist a YouTube resume point
                 try { o.put("url", resumeUrl(t)); } catch (Throwable ignored) {}

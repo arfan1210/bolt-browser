@@ -525,6 +525,15 @@ python3 scripts/test_v1419.py
 # LaTeX chat rendering)
 python3 scripts/test_v1420.py
 
+# v1.4.21 gate: the corpse-map six-pack (the per-channel artwork copies +
+# the API-29 artwork-off default, the back-history survival across sleep /
+# trim / cold start, the translate 400 ladder-down + proactive tiles + the
+# translate-model picker, the forced-dark IMG/bg-icon classifier, the DDG
+# two-color mark + the engine-logo binding breadcrumb, the AI formatting
+# completion — strikethrough, styled tables, syntax colors, jlatexmath
+# matrices)
+python3 scripts/test_v1421.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

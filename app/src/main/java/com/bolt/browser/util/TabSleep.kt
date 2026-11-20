@@ -34,13 +34,19 @@ object TabSleep {
                 && !t.holdsMedia && !t.mediaPlaying
     }
 
-    /** main-thread only (view detach + capture). Returns true when slept. */
+    /** main-thread only (view detach + capture). Returns true when slept.
+     *  v1.4.21 — HISTORY LIVES: the sleep captures the WebView's
+     *  saveState() BEFORE the destroy (sleepState for the warm wake,
+     *  histBlob for tabs.json) so the rebuilt view restores its
+     *  back/forward list instead of loading t.url onto an empty one —
+     *  the "back history lost after tab switch" corpse. */
     @JvmStatic
     fun sleep(t: Tab): Boolean {
         if (!canSleep(t)) return false
         val w = t.web ?: return false
         try { t.capture() } catch (ignored: Throwable) {}
         try { t.sleepScrollY = w.scrollY } catch (ignored: Throwable) {}
+        try { t.saveHist(w) } catch (ignored: Throwable) {}
         try {
             (w.parent as? ViewGroup)?.removeView(w)
         } catch (ignored: Throwable) {}

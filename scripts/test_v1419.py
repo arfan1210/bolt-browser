@@ -142,18 +142,18 @@ mh_code = strip_comments_strings(mh)
 ifb_code = strip_comments_strings(ifb)
 
 print("A — the version bump")
-need(re.search(r"versionCode 134\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r"versionCode 135\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "versionCode 134 (Android only installs RISING codes)")  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-need(re.search(r'versionName "1\.4\.20"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-     'versionName "1.4.20"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r'versionName "1\.4\.21"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     'versionName "1.4.21"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[1].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
+need(entries and entries[2].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
      "the newest entry is 1.4.19 (the label law)")
-need(len(entries) > 1 and entries[2].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
+need(len(entries) > 1 and entries[3].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
      "the second entry is 1.4.18 (the previous live release)")
 for word, why in (("incognito", "the crash-loop cure"),
                   ("error", "the offline overlay"),
@@ -164,7 +164,7 @@ for word, why in (("incognito", "the crash-loop cure"),
                   ("tooltip", "the icon-only tooltip law"),
                   ("password", "the vault add/edit"),
                   ("attachment", "the temporary AI attachments")):
-    need(word in entries[1] or word in entries[1].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])
+    need(word in entries[2] or word in entries[2].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
          f"the 1.4.19 line names {why}")
 
 print("C — fix 1: the suffix-first law (the root-caused crash loop)")
@@ -287,8 +287,11 @@ need('finishReason == "MAX_TOKENS"' in ab,
      "the envelope's finishReason is read explicitly (RAW source — the strip pass eats string literals)")
 need('"the AI reply was cut off (try a less dense screen)"' in ab,
      "the standing cut-off error survives the ladder (RAW source — the honest end state)")
-need("private fun visionBody(p: String, b64: String, think: Boolean, cap: Int): JSONObject {" in ab_code,
-     "the output cap is a parameter of the vision body")
+need("private fun visionBody(p: String, b64: String, cap: Int): JSONObject {" in ab_code,
+     "the output cap is a parameter of the vision body "
+     "(v1.4.21 re-point 2026-11-20: the think param is GONE — translate "
+     "never sends thinkingConfig at all; the v1.4.20 thinkingBudget-0 "
+     "field was itself the field the lite model rejected with HTTP 400)")
 need('"ai translate MAX_TOKENS at $cap, retrying higher"' in ab,
      "the ladder Diag breadcrumb (RAW source)")
 

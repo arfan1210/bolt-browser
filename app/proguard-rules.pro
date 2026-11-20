@@ -34,3 +34,13 @@
 # (1D format parsers, DataMatrix, PDF417, encoders for those formats) is
 # unreferenced and tree-shakes away — no rules needed, the direct imports
 # keep the used graph. Noted here so nobody adds a keep-all rule later.
+
+# v1.4.21 — jlatexmath-android: the TeX parser resolves COMMAND NAMES to
+# atom classes through XML-driven tables and some Class.forName lookups
+# (TeXFormulaParser's CreateCommand/CreateTeXFormula paths), so an
+# aggressive tree-shake can drop atoms the tables reference. The engine is
+# kept whole (~325 KB of classes; the assets ride regardless) — the APK
+# stays under the 6 MB law with margin, and a missing-atom crash in chat
+# would cost more than the bytes.
+-keep class org.scilab.forge.jlatexmath.** { *; }
+-keep class ru.noties.jlatexmath.** { *; }

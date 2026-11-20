@@ -4,6 +4,118 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.21] — 2026-11-20
+
+**The corpse-map six-pack: every item arrived root-caused from the v1.4.20
+source plus the field diag.log — the cures implement the named mechanisms.
+A green gate proves code EXISTS, not that a bug is CURED: each fix carries
+a compiled+run behavior probe where a pure body was extractable and a Diag
+breadcrumb where it was not.**
+
+### Fixed — MEDIA-NOTIFICATION KILL, the real corpse (critical, id=42)
+- Root cause (from the v1.4.20 source): `publishSessionState` parked the
+  SAME `artCopy()` instance into BOTH `METADATA_KEY_ART` and
+  `METADATA_KEY_ALBUM_ART`. API-29 SystemUI recycles one processed bitmap;
+  the twin key then holds a RECYCLED bitmap and the next notification
+  inflation throws "The given region must intersect with the Bitmap's
+  dimensions" — the async `RemoteServiceException` that killed the process.
+  The v1.4.20 size-cap never touched the shared instance, so the crash
+  survived it.
+- The three-channel law: the large icon, `METADATA_KEY_ART` and
+  `METADATA_KEY_ALBUM_ART` now each take their OWN fresh `artCopy()`
+  (three independent instances per publish — a recycled channel can never
+  poison another; probe-pinned).
+- The guaranteed leg: on API <= 29 NO artwork leaves the service at all
+  unless the user opts in — a new **Show media artwork** setting (default
+  OFF on Android 10 and older, ON above; `artworkDefaultOn`,
+  probe-pinned). Stability beats album art after three failed artwork
+  fixes; a text-only notification cannot crash. Suppression logs one Diag
+  line per artwork generation, and the toggle re-publishes immediately.
+
+### Fixed — BACK HISTORY LOST AFTER TAB / APP SWITCH
+- Root cause: `TabSleep.sleep()` saved only `sleepScrollY` before
+  `destroy()`; the rebuilt WebView loaded `t.url` onto an EMPTY
+  back/forward list, so Back fell out of the tab to the browser home. The
+  device fires `trimMemory level=15` on every app switch, so background
+  tabs slept constantly.
+- Every destroy path (TabSleep sleep, the trimMemory sleep, the
+  renderer-death path) now captures `WebView.saveState()` BEFORE the
+  destroy; the rebuilt view `restoreState`s it first (the current item
+  navigates itself) and falls back to `loadUrl(t.url)` exactly as before
+  when nothing restores. The renderer-death path gains this too (the
+  navigation history lives in the browser process — render death does not
+  take it).
+- COLD starts restore history as well: tabs.json persists each tab's
+  capped parcel blob (`hist`, 128 KB cap — the downloads.json lesson),
+  refreshed for awake tabs at every save (main thread only).
+- The trim sleep trigger softened: the sleep pass now runs from
+  `TRIM_MEMORY_MODERATE` (60) up — the level=15 app switches keep every
+  background tab's renderer. The cheap thumbnail drop keeps its old gate.
+
+### Fixed — AI SCREEN TRANSLATE "HTTP 400" (supersedes the thinking-budget idea)
+- Root cause: `visionBody` sent `thinkingConfig{thinkingBudget:0}`, which
+  `gemini-3.5-flash-lite` REJECTS outright; the v1.4.20 retry only fired
+  when the 400 body named "thinking", so the request died with no
+  recovery.
+- Translate now omits `thinkingConfig` entirely (a field never sent
+  cannot be rejected); on ANY 400 the RAW body rides to Diag (shortErr
+  hid the exact rejection) and the cap steps DOWN the model's own output
+  ceiling (`cap400Next`: 65536 → 32768 → 16384 → 8192 → give up;
+  probe-pinned). MAX_TOKENS still ladders UP / tiles.
+- Tiles now run PROACTIVELY: every AI screen translate goes out as a 2x2
+  grid from the start (a dense screen on a low-ceiling lite model is the
+  real cut-off case — the old shape burned two doomed full-screen
+  requests first), and a quadrant that still exhausts the cap splits once
+  more (one recursion level, bounded).
+- A dedicated **translate model** field in the AI settings lets dense
+  screens ride a higher-output model; empty = the shared chat model.
+
+### Fixed — FORCED-DARK HAMBURGER STILL BLACK (the img/background half)
+- Root cause: menus served as `<img src="menu.svg/.png">` are MEDIA —
+  the media rule un-inverts them (double invert = the original black) and
+  they vanish on the black ground; CSS background-image icons likewise.
+- The classifier now covers small IMGs in UI CONTEXT (context first, size
+  second): inside button / header / nav / label / summary / `[role=
+  button]` / icon-named ancestors at <= 64 px, a bare link only at <= 48
+  px (article thumbnails ride links too), icon-named elements anywhere.
+  Small background-image icons on interactive elements join them. All are
+  classed `.__boltIC` (filter:none — they ride the page inversion; a
+  black menu glyph flips white). The v1.4.20 stroke/fill floor + thickness
+  bump for inline SVG stay; probe-pinned on representative markup.
+
+### Fixed — DUCKDUCKGO LOGO (the monochrome cutout)
+- The v1.4.20 DDG drawable was the simple-icons MONOCHROME cutout — one
+  orange path where the duck is negative space, so the duck showed the
+  omnibox BACKGROUND (black on the dark theme). Rebuilt as the official
+  two-color mark: the #DE5833 filled disc + the SAME CC0 duck geometry in
+  WHITE (two paths — white on every background). Bing / Brave / Startpage
+  verified to carry their own distinct official paths (the code mapping is
+  correct); `applyEngineLogo` now logs the drawable resource name actually
+  set per engine so the next "wrong logo" report is provable.
+
+### Added — BOLT AI FORMATTING COMPLETED
+- **Strikethrough**: the GFM `~~text~~` extension parses and renders
+  (`commonmark-ext-gfm-strikethrough`, StrikethroughSpan).
+- **Tables**: the aligned grid gains a BOLD accent header line (a real
+  table reads with a header).
+- **Syntax colors**: a bounded, theme-aware, hand-rolled colorizer
+  (`tokenizeCode`, probe-pinned) colors comments / strings / keywords /
+  numbers in code blocks for kotlin, java, python, js/ts, c/cpp, bash,
+  sql, json, html and css — no highlighter dependency, per the size law.
+- **Full LaTeX + MATRICES**: jlatexmath-android (GPL-2.0 + linking
+  exception) renders complete TeX — `\begin{matrix}/pmatrix/bmatrix`,
+  `cases`, `align`, fractions, integrals, Greek, accents — as a native
+  drawable ImageSpan in the TextView chat. It initializes lazily (its
+  auto-init provider is removed from the merged manifest; a browser start
+  never pays for chat math), the v1.4.20 span subset remains the fallback,
+  and the raw source still rides the bubble's tag for long-press copy.
+- **Visitor completed**: images render as their alt text riding a link to
+  the source (no network in a chat bubble); nested lists indent per
+  level; `~~` joins the fast-path signal set.
+
+**APK**: 3,294,655 B (budget 6,000,000 — the jlatexmath engine + fonts cost
+~468 KB after R8 and asset compression; v1.4.20 was 2,826,337).
+
 ## [1.4.20] — 2026-11-20
 
 **The evidence-pack: the media-notification kill and the 12 MB

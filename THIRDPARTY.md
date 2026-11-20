@@ -34,6 +34,13 @@ original headers intact. The license texts:
 |---|---|---|---|
 | `org.commonmark:commonmark` | 0.24.0 | BSD-2-Clause | Markdown parser for Bolt AI chat rendering (pure Java, zero resources) |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | BSD-2-Clause | GFM pipe-table extension for the same renderer |
+| `org.commonmark:commonmark-ext-gfm-strikethrough` | 0.24.0 | BSD-2-Clause | GFM `~~strikethrough~~` extension (v1.4.21) |
+
+## Dependencies (GPL-2.0 with linking exception)
+
+| Library | Version | License | Notes |
+|---|---|---|---|
+| `ru.noties:jlatexmath-android` | 0.2.0 | **GPL-2.0 + linking exception** | Full TeX rendering (matrices, cases, align) for Bolt AI math — a fork of [JLatexMath](https://github.com/opencollab/jlatexmath) packaged for Android by noties; the linking exception (added upstream after community discussion) permits use in GPL-3.0 Bolt. Initialized lazily; its auto-init provider is removed from the merged manifest. Upstream: https://github.com/noties/jlatexmath-android |
 
 The engine logo drawables for DuckDuckGo, Brave and Startpage are rendered
 from the [simple-icons](https://simpleicons.org/) CC0 outlines with each

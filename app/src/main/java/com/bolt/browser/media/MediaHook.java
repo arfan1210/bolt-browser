@@ -1362,6 +1362,12 @@ public class MediaHook {
                 // ground (the faint-hamburger field report). Class beats the
                 // type selector above; inside .__boltDK the DK svg rule and
                 // this one agree on filter:none either way.
+                // v1.4.21 — the class now covers small IMGs in UI context
+                // (menu.png inside buttons/headers — media-family members
+                // that were double-un-inverted and stayed black) and small
+                // background-image icons on interactive elements (pinned by
+                // pinEl/both). One class, one meaning: filter:none = this
+                // element rides the page inversion.
                 + ".__boltIC{filter:none!important;}"
                 + "html body *:not(img):not(video):not(picture):not(canvas)"
                 + ":not(svg):not(iframe):not(embed):not(object)"
@@ -1575,11 +1581,60 @@ public class MediaHook {
                 // classifier the field report asked for: dark-stroked UI
                 // icons were left un-inverted and vanished on the black
                 // ground, while content SVGs must never be inverted.
+                // v1.4.21 — THE IMG HALF (the hamburger still black, round
+                // 2): menus served as IMG (menu.svg / menu.png) are MEDIA —
+                // the media rule un-inverts them (double invert = keeps
+                // the original black) and they vanish on the black ground
+                // exactly like the SVGs did. Context FIRST, size second
+                // (the field ask): a small IMG inside UI chrome (button,
+                // header, nav, label, summary, role=button, an icon-named
+                // ancestor) is chrome; a small IMG inside a bare link is
+                // only chrome when TINY (<= 48 — links wrap thumbnails
+                // too) or icon-named itself; everything else is content.
+                // (no double quotes in comments — check_dark_js reads them)
+                + "function iconNamed(el){try{"
+                + "var cn=el.className;"
+                + "if(cn&&cn.baseVal!==undefined)cn=cn.baseVal;"
+                + "var s=((cn||'')+' '+(el.id||''));"
+                + "return /(^|[^a-z])(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)([^a-z]|$)/i.test(s);"
+                + "}catch(e){return false}}"
+                + "function uiCtx(el){try{"
+                + "var p=el.parentElement,lvl=0,weak=0;"
+                + "while(p&&lvl<6){var t=p.tagName;"
+                + "if(t==='BUTTON'||t==='HEADER'||t==='NAV'||t==='LABEL'||t==='SUMMARY')return 2;"
+                + "if(p.getAttribute&&p.getAttribute('role')==='button')return 2;"
+                + "if(iconNamed(p))return 2;"
+                + "if(t==='A')weak=1;"
+                + "p=p.parentElement;lvl++;}"
+                + "return weak;}catch(e){return 0}}"
                 + "function uiIcon(el){try{"
-                + "if(!el||el.tagName!=='SVG')return false;"
+                + "if(!el)return false;"
+                + "var t=el.tagName;"
+                + "if(t!=='SVG'&&t!=='IMG')return false;"
                 + "var r=el.getBoundingClientRect();"
                 + "var m=Math.max(r.width,r.height);"
-                + "return m>0&&m<=64;}catch(e){return false}}"
+                + "if(!(m>0&&m<=64))return false;"
+                + "if(t==='SVG')return true;"
+                + "if(iconNamed(el))return true;"
+                + "var ctx=uiCtx(el);"
+                + "if(ctx===2)return true;"
+                + "if(ctx===1)return m<=48;"
+                + "return false;}catch(e){return false}}"
+                // v1.4.21 — THE BACKGROUND-ICON HALF: CSS background-image
+                // icons on SMALL INTERACTIVE elements (button/a/label/
+                // header/nav or icon-named) ride the IC class too — the NI
+                // pin un-inverts them and a dark glyph vanished exactly
+                // like the img/svg family. Size + interactivity keep big
+                // banner photos out.
+                + "function bgUiIcon(el){try{"
+                + "var r=el.getBoundingClientRect();"
+                + "var m=Math.max(r.width,r.height);"
+                + "if(!(m>0&&m<=64))return false;"
+                + "if(iconNamed(el))return true;"
+                + "var t=el.tagName;"
+                + "if(t==='BUTTON'||t==='A'||t==='LABEL'||t==='SUMMARY'||t==='HEADER'||t==='NAV')return true;"
+                + "if(el.getAttribute&&el.getAttribute('role')==='button')return true;"
+                + "return false;}catch(e){return false}}"
                 // v1.4.20 — THE THICKNESS RESOLVER (pure; probe-pinned): a
                 // low-contrast UI stroke thinner than 1.5 px is bumped to
                 // 2 px so it reads clearly after the inversion; anything
@@ -1687,14 +1742,26 @@ public class MediaHook {
                 // walk processes it (iconFloor) and it inverts with the page
                 // (the dark-glyph-on-black-ground vanish). Large svgs stay
                 // content (charts/illustrations keep their pixels).
+                // v1.4.21: a small IMG in UI CONTEXT is chrome too — menu
+                // images (menu.svg/.png) were un-inverted media and stayed
+                // black; classed IC they ride the page inversion and a
+                // black menu glyph flips light (context first, size second
+                // — see uiIcon).
                 + "function isMedia(el){var t=el.tagName;"
-                + "if(t==='SVG'&&uiIcon(el))return false;"
+                + "if((t==='SVG'||t==='IMG')&&uiIcon(el))return false;"
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
                 + "||t==='IFRAME'||t==='EMBED'||t==='OBJECT'||el.getAttribute('role')==='img';}"
                 // the per-element decision; inv = current filter parity of
                 // the subtree this element paints into (1 = inverted once)
                 + "function parityEl(el,inv){"
                 + "if(isMedia(el))return inv;"
+                // v1.4.21 — an IC-pinned element (background-image icon on
+                // a small interactive element, pinned by pinEl/both) is a
+                // LEAF like media: the walk never adds DK on top of the IC
+                // filter (the two classes would fight in the sheet and the
+                // parity math would drift for the subtree — one class, one
+                // meaning).
+                + "try{if(el.classList&&el.classList.contains(IC))return inv;}catch(x){}"
                 + "var cs;try{cs=getComputedStyle(el);}catch(x){return inv;}"
                 + "try{if(cs.filter&&cs.filter!=='none')return inv;}catch(x){}"   // never clobber a site's own filter
                 + "var want=inv;"
@@ -1710,8 +1777,11 @@ public class MediaHook {
                 + "if(inv===1){try{strokeFloor(el,cs);}catch(x){}}"
                 // v1.4.20 — the icon + pseudo floors ride the SAME inverted-
                 // subtree gate (the parity law composes; a UI icon or pseudo
-                // glyph inside a preserved dark subtree keeps its pixels)
-                + "if(inv===1&&el.tagName==='SVG'){try{iconFloor(el,cs,inv);}catch(x){}}"
+                // glyph inside a preserved dark subtree keeps its pixels).
+                // v1.4.21 — IMG UI icons join the SVGs in iconFloor (the
+                // class is the point; stroke/fill are no-ops on an img).
+                + "if(inv===1&&(el.tagName==='SVG'||(el.tagName==='IMG'&&uiIcon(el))))"
+                + "{try{iconFloor(el,cs,inv);}catch(x){}}"
                 + "if(inv===1){try{pseudoFloor(el,cs);}catch(x){}}"
                 + "var ch=el.children;"
                 + "for(var i=0;i<ch.length;i++){if(n>=3500)break;parityEl(ch[i],inv);}"
@@ -1728,12 +1798,14 @@ public class MediaHook {
                 + "while(p&&p!==document.body){if(p.classList&&p.classList.contains(DK))inv=1-inv;"
                 + "p=p.parentElement;}}catch(x){}return inv;}"
                 + "function both(e){try{var cs=getComputedStyle(e);"
-                + "var b=cs.backgroundImage;if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;}}catch(x){}"
+                + "var b=cs.backgroundImage;if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;"
+                + "if(bgUiIcon(e))e.classList.add(IC);}}catch(x){}"
                 + "parityEl(e,ancInv(e));}"
                 + "var all=document.body?document.body.querySelectorAll('*'):[];"
                 + "var i=0;"
-                + "function pinEl(e){try{var b=getComputedStyle(e).backgroundImage;"
-                + "if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;}}catch(x){}}"
+                + "function pinEl(e){try{var cs=getComputedStyle(e);var b=cs.backgroundImage;"
+                + "if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;"
+                + "if(bgUiIcon(e))e.classList.add(IC);}}catch(x){}}"
                 + "function chunk(){try{var t0=Date.now();"
                 + "for(;i<all.length&&n<3500;i++){pinEl(all[i]);"
                 + "if((i&63)===0&&Date.now()-t0>16)break;}}catch(x){}"

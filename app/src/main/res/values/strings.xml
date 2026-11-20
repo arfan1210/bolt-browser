@@ -395,6 +395,14 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+    <!-- v1.4.21 (2026-11-20): the corpse-map six-pack — the per-channel
+         artwork copies + the API-29 artwork-off default, the back-history
+         survival (saveState/restoreState + tabs.json), the translate
+         400 ladder-down + proactive tiling, the forced-dark IMG/bg-icon
+         classifier, the DDG two-color mark, the AI formatting completion
+         (strikethrough, styled tables, syntax colors, jlatexmath
+         matrices) -->
+    <item>1.4.21|Media autoplay can no longer kill the app on Android 10 (the notification\'s artwork was shared between two channels — the system recycles one and the next update crashed on the other; every channel now carries its own copy, and on Android 10 and below artwork is off by default with a Show media artwork setting to opt back in); Back returns to the previous page after switching tabs or apps (tab sleep used to discard the page history — it is now saved and restored, survives cold starts, and brief app switches no longer put background tabs to sleep at all); AI screen translate no longer fails with \"HTTP 400\" on lite models (the request no longer sends the field those models reject, the error body is logged for diagnosis, the reply budget steps down to the model\'s own ceiling, and every screen is translated in four regions up front with a pick-a-translate-model setting for dense screens); forced dark mode keeps menu icons visible even when a site serves them as images or CSS backgrounds (small icons inside buttons, headers and navigation now invert with the page); the DuckDuckGo logo is the proper two-color mark (an orange disc with a white duck — the duck no longer shows the dark background); and Bolt AI chat renders ~~strikethrough~~, styled tables with a bold header, colored code blocks and full LaTeX math including matrices — long-press still copies the raw text.</item>
     <!-- v1.4.20 (2026-11-20): the evidence-pack — the API-29
          media-notification artwork cap, the forced-dark icon + thickness
          floor, the translate thinking-off + tile road, the single-route
@@ -494,6 +502,8 @@
     <string name="drop_to_group">Release to group</string>
     <string name="media_booster">In-page media booster</string>
     <string name="media_booster_desc">Volume / vocal EQ and speed enforcement inside pages. Turn this OFF when a userscript (like a YouTube audio booster) controls audio - two boosters clash and blink.</string>
+    <string name="media_artwork">Show media artwork</string>
+    <string name="media_artwork_desc">Album art / video thumbnail on the media notification. OFF by default on Android 10 and older, where the system\'s notification-artwork handling has crashed Bolt repeatedly (the text-only notification is always stable). Turning this ON accepts that risk.</string>
     <string name="selected_count">%1$d selected</string>
     <string name="select_all">Select all (%1$d)</string>
     <string name="deselect_all">Deselect all</string>

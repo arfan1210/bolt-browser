@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -530,5 +531,18 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- v1.4.21 - jlatexmath-android ships an auto-init ContentProvider
+             (JLatexMathInitProvider) that initializes the engine at EVERY
+             process start. Bolt inits it LAZILY instead (AiRender.jlmInit,
+             on the first math segment the chat actually renders), so a
+             browser start never pays for a chat nicety. The provider node
+             is removed from the merged manifest; the library's own code
+             path is untouched. -->
+        <provider
+            android:name="ru.noties.jlatexmath.JLatexMathInitProvider"
+            android:authorities="${applicationId}.jlatexmathinitprovider"
+            android:exported="false"
+            tools:node="remove" />
     </application>
 </manifest>

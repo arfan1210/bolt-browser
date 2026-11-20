@@ -682,21 +682,37 @@ object ScreenTranslate {
      *  reuses the SAME encoder + visionTranslate (its own cap ladder); a
      *  tile that fails costs its region (logged), the boxes that return
      *  are re-placed (tilePlace) and seam-deduped (iou > 0.6). Returns
-     *  null only when every region failed. */
+     *  null only when every region failed.
+     *  v1.4.21 — PROACTIVE (the rung moved to the FRONT): the tile pass is
+     *  now the DEFAULT for every AI screen translate — the dense screen on
+     *  a low-ceiling lite model is the real cut-off case, and waiting for
+     *  a 65536 MAX_TOKENS exhaust to find out costs the user two doomed
+     *  full-screen requests first. Plus ONE recursion rung: a tile that
+     *  STILL exhausts the cap (shouldTile) is split 2x2 again — a dense
+     *  quadrant gets four half-density sub-requests instead of a lost
+     *  region. */
     private fun translateTiled(a: Activity, bmp: Bitmap, tl: String,
-                               g: Int): ArrayList<AiBridge.AiBox>? {
+                               g: Int): ArrayList<AiBridge.AiBox>? =
+            translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0)
+
+    /** one (sub)region through the AI; depth caps the recursion at one
+     *  extra level (a 2x2 of 2x2 = 16 sub-requests worst case, bounded). */
+    private fun translateRegion(a: Activity, bmp: Bitmap, tl: String, g: Int,
+                                rx: Int, ry: Int, rw: Int, rh: Int,
+                                depth: Int): ArrayList<AiBridge.AiBox>? {
         val merged = ArrayList<AiBridge.AiBox>()
         val cols = 2
         val rows = 2
-        val tw = bmp.width / cols
-        val th = bmp.height / rows
+        val tw = rw / cols
+        val th = rh / rows
+        if (tw < 32 || th < 32) return null   // too small to halve further
         for (row in 0 until rows) {
             for (col in 0 until cols) {
                 if (gen.get() != g || cancelled) return null
-                val x = col * tw
-                val y = row * th
-                val w = if (col == cols - 1) bmp.width - x else tw
-                val h = if (row == rows - 1) bmp.height - y else th
+                val x = rx + col * tw
+                val y = ry + row * th
+                val w = if (col == cols - 1) rx + rw - x else tw
+                val h = if (row == rows - 1) ry + rh - y else th
                 val tile = try {
                     Bitmap.createBitmap(bmp, x, y, w, h)
                 } catch (_: Throwable) { null } ?: continue
@@ -705,6 +721,24 @@ object ScreenTranslate {
                 if (enc == null) continue
                 val part = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
                 if (part == null) {
+                    // v1.4.21 — the per-tile rung: a region that exhausted
+                    // the cap ladder (shouldTile) splits once more instead
+                    // of losing its text; any other failure costs the region
+                    if (depth < 1 && AiBridge.shouldTile(AiBridge.lastError)) {
+                        try { Diag.log(a, "scr ai tile split r$row c$col depth=$depth") } catch (_: Throwable) {}
+                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1)
+                        if (sub != null) {
+                            for (b in sub) {
+                                var dup = false
+                                for (m in merged) {
+                                    if (iou(m.x, m.y, m.w, m.h,
+                                            b.x, b.y, b.w, b.h) > 0.6f) { dup = true; break }
+                                }
+                                if (!dup) merged.add(b)
+                            }
+                        }
+                        continue
+                    }
                     try { Diag.log(a, "scr ai tile r$row c$col fail " +
                             AiBridge.lastError.take(40)) } catch (_: Throwable) {}
                     continue
@@ -767,31 +801,29 @@ object ScreenTranslate {
             ?: return
         prog = pr
         try {
-            pr.set("Asking the AI\u2026", -1)
-            val enc = encodeAi(bmp)
-            if (enc == null) { failOcr(a, bmp, g, "ai encode", "Could not read the screen"); return }
             val tl = lastTl ?: PageTranslate.deviceTl()
             try {
                 Diag.log(a, "scr ai ask prov=" + AiBridge.providerName(a) +
                         " model=" + aiModelForDiag(a))
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
-            var boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+            // v1.4.21 — TILES FIRST (proactive; supersedes the v1.4.20
+            // single-shot + MAX_TOKENS-then-tile shape): every AI screen
+            // translate rides the 2x2 grid from the start. WHY: the field
+            // corpse was a dense screen on a low-ceiling lite model — the
+            // old shape burned two full-screen requests (one at 32768, one
+            // at 65536) before tiling, and a lite model that caps below the
+            // rung 400s instead (the ladder-down helps, but the screen is
+            // still too dense for ONE reply). A quadrant is a quarter the
+            // text; each tile rides its own ladder (400-down / MAX_TOKENS-
+            // up) and a still-dense quadrant splits once more (see
+            // translateRegion). Four smaller asks replace one doomed big
+            // one; the seam dedup (iou) cleans the borders.
+            pr.set("Translating in regions\u2026", -1)
+            val boxes = translateTiled(a, bmp, tl, g)
             if (gen.get() != g) return
-            // v1.4.20 — THE TILE ROAD (the dense-screen cure): when the
-            // single shot exhausted the 65536-token cap (shouldTile — the
-            // error string IS the contract), the bitmap the caller holds
-            // is split into a 2x2 grid and each region goes out as its own
-            // (half-as-dense) request; boxes are re-placed onto the full
-            // image (tilePlace, PURE) and seam duplicates merge away (iou,
-            // PURE). A failed tile costs its region, not the screen.
-            if (boxes == null && AiBridge.shouldTile(AiBridge.lastError)) {
-                try { Diag.log(a, "scr ai tile 2x2 after " +
-                        (System.currentTimeMillis() - t0) + "ms") } catch (_: Throwable) {}
-                pr.set("Dense screen \u2014 translating in regions\u2026", -1)
-                boxes = translateTiled(a, bmp, tl, g)
-                if (gen.get() != g) return
-            }
+            try { Diag.log(a, "scr ai tiled done ms=" +
+                    (System.currentTimeMillis() - t0)) } catch (_: Throwable) {}
             if (boxes == null) {
                 failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
                     "AI translation failed — " + AiBridge.lastError.take(60))
@@ -840,12 +872,16 @@ object ScreenTranslate {
         }
     }
 
-    /** the model name WITHOUT the key ever leaving the diag channel */
+    /** the model name WITHOUT the key ever leaving the diag channel.
+     *  v1.4.21: names the EFFECTIVE translate model (the dedicated
+     *  translate-model picker when set, the shared chat model otherwise). */
     private fun aiModelForDiag(a: Activity): String {
         return try {
-            val m = a.getSharedPreferences("bolt_ai", Context.MODE_PRIVATE)
-                .getString("model", "")
-            m?.take(40)?.ifBlank { "default" } ?: "default"
+            val sp = a.getSharedPreferences("bolt_ai", Context.MODE_PRIVATE)
+            val m = sp.getString("translateModel", "")!!.ifBlank {
+                sp.getString("model", "")!!
+            }
+            m.take(40).ifBlank { "default" }
         } catch (_: Throwable) { "default" }
     }
 

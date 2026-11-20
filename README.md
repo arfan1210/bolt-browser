@@ -1,7 +1,7 @@
 # Bolt Browser
 
 A fast, private, Android-first WebView browser. No trackers, no bloat — the
-whole app is a **~2.6 MB APK**.
+whole app is a **~3.3 MB APK**.
 
 - **Package:** `com.bolt.browser`
 - **Requires:** Android 7.0+ (API 24)
@@ -1295,24 +1295,147 @@ relay, 2026-11-19):
    onto the txt local). Suite: 72/72 release-pipeline check commands
    green (61 python gates + 11 node/js gates).
 
-**Known-good numbers** (v1.4.20, release build): APK
-2,826,337 B (budget 6,000,000; v1.4.19 was 2,780,582 — the evidence-pack
-cost 45,755 B, all of it the commonmark-java parser + GFM tables after
-R8 tree-shaking); signature verifies (v2 scheme) against the pinned cert;
-suite: all 72 release-pipeline gate commands green (the new v1420 gate
-among them — its compiled probe runs transcriptions of api29ArtCap,
-uiIcon + bumpW, usageDiag + shouldTile + salvageObjects, dlDialogRoute +
-persistUrl, tilePlace + iou, and codeProtect + texMap + fracFlat +
-renderTable);
+**v1.4.21 — the corpse-map six-pack** (the fifteenth session of this
+relay, 2026-11-20):
+
+1. *The shared-instance kill (media notification, round 3 — the one
+   that was actually it).* The v1.4.20 diag.log said the crash survived
+   the size cap, and re-reading publishSessionState found WHY: the SAME
+   artCopy() instance went into BOTH METADATA_KEY_ART and
+   METADATA_KEY_ALBUM_ART. API-29 SystemUI recycles one processed
+   bitmap; the twin key then holds a RECYCLED bitmap and the next
+   inflation throws — the async RemoteServiceException no try/catch can
+   reach. THE THREE-CHANNEL LAW: largeIcon, ART and ALBUM_ART each take
+   their OWN fresh copy (probe-pinned as a run model — three calls,
+   three distinct instances, recycling one never poisons another). And
+   the GUARANTEED leg: on API <= 29 no artwork leaves the service at all
+   unless the user opts in (Show media artwork, default OFF there —
+   artworkDefaultOn is pure and probe-pinned; a text-only notification
+   cannot crash). Learning: when a guard survives every fix, stop
+   hardening the bitmap and ask whether two channels are sharing it —
+   and an escape hatch that defaults to OFF is not a failure of nerve,
+   it is the only shape that cannot crash.
+2. *Back history lost after tab/app switch (the sleep corpse).* sleep()
+   kept only sleepScrollY; the rebuild loaded t.url onto an EMPTY
+   back/forward list and Back fell out of the tab — and the device
+   fires trimMemory level=15 on EVERY app switch, so background tabs
+   slept constantly. Every destroy path now captures WebView.saveState()
+   BEFORE the destroy (TabSleep sleep, the trim-path sleepTab — which
+   also sets the sleep flags it always skipped — and the
+   renderer-death path, where the history survives because it lives in
+   the BROWSER process); the rebuilt view restoreState's first and falls
+   back to loadUrl exactly as before. COLD starts restore history too:
+   tabs.json carries a capped parcel blob (128 KB, the downloads.json
+   lesson) refreshed for awake tabs at every save (main thread only —
+   flushSave can arrive off-main and is guarded). The trim trigger
+   softened to level >= 60: brief app switches keep their renderers.
+   Learning: the same symptom had TWO causes — the capture never
+   existed AND the trigger fired on noise; fixing only the capture
+   would have left tabs reloading on every switch. (Verified en route:
+   detachTabsForSwitch only DETACHES views, it never destroys — that
+   path needed nothing.)
+3. *Translate HTTP 400 (supersedes the thinkingBudget idea).* The lite
+   model rejects the thinkingBudget FIELD itself, and the v1.4.20
+   retry only fired when the 400 body named "thinking" — a body it does
+   not produce. Translate now never SENDS thinkingConfig (a field never
+   sent cannot be rejected); every 400 body rides RAW to Diag (shortErr
+   hid the exact rejection); the cap steps DOWN the model's own ceiling
+   (cap400Next: 65536->32768->16384->8192, probe-pinned); and the 2x2
+   tile road runs PROACTIVELY — the old shape burned two doomed
+   full-screen requests before tiling, and a dense quadrant that still
+   exhausts splits once more (one bounded recursion level; shouldTile
+   stays live as its contract). A dedicated translate-model field lets
+   dense screens ride a higher-output model. Learning: a retry keyed on
+   an error-body substring is a guess about a message you have never
+   read — log the body first, and prefer omitting a field over
+   negotiating its value.
+4. *The forced-dark hamburger, round 3 (the img/background half).*
+   Menus served as IMG and CSS background icons are MEDIA — un-inverted
+   and invisible on the black ground; the v1.4.20 classifier only knew
+   inline SVG. Context FIRST, size second (the field ask): a small IMG
+   inside button/header/nav/label/summary/[role=button]/icon-named
+   ancestors is chrome at <=64 px; inside a BARE link only at <=48 px
+   (article thumbnails ride links too); small background-image icons on
+   interactive elements join them (bgUiIcon in the pin passes). An
+   IC-pinned element is a LEAF to the parity walk — never stack DK on
+   top of IC (one class, one meaning). Learning: when a family is
+   exempt from inversion, enumerate the family's TRANSPORTS, not just
+   its tags — svg, img and background-image are three doors for one
+   glyph.
+5. *The DDG cutout.* The simple-icons DDG mark is a monochrome CUTOUT —
+   the duck is negative space, so on the dark omnibox the duck rendered
+   BLACK (the background showed through it). Rebuilt as the official
+   two-color mark: the #DE5833 disc + the same CC0 duck geometry in
+   WHITE (two paths, split surgically from the single path at its
+   absolute anchor). Bing/Brave/Startpage verified to carry their own
+   distinct official paths; applyEngineLogo now logs the drawable
+   resource name actually set per engine — the binding breadcrumb, so
+   the next "wrong logo" report arrives with the proof attached.
+6. *AI formatting completed.* GFM strikethrough
+   (commonmark-ext-gfm-strikethrough — the artifact-lesson holds: GFM
+   extensions ride -ext-gfm-<name>); tables gain a BOLD accent header
+   line; a bounded hand-rolled colorizer (tokenizeCode, probe-pinned —
+   comments/strings/keywords/numbers, 11 language families, 20k-char /
+   4k-token caps) colors code blocks theme-aware; LaTeX upgrades to
+   FULL TeX through jlatexmath-android 0.2.0 (Maven Central; GPL-2.0 +
+   linking exception, noted in THIRDPARTY.md) — matrices, cases, align,
+   the works, as a native drawable ImageSpan. The v1.4.20 "no font
+   packs" stance is superseded BY MEASUREMENT: the whole engine + fonts
+   cost ~468 KB after R8 and asset compression (2.83 -> 3.29 MB), well
+   inside the 6 MB law. The AAR's auto-init ContentProvider is REMOVED
+   from the merged manifest (tools:node=remove) and JLatexMathAndroid
+   .init runs lazily on the first math segment — a browser start never
+   pays for chat math. The TeX tables resolve atoms by name at runtime,
+   so the engine classes are kept whole (proguard note) — a missing-atom
+   crash would cost more than the bytes. The v1.4.20 span subset stays
+   as the fallback; the raw source still rides the bubble tag. Images
+   render as alt-text links (no network in a chat bubble); nested lists
+   indent. Learning: a size law is a budget gate, not a vibe — when the
+   ask is worth it, MEASURE the cost and let the gate decide.
+7. *The standing sweep, v1.4.21 edition.* 41 prior version gates
+   re-pinned 135/1.4.21 with dated notes (workspace
+   scripts/repin_gates_1421.py — single-run, idempotent, second run
+   reported ZERO); every About-changelog position pin slid one slot down
+   (the sweep grew a multi-ref catch-up pass: lines pinning one entry's
+   CONTENT twice needed both refs slid together); FOUR hand re-points
+   where this release legitimately moved pinned forms: test_v1419 (the
+   visionBody signature — the think param is gone),
+   test_v1420 (thinkingBudget retired for the no-thinkingConfig pin;
+   isMedia's SVG-only shape re-pointed at SVG||IMG; the m<=64; literal
+   re-pointed at the if(!(...)) form), test_v1389 (the regex-comparison
+   version pin form the sweep script did not know — comparison pins,
+   quote pins, regex pins: three literal SHAPES for one fact, three
+   replace patterns in the sweep). Suite: 73/73 release-pipeline check
+   commands green (62 python gates + 11 node/js gates).
+
+**Known-good numbers** (v1.4.21, release build): APK
+3,294,655 B (budget 6,000,000; v1.4.20 was 2,826,337 — the corpse-map
+six-pack cost 468,318 B, all of it the jlatexmath-android engine + font
+assets after R8 tree-shaking and asset compression; commonmark's GFM
+strikethrough extension is ~8 KB of it); signature verifies (v2 scheme)
+against the pinned cert; suite: all 73 release-pipeline gate commands
+green (the new v1421 gate among them — its compiled probe runs
+transcriptions of artworkDefaultOn, cap400Next, the three-channel copy
+invariant as a RUN model, the icon-vs-content classifier on
+representative markup, tokenizeCode, and the restore decision table);
 filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
 **Plans / candidates for future versions:**
-- The translate tile road ships at 2x2; if a field report ever names a
-  screen dense enough to overflow a QUADRANT, the next rung is per-tile
-  recursion (tile the failing tile) — translateTiled is the single
-  place to grow it, and the usageDiag line will say which rung fired.
+- (landed in v1.4.21) The translate tile road now runs PROACTIVELY at
+  2x2 with one per-tile recursion rung (translateRegion) and a
+  dedicated translate-model picker; the next rung if a field report
+  still names overflow is unbounded depth with a sub-tile budget.
+- The tabs.json hist blob restores the back/forward list exactly on the
+  SAME WebView provider; a provider update that changes the blob format
+  degrades to loadUrl (restoreState returns null — safe, but history
+  silently resets once). If a field report ever names it, the fallback
+  is persisting copyBackForwardList URLs+titles and seeding the tab's
+  own back-stack interceptor instead.
+- jlatexmath's first init (font assets) runs on the chat thread when the
+  first math segment renders — if a field report ever names a chat
+  stutter there, warm it on a background thread at BoltAi open.
 - The forced-dark pseudo floor is bounded at 150 generated rules; a
   page with more self-colored glyph icons than that keeps its extras
   un-floored — raise the cap only on a field report (the budget laws

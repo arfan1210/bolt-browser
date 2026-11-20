@@ -9,6 +9,7 @@ import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.BulletSpan
 import android.text.style.ForegroundColorSpan
+import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -16,6 +17,8 @@ import android.text.style.SubscriptSpan
 import android.text.style.SuperscriptSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
+import org.commonmark.ext.gfm.strikethrough.Strikethrough
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.ext.gfm.tables.TableRow
@@ -28,6 +31,7 @@ import org.commonmark.node.Emphasis
 import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.HardLineBreak
 import org.commonmark.node.Heading
+import org.commonmark.node.Image
 import org.commonmark.node.IndentedCodeBlock
 import org.commonmark.node.Link
 import org.commonmark.node.ListItem
@@ -263,8 +267,11 @@ object AiRender {
         try {
             val prepared = codeProtect(md)
             val segs = pendingSegs
+            // v1.4.21 — the parser grew the GFM STRIKETHROUGH extension
+            // (~~text~~ — the "complete it" ask) beside the tables one.
             val parser = Parser.builder()
-                    .extensions(listOf(TablesExtension.create())).build()
+                    .extensions(listOf(TablesExtension.create(),
+                            StrikethroughExtension.create())).build()
             val doc = parser.parse(prepared)
             val v = V(c, sb, segs)
             v.children(doc)
@@ -274,6 +281,44 @@ object AiRender {
             sb.append(md)
         }
         return sb
+    }
+
+    // ---------------- v1.4.21 — full TeX through jlatexmath-android ----------------
+
+    /** v1.4.21 — lazy library init (the AAR ships an auto-init provider;
+     *  Bolt removes it from the merged manifest and inits HERE instead so
+     *  a browser start never pays for a chat nicety — the startup law). */
+    @Volatile private var jlmInited = false
+    private fun jlmInit(c: Context) {
+        if (jlmInited) return
+        try {
+            ru.noties.jlatexmath.JLatexMathAndroid.init(c.applicationContext)
+        } catch (_: Throwable) {}
+        jlmInited = true
+    }
+
+    /** v1.4.21 — FULL TeX rendering (the matrices ask): the whole
+     *  jlatexmath engine (\begin{matrix}/pmatrix/bmatrix/vmatrix, cases,
+     *  align, fractions, integrals, Greek, accents) as a native drawable
+     *  for the TextView chat — no WebView, no bitmap of our own (the
+     *  drawable paints on the bubble's canvas). Theme-aware text color;
+     *  a formula that cannot parse (or a runaway size) returns null and
+     *  the caller falls back to the v1.4.20 span subset, then verbatim.
+     */
+    fun mathDrawable(c: Context, tex: String, block: Boolean): android.graphics.drawable.Drawable? {
+        return try {
+            jlmInit(c)
+            val d = ru.noties.jlatexmath.JLatexMathDrawable.builder(tex)
+                    .textSize(if (block) Fx.dp(c, 19).toFloat() else Fx.dp(c, 15).toFloat())
+                    .padding(0)
+                    .color(Fx.txt(c))
+                    .build()
+            val w = d.intrinsicWidth
+            val h = d.intrinsicHeight
+            if (w <= 0 || h <= 0 || w > 4096 || h > 4096) null else d
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     /** the visitor — one branch per node kind, spans applied as the
@@ -322,8 +367,11 @@ object AiRender {
                     var ch = n.firstChild
                     while (ch != null) {
                         if (ch is ListItem) {
-                            val st = sb.length
-                            sb.append(idx.toString()).append(". ")
+                            // v1.4.21 — nested lists indent: every level past
+                            // the first pads its markers so the model's
+                            // outline-shaped replies read as an outline
+                            val pad = if (listLevel > 1) "    ".repeat(listLevel - 1) else ""
+                            sb.append(pad).append(idx.toString()).append(". ")
                             children(ch)
                             idx++
                         }
@@ -334,8 +382,12 @@ object AiRender {
                 }
                 is ListItem -> {
                     val start = sb.length
+                    // v1.4.21 — the same indent on the bullet side
+                    val pad = if (listLevel > 1) "    ".repeat(listLevel - 1) else ""
+                    sb.append(pad)
                     children(n)
-                    sb.setSpan(BulletSpan(Fx.dp(c, 10)), start, sb.length, 0)
+                    sb.setSpan(BulletSpan(Fx.dp(c, 10) * listLevel.coerceAtMost(4)),
+                            start + pad.length, sb.length, 0)
                 }
                 is BlockQuote -> {
                     val start = sb.length
@@ -344,8 +396,8 @@ object AiRender {
                     sb.setSpan(RelativeSizeSpan(0.97f), start, sb.length, 0)
                     blockGap()
                 }
-                is FencedCodeBlock -> codeBlock(n.literal)
-                is IndentedCodeBlock -> codeBlock(n.literal)
+                is FencedCodeBlock -> codeBlock(n.literal, n.info)
+                is IndentedCodeBlock -> codeBlock(n.literal, "")
                 is ThematicBreak -> {
                     sb.append("──────────────")
                     blockGap()
@@ -355,6 +407,13 @@ object AiRender {
                     val start = sb.length
                     children(n)
                     sb.setSpan(StyleSpan(Typeface.BOLD), start, sb.length, 0)
+                }
+                // v1.4.21 — GFM strikethrough (~~text~~), the "complete it"
+                // ask's first gap
+                is Strikethrough -> {
+                    val start = sb.length
+                    children(n)
+                    sb.setSpan(StrikethroughSpan(), start, sb.length, 0)
                 }
                 is Emphasis -> {
                     val start = sb.length
@@ -378,6 +437,20 @@ object AiRender {
                         sb.setSpan(StyleSpan(Typeface.BOLD), start, end, 0)
                     }
                 }
+                // v1.4.21 — IMAGES render as their alt text riding a link
+                // to the source (no image fetch in a chat bubble: the
+                // network stays where the user put it — the page). The
+                // bracketed glyph marks it as media without an emoji.
+                is Image -> {
+                    val label = (n.firstChild as? Text)?.literal
+                            ?.takeIf { it.isNotBlank() } ?: "image"
+                    val start = sb.length
+                    sb.append("\u3010").append(label).append("\u3011")
+                    val end = sb.length
+                    sb.setSpan(URLSpan(n.destination), start, end, 0)
+                    sb.setSpan(ForegroundColorSpan(Fx.accentText(c)), start, end, 0)
+                    sb.setSpan(StyleSpan(Typeface.ITALIC), start, end, 0)
+                }
                 is SoftLineBreak -> sb.append('\n')
                 is HardLineBreak -> sb.append('\n')
                 is Text -> inlineText(n.literal)
@@ -391,19 +464,45 @@ object AiRender {
             sb.append('\n')
         }
 
-        fun codeBlock(lit: String) {
+        /** v1.4.21 — code block + the lightweight syntax colorizer
+         *  (tokenizeCode, PURE): keywords / strings / comments / numbers
+         *  for the common chat languages, theme-aware, bounded. No
+         *  highlighter dependency — a ~40-line scanner, per the 6 MB law. */
+        fun codeBlock(lit: String, info: String) {
+            val code = lit.trimEnd()
             val start = sb.length
-            sb.append(lit.trimEnd())
+            sb.append(code)
             val end = sb.length
             sb.setSpan(TypefaceSpan("monospace"), start, end, 0)
             sb.setSpan(RelativeSizeSpan(0.92f), start, end, 0)
             sb.setSpan(BackgroundColorSpan(codeBg()), start, end, 0)
+            try {
+                val toks = tokenizeCode(code, info.trim().substringBefore(' ').lowercase())
+                val colors = codeColors()
+                for (t in toks) {
+                    if (t.kind == TOK_PLAIN) continue
+                    val cs = start + t.start
+                    val ce = start + t.end
+                    if (ce <= cs || ce > end) continue
+                    sb.setSpan(ForegroundColorSpan(colors[t.kind]), cs, ce, 0)
+                }
+            } catch (_: Throwable) {}
             blockGap()
         }
 
         fun codeBg(): Int {
             val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
             return if (dark) 0xFF24303C.toInt() else 0xFFE8EDF2.toInt()
+        }
+
+        /** v1.4.21 — theme-aware highlight colors (One Dark / One Light
+         *  families; the span subset stays legible on the codeBg above). */
+        fun codeColors(): IntArray {
+            val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
+            return if (dark) intArrayOf(0, 0xFF7F8C98.toInt(), 0xFF98C379.toInt(),
+                    0xFFC678DD.toInt(), 0xFFD19A66.toInt())
+            else intArrayOf(0, 0xFF8A94A0.toInt(), 0xFF50A14F.toInt(),
+                    0xFFA626A4.toInt(), 0xFF986801.toInt())
         }
 
         fun table(t: TableBlock) {
@@ -432,34 +531,76 @@ object AiRender {
             if (end > start) {
                 sb.setSpan(TypefaceSpan("monospace"), start, end, 0)
                 sb.setSpan(RelativeSizeSpan(0.9f), start, end, 0)
+                // v1.4.21 — THE STYLED HEADER: the header line (up to the
+                // first newline of the grid, before the dashed rule) goes
+                // BOLD in the accent color — a real table reads with a
+                // header, not just a monospace slab
+                val nl = sb.indexOf('\n', start)
+                if (nl in (start + 1) until end) {
+                    sb.setSpan(StyleSpan(Typeface.BOLD), start, nl, 0)
+                    sb.setSpan(ForegroundColorSpan(Fx.accentText(c)), start, nl, 0)
+                }
             }
             blockGap()
         }
 
-        /** plain text: expand any math placeholders it carries */
+        /** plain text: expand any math placeholders it carries.
+         *  v1.4.21 — FULL TeX FIRST: every segment tries
+         *  [AiRender.mathDrawable] (jlatexmath — matrices, cases, align,
+         *  the works) as an ImageSpan on a placeholder-width slot; a
+         *  formula the engine cannot shape falls back to the v1.4.20 span
+         *  subset ([appendTex]), which renders its honest subset and
+         *  keeps the rest verbatim. The raw source still rides the
+         *  bubble's tag (long-press copy). */
         fun inlineText(s: String) {
             var i = 0
             while (i < s.length) {
                 val ch = s[i]
                 if (ch >= PH_BASE && ch < PH_BLOCK) {
                     val idx = ch - PH_BASE
-                    if (idx < segs.size) appendTex(sb, segs[idx].tex)
+                    if (idx < segs.size) appendMath(segs[idx].tex, false)
                     i++
                 } else if (ch >= PH_BLOCK && ch < '\uF800') {
                     val idx = ch - PH_BLOCK
                     if (idx < segs.size) {
                         sb.append('\n')
-                        val st = sb.length
-                        appendTex(sb, segs[idx].tex)
-                        sb.setSpan(AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
-                                st, sb.length, 0)
-                        sb.setSpan(RelativeSizeSpan(1.08f), st, sb.length, 0)
+                        appendMath(segs[idx].tex, true)
                         sb.append('\n')
                     }
                     i++
                 } else {
                     sb.append(ch); i++
                 }
+            }
+        }
+
+        /** one math segment → full-TeX ImageSpan, else the span subset.
+         *  The slot char carries the span; the drawable's own width (via
+         *  ImageSpan's bounds) grows the line for INLINE math and centers
+         *  for BLOCK math. */
+        fun appendMath(tex: String, block: Boolean) {
+            try {
+                val d = mathDrawable(c, tex, block)
+                if (d != null) {
+                    val st = sb.length
+                    sb.append('\u2009')   // thin space: the span's slot
+                    sb.setSpan(ImageSpan(d, ImageSpan.ALIGN_BOTTOM), st, sb.length, 0)
+                    if (block) {
+                        sb.setSpan(AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+                                st, sb.length, 0)
+                    }
+                    return
+                }
+            } catch (_: Throwable) {}
+            // v1.4.20 fallback: the hand-rolled subset
+            if (block) {
+                val st = sb.length
+                appendTex(sb, tex)
+                sb.setSpan(AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
+                        st, sb.length, 0)
+                sb.setSpan(RelativeSizeSpan(1.08f), st, sb.length, 0)
+            } else {
+                appendTex(sb, tex)
             }
         }
     }
@@ -647,18 +788,118 @@ object AiRender {
         return out.toString().trimEnd('\n')
     }
 
+    // ---------------- v1.4.21 — the lightweight syntax colorizer (PURE) ----------------
+
+    /** token kinds: 0 plain, 1 comment, 2 string, 3 keyword, 4 number */
+    const val TOK_PLAIN = 0
+    const val TOK_COMMENT = 1
+    const val TOK_STRING = 2
+    const val TOK_KEYWORD = 3
+    const val TOK_NUMBER = 4
+
+    /** one highlight range (end exclusive). */
+    class Tok(val start: Int, val end: Int, val kind: Int)
+
+    /** per-language tables: line-comment prefixes + keywords. */
+    private val LANG_LINE_COMMENT = mapOf(
+            "kotlin" to "//", "java" to "//", "js" to "//", "javascript" to "//",
+            "ts" to "//", "typescript" to "//", "swift" to "//", "go" to "//",
+            "rust" to "//", "c" to "//", "cpp" to "//", "c++" to "//",
+            "python" to "#", "py" to "#", "bash" to "#", "sh" to "#", "shell" to "#",
+            "ruby" to "#", "yaml" to "#", "yml" to "#", "r" to "#",
+            "sql" to "--", "json" to null, "html" to null, "css" to null, "" to null)
+
+    private val LANG_KEYWORDS = mapOf(
+            "kotlin" to "fun val var if else when for while return class object interface data sealed enum import package null true false is in as this super companion override private public internal protected suspend try catch finally throw when do break continue by where typealias init constructor lateinit abstract open operator inline crossinline noinline reified const external infix tailrec vararg out expect actual it lateinit get set",
+            "java" to "public private protected static final void int long double float boolean char byte short class interface enum extends implements new return if else for while do switch case break continue try catch finally throw throws import package this super null true false abstract synchronized volatile transient native strictfp default instanceof record var sealed non-sealed permits yield",
+            "python" to "def class if elif else for while return import from as pass break continue try except finally raise with lambda yield global nonlocal assert del in is not and or None True False async await match case self print range len int str float list dict set tuple",
+            "js" to "function const let var if else for while do switch case break continue return try catch finally throw new class extends super this typeof instanceof in of delete void yield async await import export default null undefined true false console window document",
+            "javascript" to "function const let var if else for while do switch case break continue return try catch finally throw new class extends super this typeof instanceof in of delete void yield async await import export default null undefined true false console window document",
+            "ts" to "function const let var if else for while do switch case break continue return try catch finally throw new class extends implements super this typeof instanceof in of delete void yield async await import export default null undefined true false interface type enum namespace declare public private protected readonly abstract as is keyof infer never unknown any string number boolean",
+            "typescript" to "function const let var if else for while do switch case break continue return try catch finally throw new class extends implements super this typeof instanceof in of delete void yield async await import export default null undefined true false interface type enum namespace declare public private protected readonly abstract as is keyof infer never unknown any string number boolean",
+            "bash" to "if then else elif fi for while do done case esac function return in export local echo cd ls cat grep sed awk curl sudo apt yum rm mv cp mkdir chmod chown set trap",
+            "sh" to "if then else elif fi for while do done case esac function return in export local echo cd ls cat grep sed awk curl sudo apt yum rm mv cp mkdir chmod chown set trap",
+            "shell" to "if then else elif fi for while do done case esac function return in export local echo cd ls cat grep sed awk curl sudo apt yum rm mv cp mkdir chmod chown set trap",
+            "sql" to "select from where insert into values update set delete create table drop alter add primary key foreign references index view join inner left right outer full on group by order having limit offset distinct as and or not null like between in exists union all case when then else end begin commit rollback",
+            "json" to "true false null",
+            "html" to "html head body div span a p ul ol li table tr td th img script style link meta title form input button h1 h2 h3 h4 h5 h6 section header footer nav article class id href src",
+            "css" to "important media keyframes import from to and not only screen print display position top right bottom left width height margin padding border background color font text align justify center flex grid none block inline absolute relative fixed sticky",
+            "c" to "int char long short float double void unsigned signed struct union enum typedef static extern const volatile register return if else for while do switch case break continue goto sizeof null define include",
+            "cpp" to "int char long short float double void unsigned signed struct union enum typedef static extern const volatile register return if else for while do switch case break continue goto sizeof null define include class public private protected virtual override template typename namespace using new delete this nullptr try catch throw auto constexpr",
+            "c++" to "int char long short float double void unsigned signed struct union enum typedef static extern const volatile register return if else for while do switch case break continue goto sizeof null define include class public private protected virtual override template typename namespace using new delete this nullptr try catch throw auto constexpr")
+
+    /** PURE (probe-pinned) — the bounded one-pass highlighter. Line
+     *  comments first (whole tail), then strings (quote-matched, escapes
+     *  honored), then word-boundary keywords, then numbers. Bounded: code
+     *  over 20000 chars or 4000 tokens returns empty (no highlight beats
+     *  a jank). Unknown languages still get strings + numbers. */
+    fun tokenizeCode(code: String, lang: String): List<Tok> {
+        if (code.isEmpty() || code.length > 20000) return emptyList()
+        val lc = LANG_LINE_COMMENT[lang]
+        val kws = LANG_KEYWORDS[lang]?.split(' ')?.toHashSet()
+        val out = ArrayList<Tok>()
+        var i = 0
+        val n = code.length
+        var tokCount = 0
+        while (i < n) {
+            if (tokCount >= 4000) return emptyList()
+            val c = code[i]
+            when {
+                // ---- line comment ----
+                lc != null && c == lc[0] && code.startsWith(lc, i) -> {
+                    val e = code.indexOf('\n', i).let { if (it < 0) n else it }
+                    out.add(Tok(i, e, TOK_COMMENT)); i = e
+                }
+                // ---- strings (double, single, backtick) ----
+                c == '"' || c == '\'' || c == '`' -> {
+                    var j = i + 1
+                    while (j < n) {
+                        if (code[j] == '\\') j += 2
+                        else if (code[j] == c || code[j] == '\n') break
+                        else j++
+                    }
+                    val e = if (j < n && code[j] == c) j + 1 else j
+                    out.add(Tok(i, e, TOK_STRING)); i = e; tokCount++
+                }
+                // ---- numbers ----
+                c.isDigit() && (i == 0 || !(code[i - 1].isLetterOrDigit() || code[i - 1] == '_')) -> {
+                    var j = i
+                    while (j < n && (code[j].isDigit() || code[j] == '.' ||
+                                    code[j] == 'x' || code[j] == 'X' ||
+                                    (code[j] in 'a'..'f') || (code[j] in 'A'..'F') ||
+                                    code[j] == '_' || code[j] == 'L' || code[j] == 'l')) j++
+                    out.add(Tok(i, j, TOK_NUMBER)); i = j; tokCount++
+                }
+                // ---- identifiers / keywords ----
+                c.isLetter() || c == '_' -> {
+                    var j = i
+                    while (j < n && (code[j].isLetterOrDigit() || code[j] == '_')) j++
+                    if (kws != null && kws.contains(code.substring(i, j))) {
+                        out.add(Tok(i, j, TOK_KEYWORD)); tokCount++
+                    }
+                    i = j
+                }
+                else -> i++
+            }
+        }
+        return out
+    }
+
     // ---------------- the assistant-bubble gate ----------------
 
     /** does this text carry markdown signals worth rendering? ASSISTANT
      *  bubbles render through [render] when true; a reply without any
      *  signal skips the parser (fast path). User bubbles never render —
-     *  their markdown is theirs to quote literally. */
+     *  their markdown is theirs to quote literally.
+     *  v1.4.21: ~~ (strikethrough) joins the signal set. */
     fun looksMarkdown(s: String): Boolean {
         if (s.isEmpty()) return false
         return s.contains("##") || s.contains("**") || s.contains("`") ||
                 s.contains("$$") || s.contains("$") || s.contains("\\(") ||
-                s.contains("\\[") || Regex("(^|\\n)#{1,6} ").containsMatchIn(s) ||
+                s.contains("\\[") || s.contains("~~") ||
+                Regex("(^|\\n)#{1,6} ").containsMatchIn(s) ||
                 Regex("(^|\\n)\\s*[-*] ").containsMatchIn(s) ||
-                Regex("(^|\\n)\\s*\\d+\\. ").containsMatchIn(s)
+                Regex("(^|\\n)\\s*\\d+\\. ").containsMatchIn(s) ||
+                Regex("\\|.*\\|").containsMatchIn(s)
     }
 }

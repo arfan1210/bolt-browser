@@ -116,6 +116,16 @@ object AiBridge {
             if (prov(ctx) == "gemini") GEMINI_DEFAULT else ""
         }
 
+    /** v1.4.21 — THE TRANSLATE-MODEL PICKER (the field ask's better half):
+    *  screen translate may ride a DIFFERENT model than chat — a dense
+    *  screen needs a higher output ceiling than a lite chat model
+    *  offers (the field corpse was gemini-3.5-flash-lite capping out).
+    *  Empty = the shared chat model, exactly as before. */
+    private fun translateModel(ctx: Context): String {
+        val t = prefs(ctx).getString("translateModel", "")!!.trim()
+        return t.ifEmpty { model(ctx) }
+    }
+
     private fun baseUrl(ctx: Context): String =
         prefs(ctx).getString("base", "")!!.ifBlank { DEFAULT_OPENAI_BASE }
 
@@ -189,6 +199,13 @@ object AiBridge {
             val modelEt = et(prefs(a).getString("model", "")!!, if (prov(a) == "gemini") GEMINI_DEFAULT else "e.g. google/gemini-3.5-flash-lite", false)
             wrap.addView(modelEt)
 
+            // v1.4.21 — THE TRANSLATE-MODEL PICKER (the dense-screen cure's
+            // better half): screen translate can ride its own higher-output
+            // model; empty = the shared model above
+            wrap.addView(tv("Translate model (optional — screen translate only)", 12, Color.rgb(120, 124, 134), true))
+            val tlModelEt = et(prefs(a).getString("translateModel", "")!!, if (prov(a) == "gemini") "e.g. gemini-3.5-flash (a higher ceiling than -lite)" else "e.g. google/gemini-3.5-flash", false)
+            wrap.addView(tlModelEt)
+
             wrap.addView(tv("Base URL (OpenAI-compatible only)", 12, Color.rgb(120, 124, 134), true))
             val baseEt = et(baseUrl(a), DEFAULT_OPENAI_BASE, false)
             wrap.addView(baseEt)
@@ -211,6 +228,7 @@ object AiBridge {
                         .putString("prov", p)
                         .putString("key", k)
                         .putString("model", modelEt.text.toString().trim())
+                        .putString("translateModel", tlModelEt.text.toString().trim())
                         .putString("base", baseEt.text.toString().trim())
                         .apply()
                     Toast.makeText(a,
@@ -300,8 +318,10 @@ object AiBridge {
     fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int): ArrayList<AiBox>? {
         lastError = ""
         val p = prompt(tl, iw, ih)
+        // v1.4.21: the translate-model picker — the dedicated screen-
+        // translate model when set, the shared chat model otherwise
         return if (prov(ctx) == "gemini") {
-            val m = model(ctx)
+            val m = translateModel(ctx)
             val chain = buildChain(m)
             for (name in chain) {
                 val r = geminiCall(ctx, name, p, b64, iw, ih)
@@ -395,14 +415,43 @@ object AiBridge {
         return null
     }
 
-    /** v1.4.19 — one vision POST at a token cap, with the thinking-400 retry */
+    /** v1.4.19 — one vision POST at a token cap. v1.4.20: the thinking-400
+     *  retry. v1.4.21 — THE 400 LADDER-DOWN (root-caused: the field report
+     *  said "HTTP 400" — gemini-3.5-flash-lite REJECTS thinkingBudget:0,
+     *  and the v1.4.20 retry only fired when the 400 body named "thinking",
+     *  which this model's rejection does not — so the request died with no
+     *  recovery. Translate now never SENDS thinkingConfig (see visionBody),
+     *  and on ANY 400 the RAW body rides to Diag (shortErr hid the exact
+     *  rejection — never again) and the cap steps DOWN the model's own
+     *  output ceiling until it fits or the floor is reached). */
     private fun postVision(ctx: Context, mdl: String, p: String, b64: String,
                            cap: Int): Pair<Int, String> {
-        var r = geminiPostRetry(ctx, mdl, visionBody(p, b64, true, cap))
-        if (r.first == 400 && r.second.contains("thinking", true)) {
-            r = geminiPostRetry(ctx, mdl, visionBody(p, b64, false, cap))
+        var c = cap
+        var r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c))
+        while (r.first == 400) {
+            try {
+                Diag.log(ctx, "ai translate 400 raw cap=$c body=" + r.second.take(240))
+            } catch (_: Throwable) {}
+            val next = cap400Next(c)
+            if (next <= 0) return r
+            c = next
+            r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c))
         }
         return r
+    }
+
+    /** v1.4.21 — PURE (probe-pinned): the HTTP-400 cap ladder. A 400 can be
+     *  the model's own maxOutputTokens ceiling sitting BELOW the rung we
+     *  sent (lite models cap low); the honest recovery steps the cap down
+     *  one rung at a time — 65536 -> 32768 -> 16384 -> 8192 -> give up (the
+     *  400 is then about something else and the raw-body Diag line above
+     *  names it). */
+    @JvmStatic
+    internal fun cap400Next(cur: Int): Int = when (cur) {
+        65536 -> 32768
+        32768 -> 16384
+        16384 -> 8192
+        else -> -1
     }
 
     /** v1.4.19 — the envelope's finishReason ("MAX_TOKENS" = the reply hit
@@ -452,23 +501,20 @@ object AiBridge {
     @JvmStatic
     internal fun shouldTile(err: String): Boolean = err == CUT_OFF_ERR
 
-    /** the vision request body (think=false strips thinkingConfig).
+    /** the vision request body.
      *  v1.4.19: the output cap is a PARAMETER — 32768 on the first rung
      *  (dense screens overflowed the old 16384 mid-array), 65536 on the
      *  MAX_TOKENS retry (see geminiCall's ladder).
-     *  v1.4.20 — THINKING HARD OFF FOR TRANSLATE: thinkingLevel minimal
-     *  still THINKS, and on models where the level field is rejected the
-     *  no-config retry thinks FULLY — either way the thinking tokens raid
-     *  maxOutputTokens and the visible JSON truncates mid-array in ~3 s
-     *  (the field report's failure was far too fast to be a 32768-token
-     *  generation). thinkingBudget 0 is the hard off: the WHOLE output
-     *  cap goes to the visible JSON. A model that rejects the config
-     *  outright (400 naming thinking) still gets the no-config retry —
-     *  and the usageDiag evidence line names it when it raids the
-     *  budget anyway. The CHAT body keeps thinkingLevel minimal (chat
-     *  image questions work — the report said so — and its 2048 cap
-     *  rides a different budget entirely). */
-    private fun visionBody(p: String, b64: String, think: Boolean, cap: Int): JSONObject {
+     *  v1.4.21 — THINKINGCONFIG OMITTED ENTIRELY (supersedes the
+     *  v1.4.20 thinkingBudget-0 idea): the field 400 was the LITE model
+     *  rejecting the thinkingBudget FIELD ITSELF, and translation needs
+     *  no thinking config at all — a field we never send cannot be
+     *  rejected, and whatever thinking the model does by default is
+     *  bounded by its own output ceiling (the ladder-down covers a low
+     *  ceiling; the tile road covers density). The CHAT body keeps its
+     *  thinkingLevel minimal (chat image questions work — the report
+     *  said so — and its 2048 cap rides a different budget entirely). */
+    private fun visionBody(p: String, b64: String, cap: Int): JSONObject {
         val body = JSONObject()
         val parts = JSONArray()
         parts.put(JSONObject().put("text", p))
@@ -478,11 +524,10 @@ object AiBridge {
             JSONObject().put("role", "user").put("parts", parts)))
         // v1.3.75: responseMimeType json makes the model emit a raw
         // JSON array (no fences, no commentary); the output cap rides
-        // the v1.4.19 ladder
+        // the v1.4.19 ladder (and the v1.4.21 400 ladder-down)
         val gc = JSONObject()
             .put("temperature", 0.1).put("maxOutputTokens", cap)
             .put("responseMimeType", "application/json")
-        if (think) gc.put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
         body.put("generationConfig", gc)
         return body
     }
@@ -551,7 +596,7 @@ object AiBridge {
     private fun openaiCall(ctx: Context, p: String, b64: String, iw: Int, ih: Int): ArrayList<AiBox>? {
         var c: HttpURLConnection? = null
         return try {
-            val mdl = model(ctx)
+            val mdl = translateModel(ctx)   // v1.4.21: the translate picker applies here too
             if (mdl.isBlank()) { lastError = "set a model in the AI settings"; return null }
             val content = JSONArray()
             content.put(JSONObject().put("type", "text").put("text", p))

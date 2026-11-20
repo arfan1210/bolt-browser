@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 134" in gradle, "versionCode 134 (Android only installs RISING codes)")
-need('versionName "1.4.20"' in gradle, 'versionName "1.4.20"')
+need("versionCode 135" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.21"' in gradle, 'versionName "1.4.21"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -167,12 +167,15 @@ need("Build.VERSION.SDK_INT > 29" in mcs_code,
      "API > 29 keeps the copy discipline alone (those versions stayed crash-free)")
 
 print("B — fix 2: the forced-dark icon + thickness floor")
-need("function uiIcon(el)" in mh and "m<=64;" in mh,
+need("function uiIcon(el)" in mh and "m>0&&m<=64" in mh,
      "the icon classifier exists: a small svg (<=64 px longest edge) is a "
      "UI icon (RAW source — the size cut is the classifier)")
-need("if(t==='SVG'&&uiIcon(el))return false;" in mh,
+need("if((t==='SVG'||t==='IMG')&&uiIcon(el))return false;" in mh,
      "isMedia lets UI icons through to the walk (they were skipped AND "
-     "left un-inverted — the dark-hamburger vanish)")
+     "left un-inverted — the dark-hamburger vanish) "
+     "(v1.4.21 re-point 2026-11-20: IMG joined SVG — menu images were "
+     "media too and stayed black; context-first classification in "
+     "test_v1421 section D)")
 need("function iconFloor(el,cs,inv){" in mh
      and "el.classList.add(IC);" in mh,
      "the icon floor: classed .__boltIC (filter:none — rides the page "
@@ -200,10 +203,17 @@ need(".__boltIC" in mh and "classList.remove('__boltIC');" in mh,
      "filters)")
 
 print("C — fix 3: translate thinking-off + the evidence line + the tile road")
-need('put("thinkingBudget", 0)' in ab,
-     "translate sends thinkingBudget 0 — the HARD off (the whole output cap "
-     "goes to the visible JSON; RAW source — the strip pass eats string "
-     "literals)")
+# v1.4.21 re-point (2026-11-20): the old pin ('put("thinkingBudget", 0)')
+# retired — the lite model rejected the thinkingBudget FIELD itself with
+# HTTP 400 and the narrow "thinking"-body retry never fired. The honest
+# successor pin: the TRANSLATE body carries NO thinkingConfig at all (the
+# chat body keeps thinkingLevel minimal — different budget, untouched).
+import re as _re
+_vb = _re.search(r"private fun visionBody\(.*?\n    \}", ab, _re.S)
+need(_vb is not None and "thinkingConfig" not in _vb.group(0),
+     "the translate body sends NO thinkingConfig (v1.4.21: omitted "
+     "entirely — a field never sent cannot be rejected; the chat body's "
+     "thinkingLevel is a different path)")
 need("internal fun usageDiag(fr: String, thoughts: Int, candidates: Int, len: Int): String {" in ab_code,
      "the one-line evidence form is PURE (probe-pinned)")
 need('usageInt(r.second, "thoughtsTokenCount")' in ab,
@@ -317,7 +327,7 @@ need("(t.tag as? String) ?: t.text.toString()" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 134") == 1,
+need(gradle.count("versionCode 135") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

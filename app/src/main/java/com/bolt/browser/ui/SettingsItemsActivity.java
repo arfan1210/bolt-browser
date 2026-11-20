@@ -400,6 +400,27 @@ public class SettingsItemsActivity extends BaseListActivity {
         // when media starts, stays while paused until swiped, and controls
         // playback in-app / backgrounded / closed). A toggle that lied about
         // turning that off was worse than no toggle.
+        // v1.4.21 — SHOW MEDIA ARTWORK (the artwork half of the notification
+        // CAN honestly be turned off, and on API <= 29 it defaults OFF: the
+        // SystemUI artwork-recycle family killed the user's process three
+        // times over three releases — v1.3.22 guard, v1.3.27 fresh copy +
+        // 1px shrink, v1.4.20 size cap, all reduced none cured; the v1.4.21
+        // root cause was the SHARED artCopy() instance across
+        // METADATA_KEY_ART/ALBUM_ART, now per-channel). OFF = text-only
+        // notification, which cannot crash. The service re-reads the pref
+        // at its next publish — no live push needed (the toggle lands on
+        // the very next title/state change).
+        Row art = toggle(R.drawable.ic_volume, getString(R.string.media_artwork),
+                prefs.mediaArtwork(), (b, on) -> {
+                    prefs.setMediaArtwork(on);
+                    // an immediate re-publish so the change is visible now
+                    try {
+                        com.bolt.browser.media.MediaControlService
+                                .requestPublish(this);
+                    } catch (Throwable ignored) {}
+                });
+        art.sub = getString(R.string.media_artwork_desc);
+        rows.add(art);
         Row booster = toggle(R.drawable.ic_volume, getString(R.string.media_booster),
                 prefs.mediaBooster(), (b, on) -> {
                     prefs.setMediaBooster(on);

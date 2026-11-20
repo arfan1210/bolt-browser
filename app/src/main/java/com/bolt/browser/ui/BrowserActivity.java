@@ -4271,7 +4271,26 @@ public class BrowserActivity extends AppCompatActivity {
                             + "border-radius:8px;font-size:14px'>Copy diagnostics</button></p></body></html>",
                             "text/html", "utf-8");
                 } else {
-                    w.loadUrl(t.url);
+                    // v1.4.21 — THE HISTORY-FIRST LAW (the "back history
+                    // lost after tab/app switch" corpse): a rebuilt WebView
+                    // first restores its captured navigation state
+                    // (saveState taken at sleep/trim/render-death; the cold
+                    // blob from tabs.json when the process died) — the
+                    // back/forward list AND the current item come back, so
+                    // Back goes to the previous page instead of out of the
+                    // tab to the home screen. restoreHist false (nothing
+                    // captured / stale blob / provider mismatch) falls back
+                    // to exactly the old loadUrl shape.
+                    boolean restored = false;
+                    try { restored = t.restoreHist(w); } catch (Throwable ignored) {}
+                    if (!restored) {
+                        w.loadUrl(t.url);
+                    } else {
+                        try {
+                            com.bolt.browser.util.Diag.log(this, "tab hist restore idx=" + idx
+                                    + (t.sleepState != null ? " warm" : " cold"));
+                        } catch (Throwable ignored) {}
+                    }
                 }
             }
         }
@@ -4414,23 +4433,33 @@ public class BrowserActivity extends AppCompatActivity {
         // v1.3.27 — TAB SLEEPING ("give the music the memory it needs").
         // While media is live somewhere, release the WebViews of every
         // NON-media, non-visible tab under real pressure: the TABS stay in
-        // the list and rebuild from t.url on their next show (the v1.3.19
+        // the list and rebuild (v1.4.21: through saveState/restoreState —
+        // the back/forward list survives) on their next show (the v1.3.19
         // renderer-death machinery, now used proactively — Chrome's
         // tab-discard strategy). Bolt's renderer footprint shrinks by
         // hundreds of MB BEFORE lmkd has to shoot the whole process, so the
         // media renderer keeps its RAM and the music keeps playing. At
         // TRIM_COMPLETE while backgrounded — the last level before the whole
         // process is a candidate — even the ACTIVE tab's WebView is released;
-        // it reloads from its (SPA-correct, position-annotated) URL on return.
+        // it restores from its captured state on return.
+        // v1.4.21 — THE SOFTENED TRIGGER (the field root cause: the device
+        // fired trimMemory level=15 on EVERY app switch, so background tabs
+        // slept on each switch and their back history died with the
+        // renderer — the sleep path itself was history-safe only after the
+        // saveState law above; the TRIGGER was the noise). The sleep pass
+        // now runs from TRIM_MEMORY_MODERATE (60) up — level 15
+        // (RUNNING_CRITICAL) and UI_HIDDEN (20) keep every tab's renderer;
+        // the thumbnail drop above (cheap, regenerates) keeps its old gate.
         int slept = 0;
         try {
+            boolean realPressure = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE;
             boolean anyMedia = false;
             synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
                 for (Tab t : tm.tabs) {
                     if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
                 }
             }
-            if (anyMedia) {
+            if (anyMedia && realPressure) {
                 boolean lastDitch = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
                         && activityBackground;
                 // v1.4.11: the thread law — sleepTab() destroys a WebView
@@ -4464,10 +4493,19 @@ public class BrowserActivity extends AppCompatActivity {
 
     /** v1.3.27 — destroy a sleeping tab's WebView but KEEP the tab (it
      *  rebuilds from t.url on its next show — the same recovery path a
-     *  renderer death takes). Teardown order mirrors TabManager.close(). */
+     *  renderer death takes). Teardown order mirrors TabManager.close().
+     *  v1.4.21 — HISTORY LIVES + THE SLEEP FLAGS: the trim path now
+     *  captures saveState() BEFORE the blank+destroy (the back/forward
+     *  list survives the rebuild) and sets the same sleeping flags
+     *  TabSleep.sleep() does, so the wake restores the scroll position
+     *  too. And the trigger itself softened: see the level>=60 gate in
+     *  onTrimMemory (the device fired level=15 on EVERY app switch —
+     *  brief switches no longer destroy anything). */
     protected void sleepTab(Tab t) {
         if (t.web == null) return;
         try { t.web.stopLoading(); } catch (Throwable ignored) {}
+        try { t.sleepScrollY = t.web.getScrollY(); } catch (Throwable ignored) {}
+        try { t.saveHist(t.web); } catch (Throwable ignored) {}
         try { t.web.loadUrl("about:blank"); } catch (Throwable ignored) {}
         try {
             if (t.web.getParent() instanceof ViewGroup)
@@ -4475,6 +4513,7 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
         try { t.web.destroy(); } catch (Throwable ignored) {}
         t.web = null;
+        t.sleeping = true;
         t.mediaPlaying = false;
         t.holdsMedia = false;
     }
@@ -6339,6 +6378,16 @@ public class BrowserActivity extends AppCompatActivity {
             } catch (Throwable ignored) {}
             // a fullscreen surface over a dead renderer is a black hole — leave it
             if (customView != null) exitFullscreenVideo();
+            // v1.4.21 — HISTORY LIVES (the phoenix path): the renderer is
+            // gone but the navigation history lives in the BROWSER process
+            // (WebView's own model — render death ≠ history death), and the
+            // view object can still serialize it. Capture saveState BEFORE
+            // the destroy so the rebuilt WebView restores the back/forward
+            // list; a capture that comes back empty (controller already
+            // torn down) keeps the tab's last captured blob instead.
+            if (t != null) {
+                try { t.saveHist(view); } catch (Throwable ignored) {}
+            }
             try {
                 if (view.getParent() instanceof ViewGroup)
                     ((ViewGroup) view.getParent()).removeView(view);
@@ -13142,7 +13191,12 @@ public class BrowserActivity extends AppCompatActivity {
 
     /** v1.4.19 — set the engine chip's glyph to the ACTIVE engine's logo
      *  (brand marks untinted; the generic fallback keeps the theme tint).
-     *  Called when the omnibox opens and again on every engine switch. */
+     *  Called when the omnibox opens and again on every engine switch.
+     *  v1.4.21 — THE BINDING BREADCRUMB (the "Bing/Brave show the DDG
+     *  duck" report): the drawable resource name actually set rides to
+     *  Diag on every application, so the next report proves which mark
+     *  the device drew per engine (engineLogo's mapping is pure and
+     *  probe-pinned; this line is the on-device truth). */
     protected void applyEngineLogo(View lay) {
         try {
             ImageView iv = lay.findViewById(R.id.iv_omni_search);
@@ -13150,6 +13204,11 @@ public class BrowserActivity extends AppCompatActivity {
             int logo = engineLogo(prefs.searchEngine());
             iv.setImageResource(logo);
             iv.setColorFilter(logo == R.drawable.ic_search ? Fx.tint(this) : null);
+            try {
+                com.bolt.browser.util.Diag.log(this, "engine logo set engine="
+                        + prefs.searchEngine() + " res="
+                        + getResources().getResourceEntryName(logo));
+            } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }
 
