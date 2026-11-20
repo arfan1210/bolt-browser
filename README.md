@@ -1693,26 +1693,147 @@ session, 2026-11-20):
    "~280 KB smaller" for the next build; the repo-side docs and both
    release bodies state the exact byte numbers.
 
-**Plans / candidates for future versions (v1.4.24 edition):**
+**v1.4.25 — THE RELIABILITY + COVERAGE ROUND** (the eighteenth session,
+2026-11-21):
+
+1. *MATH MUST WORK RELIABLY (field-rooted, the on-demand cut backfired).*
+   The diag.log: `math dl fail dl base/jlm_cmex10.ttf` on the Realme,
+   often on METERED mobile data — the v1.4.24 font-pack download (a)
+   skipped metered connections entirely, (b) set `failedProc` after ONE
+   failure (no retry until restart), (c) had no manual retry, so the
+   pack never landed and EVERY fraction rendered through the weak
+   v1.4.20 subset spans. THE FIX, reliability over the last ~100 KB:
+   THE CORE-FONT REBUY — the 7 CORE fonts (cmex10, cmmi10, cmmib10,
+   cmr10, cmsy10, msam10, msbm10; 166,720 B raw) ride the APK again via
+   `scripts/thin_jlatexmath.py`'s CORE set (mirrored in
+   `MathFonts.CORE` — edit the two together); fractions, matrices,
+   Greek, integrals, sums and AMS symbols work OFFLINE and ON METERED
+   data immediately. The engine loads typefaces LAZILY
+   (`FontInfo.getFont`, verified against upstream v0.2.0 source), so the
+   23 missing OPTIONAL fonts (euler, optional CM shapes, special/
+   stmary/dsrom, rsfs — 289,048 B raw) cannot break engine init — only a
+   formula that actually needs one throws, AiRender catches, the subset
+   shows, and the download is kicked. THE RETRY LAW: `failedProc` is
+   dead; a failed attempt stamps a 20 s back-off and the NEXT math
+   render retries; the MANUAL door (the "Math fonts" chip in the Bolt
+   AI panel, live status: ready / downloading / failed-retry / core)
+   forces an attempt that ignores the back-off AND the metered skip.
+   `mathDrawable`'s pack-present gate is gone (core math never waits for
+   a network). APK ~3.15 MB (still under v1.4.23's 3,325,166 B). Probe:
+   the thin-AAR core-font inspection + the transcribed retry/metered/
+   status tables (test_v1425.py).
+2. *COLOURED TEXT in Bolt AI chat.* AiRender's HTML handler ignored
+   explicit color entirely. `<span style="color:…">` and
+   `<font color="…">` now paint their range through a
+   ForegroundColorSpan — hex (#rgb/#rrggbb/#rrggbbaa), rgb()/rgba()
+   (percent channels included) and the common named colours, parsed
+   SAFELY (`AiRender.parseHtmlColor`, PURE: an unparseable colour
+   colours nothing; alpha below 0.4 declines rather than wash out).
+   The code-block colorizer (tokenizeCode/codeColors) verified to emit
+   distinct keyword/string/comment/number colours. Probes: the
+   transcribed parseHtmlColor table + the tokenizeCode kind coverage.
+3. *SCREEN TRANSLATE COVERS THE WHOLE PAGE (field-rooted: a thin right
+   strip).* The log: `OCR chars=54 lines=5` -> vision fallback ->
+   `vision ok lines=1` — ONE hallucinated box_2d painted a strip while
+   the rest of the page stayed untranslated; two failures in one path
+   (OCR under-reads; vision trusts invented boxes). THE GRID LAW: the
+   screen cuts into a 2x3 (portrait) / 3x2 (landscape) grid; every cell
+   OCRs at NATIVE resolution (`cropTile` + q92, never downscaled — the
+   retired whole-screen <=1600 encode halved a modern 1440x3088
+   screenshot, the small-text under-read's other half) with a MILD 2/98
+   percentile luminance stretch (the manga-era hard stretch hurt
+   general text; PSM 3 auto layout stays); a cell that under-reads
+   (< TILE_FLOOR=20 chars) gets a per-tile VISION text-only pass
+   (`AiBridge.visionTileTranslate` — the tile prompt demands plain
+   text, no coordinates, no JSON; plain-text out with no
+   responseMimeType) OVERLAID ON ITS FIXED CELL (`gridCard`/
+   `gridCardRect` — geometry places it, box_2d is never consulted
+   again; tilePlace/iou/translateRegion/deliverVisionBoxes left with
+   the box road). Well-read cells ride the ONE numbered-lines
+   textTranslate; the whole-screen YIELD_FLOOR still guards the
+   aggregate; the OCR-blind worst case is the same grid of text-only
+   cards — full-page coverage is GEOMETRIC, not hallucination-
+   dependent. The source-language picker stays; per-tile char yield
+   rides the Diag (`scr ai tile i chars=…`). Probes: the transcribed
+   grid geometry (exact whole-bitmap tiling) + per-tile decisions +
+   card rects.
+4. *PASSWORD AUTOFILL DOES NOTHING on tap (field-rooted, the silent
+   guard).* `fillPwFromChip` called
+   `window.__boltFillPw&&window.__boltFillPw(u,p)` in the MAIN frame
+   only (and `evalMedia` could even target a background media tab) —
+   the DIU login lives on auth1.diu.edu.bd, a CROSS-ORIGIN SSO IFRAME
+   the main frame never reaches, so the guard failed SILENTLY and
+   nothing ever filled. THE FIX: `__boltFillPw` rides EVERY frame
+   (FrameHooks' document-start script, section 5), a login field in ANY
+   frame arms the chip with ITS OWN host (the v1.3.91 SSO law, finally
+   per-frame — the iframe's focusin climbs the pwArm relay), and the
+   fill is ROUTED: the tap runs `__boltFillPwAll` in the top frame,
+   which fills locally and posts `fillPw` ONLY to the child frames that
+   reported a login field (recorded by WINDOW identity — the password
+   is never broadcast); `fillRes` climbs back so `Bolt.pwFillResult`
+   toasts + Diags the outcome (`pw fill ok/fail host=…`), and a relay
+   that never answers falls to the visible 1.5 s timeout. The fill JS
+   is robust: the NATIVE value setter + input/change events
+   (React/Vue-controlled inputs notice), the username hunt by
+   autocomplete/name/id/mail/phone (the username-first flow preserved).
+   Probe: the mock-DOM fill relay — two frames, the native-setter fill,
+   the event dispatch, the climb to pwFillResult (test_v1425.py).
+5. *THE FAINT HAMBURGER / FONT-ICON in forced dark (field-rooted: the
+   Moodle `<i class="fa fa-bars">`).* A Font Awesome glyph is neither
+   IMG nor SVG, so the v1.4.24 icon classifier skipped it (the census:
+   mono detected but ic=0), and the old font-rescue only lifted
+   lum < 0.25 to a 153 mid-gray — a mid-gray glyph on a preserved dark
+   header sat FAINT. THE RIDE + LIGHT LAW: icon-font glyph elements and
+   their ::before/::after pseudos RIDE THE PAGE INVERSION like text
+   (dark -> light) — the inv===1 clamp SKIPS them entirely (never the
+   faint 153 gray); a glyph pinned dark OR MID (lum < 0.55) inside a
+   preserved dark subtree lifts to the VISIBLE light
+   (rgb(232,232,232)) — inline on the element (svSave-restorable) and
+   via !important pseudo rules (sufficient specificity over any
+   site-pinned glyph color). The census counts `fi=N` so the next
+   field report reads the glyphs back. Probe: the mock-DOM FA-glyph
+   walk (the hamburger lifts to 232 on the preserved dark header; the
+   inverted-side glyph rides untouched; the census counts).
+6. *The gate-sweep mechanics, v1.4.25 edition.* 42 gate files repinned
+   to 139/1.4.25 (repin_gates_1425.py); six dated re-points where the
+   fixes legitimately moved pinned targets (test_v1412's grid OCR
+   encoder, test_v1420's box-mapping retirement, test_v1418's 4th
+   chain walk site, test_v1423/v1424's census fi + visible-light +
+   grid hybrid, test_screen's grid vision call, test_blobdl's
+   deliberate pwFillResult bridge — 28 -> 29). The new test_v1425.py
+   rides the suite; the launch smoke rung stays exactly where it was.
+
+**Plans / candidates for future versions (v1.4.25 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
   v1.4.23 — it caught the v1.4.22 corpse; this round it verified the
-  font-pack split changed nothing on the launch path).
-- The dark census wants its NEXT field report: with `mono=N` riding
-  the diag line, a repeat of the auth.meta.com shape (small=7,
-  mono>=7, ic=7) proves the loosen; small=N mono=0 means those seven
-  were COLORFUL content all along and the law is working as designed.
-- The OCR source-language law wants one field read-back too: a
-  Bangla/Hindi/Arabic screen with `src=<pack> chars=... -> hybrid`
-  (instead of the corpse's chars=50) proves the picker; `-> vision`
-  on a genuinely textless screen proves the low-yield floor.
-- The font-pack download could grow a metered-ask door (today metered
-  connections skip silently; a "download now?" prompt in the AI panel
-  is the natural follow-up if a user reports it).
-- The jlatexmath pack lands at ~456 KB one-time; if the user ever
-  wants the APK even lighter, the NEXT lever is the two bundled
-  EasyList/EasyPrivacy snapshots (1,987,185 B + 1,512,121 B raw —
-  they deflate well, but they are the biggest assets left) — they
-  would need the same on-demand treatment before removal.
+  core-font rebuy and the grid rewrite changed nothing on the launch
+  path).
+- The math round wants its field read-back: a formula on METERED data
+  rendering fully (no `math dl fail` line at all — core needs no
+  network), and the Math-fonts chip flipping core -> downloading ->
+  ready once on wifi. If a `math dl fail` still appears, the tile name
+  in the line says WHICH optional font; the retry law means it heals
+  on the next render by design.
+- The grid wants its field read-back too: a dense screen with
+  `scr ai tile i chars=…` lines where every cell read well (six
+  `-> hybrid` lines, cells=0 on the delivery line) proves the native-
+  resolution tiling; a screen with `cells=1..5` and the overlay
+  covering the whole page (not a strip) proves the per-tile vision
+  cards. `scr ai vision ok cells=6` on a stylised page proves the
+  OCR-blind worst case now covers everything.
+- The password fill wants the DIU portal itself as the field check:
+  `pw fill ok host=auth1.diu.edu.bd` (the iframe's own host in the
+  Diag) is the exact proof the relay reached the SSO frame; the chip
+  should arm while focused in the iframe (its host, not the tab's).
+- The dark census wants its NEXT field report with `fi=N` riding the
+  line: the Moodle header should read fi>=1 (the hamburger counted),
+  and the glyph should read as LIFTED (visible light), not mono-only.
+- (carried) The jlatexmath optional pack lands at ~289 KB one-time;
+  if the user ever wants the APK even lighter, the NEXT lever is the
+  two bundled EasyList/EasyPrivacy snapshots (1,987,185 B +
+  1,512,121 B raw — they deflate well, but they are the biggest
+  assets left) — they would need the same on-demand treatment before
+  removal.
 - (carried) The engine-chip logo could still mirror on the toolbar
   URL-bar glyph and the home search widget.
 - (carried) ACTION_VIEW links from other apps still resolve into
