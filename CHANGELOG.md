@@ -4,6 +4,119 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.23] — 2026-11-20
+
+**The critical rebuild: v1.4.22 CRASHED ON LAUNCH — reconstructed from
+decompiled R8 bytecode, it passed every static gate and never opened on the
+user's Realme RMX2020 / Android 10. This release re-implements the four
+fixes as fresh hand-written code on the clean v1.4.21 tag and adds THE
+LAUNCH LAW to the pipeline: the release now verifies the app actually
+OPENS before publishing anything. The new Robolectric smoke drove
+Application.onCreate -> the launcher activity -> buildHomeView and
+immediately caught a launch-crashing autobox NPE in the home pill's
+`setColorFilter(cond ? int : null)` ternary — the exact corpse class,
+fixed before any user saw it.**
+
+### THE LAUNCH LAW (new, pipeline-level)
+- The lesson named forever: **static gates prove code EXISTS, not that the
+  app OPENS.** A decompile-port can be syntactically clean, compile, pass
+  72 probes — and still die in `onCreate` from bytecode-shape semantics
+  (the autobox ternary above is the textbook case).
+- `scripts/release.sh` now runs `testDebugUnitTest` (Robolectric:
+  BoltApp.onCreate -> BrowserActivity through the launcher alias ->
+  buildHomeView, plus the engine-mark pill binding assert) BEFORE the
+  build signs or publishes. A FATAL EXCEPTION stops the release.
+- The law pays for itself on day one: the smoke run caught the
+  `Integer`-unboxing NPE in the pill binding (v1.4.21's own
+  `applyEngineLogo` carries the same ternary but its catch swallowed it;
+  the unguarded port put it on the launch path — that was the crash).
+  Both sites are now explicit null-safe branches.
+
+### Fixed — FORCED-DARK SMALL-ICON DEFAULT-FLIP (MediaHook.darkSmartJs, round 4)
+- **DEFAULT-FLIP:** a small media element (longest edge <= 64 px, IMG or
+  SVG) now rides the page inversion (gets the IC class) **by default** —
+  it stays un-inverted only when it is clearly content: larger than 64 px,
+  banner-shaped (aspect ratio >= 2.5), or photo-classed inside
+  article/main/p/figure. The fragile uiCtx ancestor-guessing family is
+  retired.
+- **FONT-ICON GUARANTEE:** icon-font glyphs and their ::before/::after
+  pseudos ride the inversion; a glyph pinned to a fixed dark color inside
+  a preserved dark subtree is lifted by the new upward clamp (raiseCss)
+  to a visible mid-gray.
+- **CONTRAST RESCUE:** after the walk, a bounded pass over small
+  un-inverted media that is dark-on-dark (SVG fill/stroke luminance;
+  same-origin IMG via an 8x8 canvas sample — cross-origin keeps its
+  pixels) adds the IC class so the glyph flips light. Caps: 240
+  candidates / 80 rescues / 40 canvas samples.
+- The v1.4.19/v1.4.20 floors survive the rewrite: the light-stroke clamp
+  (0.6 floor), the < 1.5 px -> 2 px thickness bump, the pseudo rule
+  sheet, the media family un-invert, the parity walk.
+- **CENSUS:** the walk publishes `window.__boltDarkCount` (small/ic/ni/
+  rescue) and BrowserActivity logs `dark icons <host> small=N ic=N ni=N
+  rescue=N` after the late re-probe — the next dark-mode field report
+  carries real numbers.
+
+### Fixed — ENGINE LOGOS AS 64x64 RASTER PNGs + refresh everywhere
+- The five engine marks ship as fixed 64x64 PNGs in `drawable-nodpi`
+  (2.0-6.6 KB each) — every device draws the same pixels regardless of
+  OEM vector rasterization differences. `scripts/rasterize_engine_logos.py`
+  regenerates them offline from the archived vector sources
+  (`scripts/engine_vectors/`, retired from `res/` — no duplicate resource
+  names); `engineLogo(index)` mapping unchanged.
+- The active engine mark binds on the omnibox chip, the home search pill,
+  AND the engine picker rows (new `Ui.choiceSheetIcons`). `Fx.homeGen`
+  bumps at BOTH engine-selection entry points (the omnibox picker + the
+  Settings row) so the home pill follows a switch — never a recreate.
+- Diag breadcrumbs log the drawable resource name actually set per engine
+  (chip + pill).
+
+### Fixed — SCREEN-TRANSLATE HYBRID (accuracy)
+- The on-device OCR pass (tesseract) reads the text and its **exact box
+  coordinates** first; then ONE pure-text `AiBridge.textTranslate` request
+  carries every line, numbered, with the full screen as context — no
+  hallucinated box_2d, consistent terminology, and the screenshot is not
+  sent at all.
+- The vision path is demoted to a fallback: it fires only when OCR cannot
+  read the screen (stylised manga) or on a genuine MAX_TOKENS cut of the
+  text reply; full-screen first, tiles only when too dense, each tile
+  carrying the full-screen transcript as context; boxes merge by absolute
+  coordinates with the iou seam dedup.
+- `thinkingLevel: low` rides the first text try; any 400 drops the field
+  cleanly (never thinkingBudget — that field caused the 429/400-era
+  corpses). Coverage-gated delivery: only a genuine MAX_TOKENS cut under
+  the 70% floor hands off; partial STOP replies deliver with the missing
+  lines showing the original.
+- The privacy confirm tells the truth about the fallback: the screenshot
+  itself is sent only when OCR cannot read the screen at all.
+
+### Fixed — AiRender FOUR-PACK (chat formatting)
+- **HTML inline tags:** an HtmlInline/HtmlBlock visitor branch with an
+  open/close span stack — `<mark>` highlight, `<u>`/`<ins>` underline,
+  `<del>`/`<s>` strikethrough, `<sub>`/`<sup>` with 0.72 size, `<b>`/
+  `<strong>` bold, `<i>`/`<em>` italic, `<code>` monospace + bg, `<br>`
+  newline, `<a href>` URLSpan. Unknown tags render their inner text —
+  never literal angle brackets. Tags still open at a paragraph/block end
+  are force-closed (scope law).
+- **Nested blockquotes:** every level carries its own QuoteSpan bar +
+  indent, recursing (the flat italic is retired).
+- **Task lists:** `commonmark-ext-task-list-items` 0.24.0 — a tappable
+  checkbox (ClickableSpan flips the marker in the bubble, stays tappable).
+- **Footnotes:** `commonmark-ext-footnotes` 0.24.0 (inlineFootnotes on) —
+  superscript refs in first-citation order + an appended trailer;
+  `commonmark-ext-ins` joins for `++underline++`. All three: BSD-2 pure
+  Java, R8 tree-shaken.
+- jlatexmath full TeX, syntax colors, styled tables, assistant-only
+  rendering and long-press raw copy are untouched.
+
+### Build / size
+- versionCode 137 / versionName 1.4.23; shrinkResources + R8 full mode stay
+  on; the APK lands at 3.33 MB (3,325,166 B — well under the 6 MB law; the three
+  commonmark extensions cost ~25 KB of class files).
+- Recorded as the NEXT size lever (not risked this round, per the
+  release's whole point being launch stability): make jlatexmath
+  on-demand (fetch the engine/font pack on first math use, like the OCR
+  engine) to reclaim ~470 KB, or a lighter KaTeX-in-WebView path.
+
 ## [1.4.21] — 2026-11-20
 
 **The corpse-map six-pack: every item arrived root-caused from the v1.4.20

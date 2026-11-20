@@ -395,6 +395,13 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+<!-- v1.4.23 (2026-11-20): the critical rebuild — the four fixes
+         re-implemented from scratch on the clean v1.4.21 source (the
+         decompile-port crash lesson: THE LAUNCH LAW), the default-flip
+         dark-icon round, the engine-logo raster turn, the OCR-first
+         screen-translate hybrid, the AiRender four-pack, the launch
+         smoke gate -->
+<item>1.4.23|A fresh rebuild of this release on the previous version\'s clean source (the earlier build crashed on launch for some devices — it was reconstructed from the shipped app\'s machine code instead of written as source, and never actually ran; this version is hand-written code and the release now verifies the app OPENS before publishing); forced dark mode keeps EVERY small menu icon visible by flipping small images with the page BY DEFAULT (only clear content stays un-inverted: bigger pictures, wide banners, article photos), dark icon-font glyphs pinned by CSS get lifted to a visible gray, any small dark-on-dark icon still left is measured by pixel and flipped, and a per-page census counts the decisions for the next report; the search engine logos are small fixed raster images (every device draws the same official marks) and the mark refreshes everywhere the moment you switch engines — the home search pill carries it and the picker rows show them; AI screen translate is much more accurate — on-device OCR reads the text and its exact boxes first, then ONE AI request translates the whole screen with full context (the model no longer invents positions, terminology stays consistent, and the screenshot is only sent when OCR cannot read the screen at all); and Bolt AI chat renders HTML emphasis (highlight, underline, strikethrough, sub/sup), nested quotes with indentation and bars, interactive task checkboxes you can tap, and footnotes — long-press still copies the raw text.</item>
     <!-- v1.4.21 (2026-11-20): the corpse-map six-pack — the per-channel
          artwork copies + the API-29 artwork-off default, the back-history
          survival (saveState/restoreState + tabs.json), the translate

@@ -1496,44 +1496,43 @@ public class MediaHook {
                 + "return '0';}catch(e){return '0'}})()";
     }
 
-    /** v1.3.87 — THE BACKGROUND-IMAGE SCAN + v1.3.92 — THE PARITY WALK,
-     *  unified as ONE pass ([darkSmartJs]).
-     *
-     *  (A) THE NI PIN: .__boltNI on every element whose COMPUTED
-     *  background-image carries a url() (un-inverted by
-     *  [darkFallbackCss]) — photos and icons set through CSS classes,
-     *  which the attribute selector could never see.
-     *
-     *  (B) THE PARITY WALK — the v1.3.91 report: "this dark mode … still
-     *  blindly inverts colours … it makes some darker coloured elements
-     *  (like dark grey) bright (to light grey) by blind inversion. Also
-     *  it ends up making some white elements become black on black
-     *  hiding buttons. make the inversion identifier smart." The global
-     *  invert(1) hue-rotate(180deg) flips EVERY paint; the walk decides,
-     *  PER ELEMENT, whether a subtree should be inverted at all:
-     *    - an OPAQUE DARK background (luminance <= 0.35 — #333, #444,
-     *      #4a4a4a, the dark grey family) PRESERVES the subtree: the
-     *      cancel class .__boltDK restores its exact colors (dark grey
-     *      stays dark grey, its white labels stay white — never black on
-     *      black);
-     *    - an OPAQUE LIGHT background keeps the inversion (light card →
-     *      dark card);
-     *    - a url()-carrying background preserves (photos keep their
-     *      text overlays readable);
-     *    - everything transparent inherits the parent's parity (text and
-     *      borders follow whatever ground they actually sit on).
-     *  The walk maintains the FILTER PARITY (odd = inverted once, the
-     *  global filter's contribution; adding .__boltDK toggles it) so a
-     *  light element inside a preserved dark one can still be inverted
-     *  — the per-element decision composes down the tree.
-     *
-     *  Chunked (16 ms slices, 40 ms gaps, 3500-element cap) so a huge SPA
-     *  never janks; a MutationObserver processes added subtrees through
-     *  BOTH passes for 12 s (the interval SPAs mount their content in;
-     *  capped so a runaway page can never keep one alive forever). */
+    /** v1.4.23 — THE DEFAULT-FLIP ROUND (fresh hand-written code on the
+     *  v1.4.21 walk; the v1.4.21 uiCtx ancestor-guessing family is retired).
+     *  THE FIELD LAW (the round-4 lesson): small menu/hamburger glyphs kept
+     *  staying black on the inverted dark page because the media family is
+     *  un-inverted and the old heuristics only flipped icons they could
+     *  GUESS were chrome (icon-named, or wrapped in button/header/nav
+     *  within 6 levels). The default is now the other way round:
+     *  (A) DEFAULT-FLIP — a small media element (longest edge <= 64 px,
+     *      IMG or SVG) rides the page inversion (gets the IC class) BY
+     *      DEFAULT; it stays un-inverted ONLY when it is clearly CONTENT:
+     *      larger than 64 px, banner-shaped (aspect ratio >= 2.5), or
+     *      photo-classed inside article/main/p/figure.
+     *  (B) FONT-ICON GUARANTEE — icon-font glyphs (FontAwesome and the
+     *      family) and their ::before/::after pseudos ride the inversion
+     *      like every other text; a site that pins a glyph to a fixed DARK
+     *      color inside a preserved dark subtree gets the upward clamp
+     *      (raiseCss lifts it to a visible mid-gray on the dark ground).
+     *  (C) CONTRAST RESCUE — after the walk, one bounded pass over small
+     *      un-inverted media that is dark-on-dark (SVG fill/stroke
+     *      luminance; same-origin IMG via canvas sample) adds the IC class
+     *      so the glyph flips light. Cross-origin images simply fail the
+     *      sample and keep their pixels.
+     *  (D) CENSUS — the walk publishes window.__boltDarkCount (small/ic/
+     *      ni/rescue) and BrowserActivity reads it back for the per-page
+     *      Diag line (dark icons <host> ...).
+     *  The v1.4.19/v1.4.20 floors ride unchanged: the light-stroke clamp
+     *      (clampCss down to lum 0.6), the border thickness bump
+     *      (< 1.5 px -> 2 px), the pseudo rule sheet, the media family
+     *      un-invert and the parity walk itself.
+     *  Chunked (16 ms slices, 40 ms gaps, 3500-element cap) as before; the
+     *  observer processes late subtrees through BOTH passes for 12 s. */
     public static String darkSmartJs() {
         return "(function(){try{if(window.__boltDKrun)return;window.__boltDKrun=1;"
                 + "var DK='__boltDK',NI='__boltNI',SV='__boltSV',IC='__boltIC';var n=0;"
+                // the census object (v1.4.23): per-page decision counts the
+                // BrowserActivity diag reads back 2.5 s after the commit
+                + "var cnt={small:0,ic:0,ni:0,rescue:0};"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
@@ -1541,11 +1540,9 @@ public class MediaHook {
                 + "if(!m)return null;var a=m.length>4?parseFloat(m[4]):1;if(a<0.45)return null;"
                 + "return (0.2126*parseFloat(m[1])+0.7152*parseFloat(m[2])+0.0722*parseFloat(m[3]))/255;}catch(e){return null;}}"
                 // v1.4.19 — THE STROKE VISIBILITY FLOOR (the forced-dark
-                // thin-lines/hamburger-icons-too-faint report):
-                // invert(1) maps a light-gray stroke (#ddd, lum ~0.87) to
-                // ~#222 on the inverted dark ground — near-zero contrast.
-                // clampCss remaps a LIGHT source color DOWN to luminance
-                // 0.6 (153/255) so the post-inversion result is a visible
+                // thin-lines/hamburger-icons-too-faint report): clampCss
+                // remaps a LIGHT source color DOWN to luminance 0.6
+                // (153/255) so the post-inversion result is a visible
                 // mid-gray on black. PURE — the arithmetic is the gate's
                 // probe-pinned transcription (scripts/test_v1419.py).
                 // (NOTE: no double quotes in body comments — check_dark_js
@@ -1557,6 +1554,21 @@ public class MediaHook {
                 + "var a=m.length>4?parseFloat(m[4]):1;"
                 + "var y=0.2126*r+0.7152*g+0.0722*b;"
                 + "if(y<=153)return null;"
+                + "var f=153/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
+                + "return a<1?('rgba('+r+','+g+','+b+','+a+')'):('rgb('+r+','+g+','+b+')');"
+                + "}catch(e){return null}}"
+                // v1.4.23 — THE UPWARD CLAMP (the font-icon guarantee half):
+                // a glyph PINNED to a dark color (lum < 0.4, y < 102) on a
+                // dark ground is lifted to the same 153 mid-gray floor the
+                // downward clamp uses — a pinned-dark icon glyph becomes a
+                // visible gray instead of vanishing into the dark ground.
+                + "function raiseCss(c){try{"
+                + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
+                + "if(!m)return null;"
+                + "var r=parseFloat(m[1]),g=parseFloat(m[2]),b=parseFloat(m[3]);"
+                + "var a=m.length>4?parseFloat(m[4]):1;"
+                + "var y=0.2126*r+0.7152*g+0.0722*b;"
+                + "if(y>=102)return null;"
                 + "var f=153/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
                 + "return a<1?('rgba('+r+','+g+','+b+','+a+')'):('rgb('+r+','+g+','+b+')');"
                 + "}catch(e){return null}}"
@@ -1573,68 +1585,39 @@ public class MediaHook {
                 + ",s:el.style.stroke||null,f:el.style.fill||null,w:el.style.strokeWidth||null"
                 + ",W:el.style.borderWidth||null,t:el.style.webkitTextStroke||null}));"
                 + "}catch(e){}}"
-                // v1.4.20 — THE ICON-CLASSIFIER (pure; probe-pinned in
-                // scripts/test_v1420.py): a SMALL svg (longest edge <= 64 px)
-                // is a UI icon — hamburger menus, chevrons, tool glyphs;
-                // anything larger is CONTENT (charts, illustrations, big
-                // logos) and stays in the media family. The size cut is the
-                // classifier the field report asked for: dark-stroked UI
-                // icons were left un-inverted and vanished on the black
-                // ground, while content SVGs must never be inverted.
-                // v1.4.21 — THE IMG HALF (the hamburger still black, round
-                // 2): menus served as IMG (menu.svg / menu.png) are MEDIA —
-                // the media rule un-inverts them (double invert = keeps
-                // the original black) and they vanish on the black ground
-                // exactly like the SVGs did. Context FIRST, size second
-                // (the field ask): a small IMG inside UI chrome (button,
-                // header, nav, label, summary, role=button, an icon-named
-                // ancestor) is chrome; a small IMG inside a bare link is
-                // only chrome when TINY (<= 48 — links wrap thumbnails
-                // too) or icon-named itself; everything else is content.
+                // ================= v1.4.23 THE DEFAULT-FLIP CLASSIFIER =================
+                // (fresh; the uiCtx/iconNamed ancestor-guessing for IMG/SVG is
+                // RETIRED). Pure predicates, probe-pinned in
+                // scripts/test_v1423.py:
+                //   smallOf — longest edge in (0, 64]
+                //   bannerish — max(w,h)/min(w,h) >= 2.5 (wide strips + tall
+                //     spines are content even when small)
+                //   photoCtx — an article/main/p/figure ancestor within 6
+                //     levels marks photo-classed content
+                //   ridesFlip — small AND neither content marker: the element
+                //     rides the page inversion (the IC class) BY DEFAULT
                 // (no double quotes in comments — check_dark_js reads them)
-                + "function iconNamed(el){try{"
-                + "var cn=el.className;"
-                + "if(cn&&cn.baseVal!==undefined)cn=cn.baseVal;"
-                + "var s=((cn||'')+' '+(el.id||''));"
-                + "return /(^|[^a-z])(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)([^a-z]|$)/i.test(s);"
-                + "}catch(e){return false}}"
-                + "function uiCtx(el){try{"
-                + "var p=el.parentElement,lvl=0,weak=0;"
+                + "function rectMax(el){try{var r=el.getBoundingClientRect();"
+                + "return Math.max(r.width,r.height);}catch(e){return 0}}"
+                + "function smallOf(el){try{var m=rectMax(el);"
+                + "return m>0&&m<=64;}catch(e){return false}}"
+                + "function bannerish(el){try{var r=el.getBoundingClientRect();"
+                + "var w=r.width,h=r.height;if(w<=0||h<=0)return false;"
+                + "var mx=Math.max(w,h),mn=Math.min(w,h);"
+                + "return (mx/mn)>=2.5;}catch(e){return false}}"
+                + "function photoCtx(el){try{var p=el.parentElement,lvl=0;"
                 + "while(p&&lvl<6){var t=p.tagName;"
-                + "if(t==='BUTTON'||t==='HEADER'||t==='NAV'||t==='LABEL'||t==='SUMMARY')return 2;"
-                + "if(p.getAttribute&&p.getAttribute('role')==='button')return 2;"
-                + "if(iconNamed(p))return 2;"
-                + "if(t==='A')weak=1;"
-                + "p=p.parentElement;lvl++;}"
-                + "return weak;}catch(e){return 0}}"
-                + "function uiIcon(el){try{"
-                + "if(!el)return false;"
-                + "var t=el.tagName;"
-                + "if(t!=='SVG'&&t!=='IMG')return false;"
-                + "var r=el.getBoundingClientRect();"
-                + "var m=Math.max(r.width,r.height);"
-                + "if(!(m>0&&m<=64))return false;"
-                + "if(t==='SVG')return true;"
-                + "if(iconNamed(el))return true;"
-                + "var ctx=uiCtx(el);"
-                + "if(ctx===2)return true;"
-                + "if(ctx===1)return m<=48;"
-                + "return false;}catch(e){return false}}"
-                // v1.4.21 — THE BACKGROUND-ICON HALF: CSS background-image
-                // icons on SMALL INTERACTIVE elements (button/a/label/
-                // header/nav or icon-named) ride the IC class too — the NI
-                // pin un-inverts them and a dark glyph vanished exactly
-                // like the img/svg family. Size + interactivity keep big
-                // banner photos out.
-                + "function bgUiIcon(el){try{"
-                + "var r=el.getBoundingClientRect();"
-                + "var m=Math.max(r.width,r.height);"
-                + "if(!(m>0&&m<=64))return false;"
-                + "if(iconNamed(el))return true;"
-                + "var t=el.tagName;"
-                + "if(t==='BUTTON'||t==='A'||t==='LABEL'||t==='SUMMARY'||t==='HEADER'||t==='NAV')return true;"
-                + "if(el.getAttribute&&el.getAttribute('role')==='button')return true;"
-                + "return false;}catch(e){return false}}"
+                + "if(t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE')return true;"
+                + "p=p.parentElement;lvl++;}return false;}catch(e){return false}}"
+                + "function ridesFlip(el){return smallOf(el)&&!bannerish(el)&&!photoCtx(el)}"
+                // v1.4.20 — the icon-font detector: glyphs drawn by an icon
+                // FONT ride the text-color floors; the matcher only decides
+                // whether the glyph-thickening / raise is safe to apply
+                // (never on body text)
+                + "function iconFont(cs){try{"
+                + "var f=cs.fontFamily||'';"
+                + "return /icon|glyph|awesome|feather|typicon|octicon|remix|dashicons|icomoon/i.test(f);"
+                + "}catch(e){return false}}"
                 // v1.4.20 — THE THICKNESS RESOLVER (pure; probe-pinned): a
                 // low-contrast UI stroke thinner than 1.5 px is bumped to
                 // 2 px so it reads clearly after the inversion; anything
@@ -1643,27 +1626,10 @@ public class MediaHook {
                 + "var w=parseFloat(px);"
                 + "if(!(w>0)||w>=1.5)return null;"
                 + "return '2px';}catch(e){return null}}"
-                // v1.4.20 — the icon-font detector (pure-ish): glyphs drawn
-                // by an icon FONT ride the text-color floor already; the
-                // matcher only decides whether the extra glyph-thickening
-                // (text stroke) is safe to apply (never on body text)
-                + "function iconFont(cs){try{"
-                + "var f=cs.fontFamily||'';"
-                + "return /icon|glyph|awesome|feather|typicon|octicon|remix|dashicons|icomoon/i.test(f);"
-                + "}catch(e){return false}}"
                 // v1.4.19 — the stroke floor application: ONLY text color and
                 // border colors (the thin-strokes/icons/text surfaces),
-                // never backgrounds, never the media family (photos keep
-                // their pixels; isMedia is checked by parityEl's early return
-                // before this runs). Rides the existing walk — the same
-                // single getComputedStyle, the same 3500 cap, the same
-                // MutationObserver; no extra pass, no extra budget.
-                // v1.4.20 — TWO EXTENSIONS: (a) THICKNESS — a hairline
-                // (< 1.5 px) border whose color was clamped is bumped to
-                // 2 px (bumpW, pure): a mid-gray 1 px line is still faint on
-                // black; (b) ICON FONTS — a clamped glyph in an icon font
-                // also gets a 0.45 px text stroke so the glyph itself
-                // thickens (body text never matches iconFont).
+                // never backgrounds, never the media family. v1.4.20 added
+                // the thickness bump + the icon-font glyph stroke.
                 + "function strokeFloor(el,cs){try{"
                 + "var l=lumOf(cs.color);"
                 + "var fontIc=iconFont(cs);"
@@ -1678,19 +1644,15 @@ public class MediaHook {
                 + "var bw=bumpW(cs.borderTopWidth);"
                 + "if(bw){try{el.style.borderWidth=bw;}catch(x){}}}}}"
                 + "}catch(e){}}"
-                // v1.4.20 — THE UI-ICON FLOOR (the SVG half of the faint-
-                // icons report): small svgs are now WALKED (isMedia below)
-                // and get the IC class, whose CSS (filter:none) lets them
-                // ride the page inversion — a dark hamburger glyph inverts
-                // to light and reappears on the black ground. LIGHT strokes
-                // or fills (a white glyph on an inverted-dark button) are
-                // clamped to the same 0.6 floor BEFORE the flip (clampCss),
-                // and thin strokes are bumped (bumpW). Inside a preserved
-                // dark subtree (inv 0) the icon was drawn FOR that ground —
-                // untouched. All writes ride svSave (exact restore).
-                + "function iconFloor(el,cs,inv){try{"
-                + "if(inv!==1)return;"
-                + "el.classList.add(IC);"
+                // v1.4.23 — THE ICON CLAMP (the media half of the stroke
+                // floor, freshly named): a RIDING icon (IC-classed small
+                // media) with a LIGHT stroke or fill would invert into
+                // near-black on the dark ground — clamp it down to the 0.6
+                // floor BEFORE the flip (clampCss), and bump a hairline
+                // (< 1.5 px) stroke to 2 px. All writes ride svSave (exact
+                // restore). The class itself is added by the walk (the
+                // default-flip decision); this is only the visibility kit.
+                + "function iconClamp(el,cs){try{"
                 + "var st=cs.stroke,fl=cs.fill;"
                 + "var sl=(st&&st!=='none')?lumOf(st):null;"
                 + "var fll=(fl&&fl!=='none')?lumOf(fl):null;"
@@ -1704,63 +1666,87 @@ public class MediaHook {
                 + "}catch(e){}}"
                 // v1.4.20 — THE PSEUDO FLOOR (bounded): ::before/::after
                 // glyph icons that set their OWN light color invert into
-                // near-black like every other thin stroke, but no inline
-                // write can reach a pseudo — those get a generated rule keyed
-                // on a data attribute (numeric, unquoted selector). Only
-                // LEAVES are probed (icon placeholders are empty elements),
-                // the lookups are capped (600) and the rules capped (150);
-                // pseudos that merely INHERIT the element color are already
-                // cured by the element-side clamp above.
+                // near-black like every other thin stroke — a generated
+                // rule keyed on a numeric data attribute clamps them (the
+                // inv===1 half). v1.4.23 adds the RAISE half: a pseudo glyph
+                // of an ICON-FONT element pinned DARK inside a preserved
+                // dark subtree (inv===0) gets lifted to the same mid-gray
+                // through the same rule channel. Only LEAVES are probed,
+                // lookups capped (600) and rules capped (150).
                 + "var psLook=0,psN=0;"
                 + "function psRule(r){try{"
                 + "var s=document.getElementById('bolt-psfl');"
                 + "if(!s){s=document.createElement('style');s.id='bolt-psfl';"
                 + "(document.head||document.documentElement).appendChild(s);}"
                 + "s.textContent+=r;}catch(e){}}"
-                + "function pseudoFloor(el,cs){try{"
+                + "function pseudoFloor(el,cs,inv){try{"
                 + "if(psLook>=600||psN>=150||el.children.length>0)return;"
                 + "psLook++;"
                 + "var pb=null;try{pb=getComputedStyle(el,'::before');}catch(x){}"
                 + "if(pb&&pb.content&&pb.content!=='none'&&pb.content!=='normal'"
                 + "&&pb.color&&pb.color!==cs.color){"
                 + "var pl=lumOf(pb.color);"
+                + "if(inv===1){"
                 + "if(pl!==null&&pl>0.8){var nc=clampCss(pb.color);"
                 + "if(nc){psN++;var k=el.getAttribute('data-boltpb');"
                 + "if(!k){k=''+psN;el.setAttribute('data-boltpb',k);}"
                 + "psRule('[data-boltpb='+k+']::before{color:'+nc+'}');}}}"
+                + "else if(inv===0&&iconFont(cs)&&pl!==null&&pl<0.25){"
+                + "var nr=raiseCss(pb.color);"
+                + "if(nr){psN++;var k2=el.getAttribute('data-boltpb');"
+                + "if(!k2){k2=''+psN;el.setAttribute('data-boltpb',k2);}"
+                + "psRule('[data-boltpb='+k2+']::before{color:'+nr+'}');}}}"
                 + "var pa=null;try{pa=getComputedStyle(el,'::after');}catch(x){}"
                 + "if(pa&&pa.content&&pa.content!=='none'&&pa.content!=='normal'"
                 + "&&pa.color&&pa.color!==cs.color){"
                 + "var al=lumOf(pa.color);"
+                + "if(inv===1){"
                 + "if(al!==null&&al>0.8){var na=clampCss(pa.color);"
                 + "if(na){psN++;var j=el.getAttribute('data-boltpa');"
                 + "if(!j){j=''+psN;el.setAttribute('data-boltpa',j);}"
                 + "psRule('[data-boltpa='+j+']::after{color:'+na+'}');}}}"
+                + "else if(inv===0&&iconFont(cs)&&al!==null&&al<0.25){"
+                + "var nrr=raiseCss(pa.color);"
+                + "if(nrr){psN++;var j2=el.getAttribute('data-boltpa');"
+                + "if(!j2){j2=''+psN;el.setAttribute('data-boltpa',j2);}"
+                + "psRule('[data-boltpa='+j2+']::after{color:'+nrr+'}');}}}"
                 + "}catch(e){}}"
-                // the media family is un-inverted by CSS already — a leaf.
-                // v1.4.20: a SMALL svg is NOT media — it is a UI icon: the
-                // walk processes it (iconFloor) and it inverts with the page
-                // (the dark-glyph-on-black-ground vanish). Large svgs stay
-                // content (charts/illustrations keep their pixels).
-                // v1.4.21: a small IMG in UI CONTEXT is chrome too — menu
-                // images (menu.svg/.png) were un-inverted media and stayed
-                // black; classed IC they ride the page inversion and a
-                // black menu glyph flips light (context first, size second
-                // — see uiIcon).
+                // v1.4.23 — THE FONT-ICON RAISE (the element half of the
+                // guarantee): an icon-font glyph element PINNED to a dark
+                // color (lum < 0.25) inside a PRESERVED dark subtree
+                // (inv===0 — the walk kept the site card dark) is lifted to
+                // the 153 mid-gray by raiseCss. Under the inversion a dark
+                // glyph flips light by itself, so the raise only ever fires
+                // on the un-inverted side; body text never matches
+                // iconFont.
+                + "function fontFloor(el,cs){try{"
+                + "if(!iconFont(cs))return;"
+                + "var l=lumOf(cs.color);"
+                + "if(l!==null&&l<0.25){var nc=raiseCss(cs.color);"
+                + "if(nc){svSave(el);el.style.color=nc;}}"
+                + "}catch(e){}}"
+                // v1.4.23 — the media family law with the DEFAULT-FLIP: a
+                // small IMG/SVG that RIDES the flip is NOT media — it
+                // carries the IC class and inverts with the page (a dark
+                // hamburger glyph flips to light on the dark ground).
+                // Content media (bigger than 64 px, banner-shaped, or
+                // photo-classed) keeps the un-inverted media family.
                 + "function isMedia(el){var t=el.tagName;"
-                + "if((t==='SVG'||t==='IMG')&&uiIcon(el))return false;"
+                + "if((t==='IMG'||t==='SVG')&&ridesFlip(el))return false;"
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
                 + "||t==='IFRAME'||t==='EMBED'||t==='OBJECT'||el.getAttribute('role')==='img';}"
                 // the per-element decision; inv = current filter parity of
                 // the subtree this element paints into (1 = inverted once)
                 + "function parityEl(el,inv){"
-                + "if(isMedia(el))return inv;"
-                // v1.4.21 — an IC-pinned element (background-image icon on
-                // a small interactive element, pinned by pinEl/both) is a
-                // LEAF like media: the walk never adds DK on top of the IC
-                // filter (the two classes would fight in the sheet and the
-                // parity math would drift for the subtree — one class, one
-                // meaning).
+                + "var t=el.tagName;var rides=false;"
+                // v1.4.23 — the census small count: every IMG/SVG whose
+                // longest edge lands in (0, 64] is counted, then the
+                // default-flip decides its class
+                + "if(t==='IMG'||t==='SVG'){try{if(smallOf(el)){cnt.small++;"
+                + "rides=!bannerish(el)&&!photoCtx(el);}}catch(x){}}"
+                + "if(!rides&&isMedia(el))return inv;"
+                // an IC-pinned element is a LEAF like media: the walk never
+                // adds DK on top of the IC filter (one class, one meaning)
                 + "try{if(el.classList&&el.classList.contains(IC))return inv;}catch(x){}"
                 + "var cs;try{cs=getComputedStyle(el);}catch(x){return inv;}"
                 + "try{if(cs.filter&&cs.filter!=='none')return inv;}catch(x){}"   // never clobber a site's own filter
@@ -1770,51 +1756,104 @@ public class MediaHook {
                 + "}else{var l=lumOf(cs.backgroundColor);"
                 + "if(l!==null)want=(l<=0.35)?0:1;}}catch(x){}"
                 + "if(want!==inv){try{el.classList.add(DK);n++;}catch(x){}inv=want;}"
-                // v1.4.19 — a subtree that STAYS INVERTED gets the stroke
-                // floor: light text/border colors that would invert into
-                // near-black on the dark ground are clamped to a visible
-                // mid-gray BEFORE the global filter flips them
+                // a subtree that STAYS INVERTED gets the stroke floor
                 + "if(inv===1){try{strokeFloor(el,cs);}catch(x){}}"
-                // v1.4.20 — the icon + pseudo floors ride the SAME inverted-
-                // subtree gate (the parity law composes; a UI icon or pseudo
-                // glyph inside a preserved dark subtree keeps its pixels).
-                // v1.4.21 — IMG UI icons join the SVGs in iconFloor (the
-                // class is the point; stroke/fill are no-ops on an img).
-                + "if(inv===1&&(el.tagName==='SVG'||(el.tagName==='IMG'&&uiIcon(el))))"
-                + "{try{iconFloor(el,cs,inv);}catch(x){}}"
-                + "if(inv===1){try{pseudoFloor(el,cs);}catch(x){}}"
+                // v1.4.23 — THE DEFAULT-FLIP DECISION: the riding element
+                // takes the IC class (both parities — inside a preserved
+                // dark subtree it is a harmless no-op); the clamp kit runs
+                // only on the inverted side (the glyphs were drawn for a
+                // light ground there)
+                + "if(rides){try{el.classList.add(IC);cnt.ic++;}catch(x){}"
+                + "if(inv===1){try{iconClamp(el,cs);}catch(x){}}}"
+                + "if(inv===1){try{pseudoFloor(el,cs,1);}catch(x){}}"
+                + "else{try{fontFloor(el,cs);}catch(x){}"
+                + "try{pseudoFloor(el,cs,0);}catch(x){}}"
                 + "var ch=el.children;"
                 + "for(var i=0;i<ch.length;i++){if(n>=3500)break;parityEl(ch[i],inv);}"
                 + "return inv;}"
-                // one element through BOTH passes (the observer path)
+                // one element through BOTH passes (the observer path);
                 // v1.3.93 — the starting parity is the ANCESTOR parity
-                // (the bug-hunt pass): a node mounted INSIDE a preserved
-                // dark subtree inherits parity 0, not the global 1 — the
-                // hardcoded 1 double-preserved late-mounted dark cards
-                // (DK on top of DK = an odd inversion count = an INVERTED
-                // PATCH inside the dark card it was supposed to match).
-                // Each DK ancestor toggles the parity exactly once.
                 + "function ancInv(e){var inv=1;try{var p=e.parentElement;"
                 + "while(p&&p!==document.body){if(p.classList&&p.classList.contains(DK))inv=1-inv;"
                 + "p=p.parentElement;}}catch(x){}return inv;}"
+                // v1.4.23 — the background-icon half stays: a SMALL element
+                // whose OWN tag is interactive (button/a/label/summary/
+                // header/nav, role=button) or icon-named carries a CSS
+                // background-image glyph — it rides the IC class too (the
+                // NI pin would otherwise un-invert it into dark-on-dark).
+                // The element's OWN properties only — no ancestor walking
+                // (the retired uiCtx game).
+                + "function iconNamed(el){try{"
+                + "var cn=el.className;"
+                + "if(cn&&cn.baseVal!==undefined)cn=cn.baseVal;"
+                + "var s=((cn||'')+' '+(el.id||''));"
+                + "return /(^|[^a-z])(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)([^a-z]|$)/i.test(s);"
+                + "}catch(e){return false}}"
+                + "function bgUiIcon(el){try{"
+                + "var r=el.getBoundingClientRect();"
+                + "var m=Math.max(r.width,r.height);"
+                + "if(!(m>0&&m<=64))return false;"
+                + "if(iconNamed(el))return true;"
+                + "var t=el.tagName;"
+                + "if(t==='BUTTON'||t==='A'||t==='LABEL'||t==='SUMMARY'||t==='HEADER'||t==='NAV')return true;"
+                + "if(el.getAttribute&&el.getAttribute('role')==='button')return true;"
+                + "return false;}catch(e){return false}}"
                 + "function both(e){try{var cs=getComputedStyle(e);"
-                + "var b=cs.backgroundImage;if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;"
-                + "if(bgUiIcon(e))e.classList.add(IC);}}catch(x){}"
+                + "var b=cs.backgroundImage;if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;cnt.ni++;"
+                + "if(bgUiIcon(e)){e.classList.add(IC);cnt.ic++;}}}catch(x){}"
                 + "parityEl(e,ancInv(e));}"
                 + "var all=document.body?document.body.querySelectorAll('*'):[];"
                 + "var i=0;"
                 + "function pinEl(e){try{var cs=getComputedStyle(e);var b=cs.backgroundImage;"
-                + "if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;"
-                + "if(bgUiIcon(e))e.classList.add(IC);}}catch(x){}}"
+                + "if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;cnt.ni++;"
+                + "if(bgUiIcon(e)){e.classList.add(IC);cnt.ic++;}}}catch(x){}}"
+                // ================= v1.4.23 THE CONTRAST RESCUE =================
+                // (bounded, runs ONCE after the walk): small media that
+                // stayed UN-INVERTED (content-marked, or background-image
+                // icons the pin left NI) and is DARK-ON-DARK gets the IC
+                // class so the glyph flips light. SVG reads fill/stroke
+                // luminance; a same-origin IMG is canvas-sampled (8x8,
+                // alpha-gated mean — cross-origin throws and keeps its
+                // pixels). Candidate cap 240, rescue cap 80, canvas cap 40.
+                + "var rCand=0,rSave=0,rCanvas=0;"
+                + "function darkSvgEl(el){try{var cs=getComputedStyle(el);"
+                + "var f=(cs.fill&&cs.fill!=='none')?lumOf(cs.fill):null;"
+                + "var s=(cs.stroke&&cs.stroke!=='none')?lumOf(cs.stroke):null;"
+                + "return (f!==null&&f<0.2)||(s!==null&&s<0.2);}catch(e){return false}}"
+                + "function darkImgEl(el){"
+                + "if(rCanvas>=40)return false;rCanvas++;"
+                + "try{var cv=document.createElement('canvas');cv.width=8;cv.height=8;"
+                + "var cx=cv.getContext('2d');cx.drawImage(el,0,0,8,8);"
+                + "var d=cx.getImageData(0,0,8,8).data;"
+                + "var rs=0,gs=0,bs=0,px=0;"
+                + "for(var q=0;q<d.length;q+=4){if(d[q+3]<128)continue;rs+=d[q];gs+=d[q+1];bs+=d[q+2];px++;}"
+                + "if(!px)return false;"
+                + "return (0.2126*rs+0.7152*gs+0.0722*bs)/px/255<0.2;}catch(e){return false}}"
+                + "function rescuePass(){try{"
+                + "if(!document.body)return;"
+                + "var cand=document.body.querySelectorAll('img,svg');"
+                + "for(var j=0;j<cand.length&&rCand<240&&rSave<80;j++){"
+                + "var el=cand[j];rCand++;"
+                + "try{"
+                + "if(el.classList&&el.classList.contains(IC))continue;"
+                + "var t=el.tagName;"
+                + "if(t!=='IMG'&&t!=='SVG')continue;"
+                + "if(!smallOf(el))continue;"
+                + "var dark=(t==='SVG')?darkSvgEl(el):darkImgEl(el);"
+                + "if(dark){el.classList.add(IC);cnt.ic++;cnt.rescue++;rSave++;}"
+                + "}catch(x){}}"
+                + "}catch(x){}}"
                 + "function chunk(){try{var t0=Date.now();"
                 + "for(;i<all.length&&n<3500;i++){pinEl(all[i]);"
                 + "if((i&63)===0&&Date.now()-t0>16)break;}}catch(x){}"
                 + "if(i<all.length&&n<3500)setTimeout(chunk,40);"
                 + "else{try{if(document.body)parityEl(document.body,1);}catch(x){}"
+                // v1.4.23 — the bounded rescue, then the census publish
+                + "try{rescuePass();}catch(x){}"
+                + "try{window.__boltDarkCount=cnt;}catch(x){}"
                 + "try{"
                 // the late-nodes observer (12 s, then rest) — added subtrees
-                // go through BOTH passes (v1.3.91 ran NI only here; the
-                // parity half keeps SPA-mounted dark cards preserved too)
+                // go through BOTH passes
                 + "var mo=new MutationObserver(function(muts){"
                 + "for(var m=0;m<muts.length;m++){var ad=muts[m].addedNodes;"
                 + "for(var k=0;k<ad.length;k++){var nd=ad[k];"
@@ -1825,6 +1864,19 @@ public class MediaHook {
                 + "setTimeout(function(){try{mo.disconnect();}catch(x){}},12000);"
                 + "}catch(x){}}"
                 + "}chunk();}catch(e){}})()";
+    }
+
+    /** v1.4.23 — THE CENSUS READER: darkSmartJs publishes its per-page
+     *  decision counts into window.__boltDarkCount ({small, ic, ni,
+     *  rescue}); this reader returns them as the display string the
+     *  BrowserActivity diag line logs after the 2.5 s late re-probe
+     *  (dark icons <host> small=N ic=N ni=N rescue=N). Empty string when
+     *  the walk has not published yet (no inversion ran / not yet). */
+    public static String darkCountJs() {
+        return "(function(){try{var o=window.__boltDarkCount;"
+                + "if(!o)return '';"
+                + "return 'small='+o.small+' ic='+o.ic+' ni='+o.ni+' rescue='+o.rescue;"
+                + "}catch(e){return ''}})()";
     }
 
     /** v1.3.92 — THE FULL CLEAR: pulling the inversion (already-dark page,
@@ -1865,7 +1917,9 @@ public class MediaHook {
                 + "try{el.removeAttribute('data-boltpb');}catch(e){}"
                 + "try{el.removeAttribute('data-boltpa');}catch(e){}"
                 + "el.classList.remove('__boltSV');}"
+                                // v1.4.23 — the census object rides out with the run flag
                 + "try{delete window.__boltDKrun;}catch(e){}"
+                + "try{delete window.__boltDarkCount;}catch(e){}"
                 + "}catch(e){}})();";
     }
 

@@ -789,6 +789,20 @@ public class Ui {
      */
     public static void choiceSheet(final Activity a, String title, String[] options,
             int selected, final Pick onPick) {
+        choiceSheetIcons(a, title, options, null, selected, onPick);
+    }
+
+    /**
+     * v1.4.23 — THE ICON-ROW SHEET: choiceSheet with a per-row drawable (an
+     * int res id, 0 = no icon). Built for the engine picker: every row binds
+     * its engine's official 64x64 raster mark (drawable-nodpi PNG — fixed
+     * pixels on every device) beside the name; a 0 icon renders the plain
+     * text row exactly as before. Brand marks are NEVER tinted — a row that
+     * wants the theme tint passes its own tinted drawable. Rows stay
+     * 52dp/52dp touch targets and dismiss on pick, same as the text sheet.
+     */
+    public static void choiceSheetIcons(final Activity a, String title, String[] options,
+            int[] icons, int selected, final Pick onPick) {
         LinearLayout body = sheetBody(a);
         TextView t = new TextView(a);
         t.setText(title);
@@ -809,6 +823,19 @@ public class Ui {
             int ph = Fx.dp(a, 12), pv = Fx.dp(a, 8);
             row.setPadding(ph, pv, ph, pv);
             row.setBackground(a.getDrawable(R.drawable.bg_item));
+            // v1.4.23 — the row's mark: a 22dp slot, brand colors as baked
+            // (never tinted); rows without a drawable (0 / null) skip the
+            // slot so the text sheet's geometry is unchanged
+            if (icons != null && i < icons.length && icons[i] != 0) {
+                try {
+                    ImageView iv = new ImageView(a);
+                    iv.setImageResource(icons[i]);
+                    LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                            Fx.dp(a, 22), Fx.dp(a, 22));
+                    ilp.rightMargin = Fx.dp(a, 12);
+                    row.addView(iv, ilp);
+                } catch (Throwable ignored) {}
+            }
             TextView label = new TextView(a);
             label.setText(options[i]);
             label.setTextSize(16);

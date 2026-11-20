@@ -22,7 +22,8 @@ def extract(method):
     return js
 
 ok = True
-for name in ("darkProbeJs", "darkSmartJs", "darkClearJs", "styleRemoveJs"):
+# v1.4.23 — darkCountJs (the census reader) joins the syntax gate
+for name in ("darkProbeJs", "darkSmartJs", "darkClearJs", "styleRemoveJs", "darkCountJs"):
     js = extract(name)
     Path(f"/tmp/{name}.js").write_text(js, encoding="utf-8")
     r = subprocess.run(["node", "--check", f"/tmp/{name}.js"], capture_output=True, text=True)

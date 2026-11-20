@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 135" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
-need('versionName "1.4.21"' in gradle, 'versionName "1.4.21"')
+need("versionCode 137" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.23"' in gradle, 'versionName "1.4.23"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -167,17 +167,18 @@ need("Build.VERSION.SDK_INT > 29" in mcs_code,
      "API > 29 keeps the copy discipline alone (those versions stayed crash-free)")
 
 print("B — fix 2: the forced-dark icon + thickness floor")
-need("function uiIcon(el)" in mh and "m>0&&m<=64" in mh,
-     "the icon classifier exists: a small svg (<=64 px longest edge) is a "
-     "UI icon (RAW source — the size cut is the classifier)")
-need("if((t==='SVG'||t==='IMG')&&uiIcon(el))return false;" in mh,
+need("function smallOf(el)" in mh and "m>0&&m<=64" in mh
+     and "function ridesFlip(el)" in mh,  # v1.4.23 re-point (2026-11-20): the DEFAULT-FLIP classifier (ridesFlip/smallOf/bannerish/photoCtx) replaced the uiIcon family — see test_v1423 section A
+     "the small-media classifier exists: longest edge <= 64 px is SMALL "
+     "(the size cut); ridesFlip is the default-flip verdict (RAW)")
+need("if((t==='IMG'||t==='SVG')&&ridesFlip(el))return false;" in mh,
      "isMedia lets UI icons through to the walk (they were skipped AND "
      "left un-inverted — the dark-hamburger vanish) "
      "(v1.4.21 re-point 2026-11-20: IMG joined SVG — menu images were "
      "media too and stayed black; context-first classification in "
      "test_v1421 section D)")
-need("function iconFloor(el,cs,inv){" in mh
-     and "el.classList.add(IC);" in mh,
+need("function iconClamp(el,cs){" in mh
+     and "el.classList.add(IC);cnt.ic++;" in mh,
      "the icon floor: classed .__boltIC (filter:none — rides the page "
      "inversion) inside inverted subtrees only")
 need(".__boltIC{filter:none!important;}" in mh,
@@ -189,7 +190,7 @@ need("el.style.strokeWidth='2'" in mh and "el.style.borderWidth=bw;" in mh,
      "thin svg strokes AND clamped hairline borders get the bump (RAW source)")
 need("el.style.webkitTextStroke='0.45px currentColor';" in mh,
      "icon-font glyphs thicken too (body text never matches iconFont)")
-need("function pseudoFloor(el,cs){" in mh and "psLook>=600||psN>=150" in mh,
+need("function pseudoFloor(el,cs,inv){" in mh and "psLook>=600||psN>=150" in mh,
      "self-colored pseudo-glyphs get generated rules, bounded (600 looks / "
      "150 rules)")
 need("'data-boltpb'" in mh and "data-boltpa" in mh,
@@ -231,7 +232,7 @@ need("internal fun shouldTile(err: String): Boolean" in ab_code
      "the tile contract is PURE (the error string IS the contract)")
 need("internal fun tilePlace(" in st_code and "internal fun iou(" in st_code,
      "the tile mapping + seam dedup are PURE (probe-pinned)")
-need("translateTiled(a, bmp, tl, g)" in st_code
+need("translateRegion(a, bmp, tl, g" in st_code  # v1.4.23 re-point (2026-11-20): the tile road rides translateRegion now (translateTiled is the ctx-carrying wrapper; visionFallback calls the region form)
      and "AiBridge.shouldTile(AiBridge.lastError)" in st_code,
      "ScreenTranslate tiles the 2x2 grid when the ladder exhausts (the "
      "caller owns the bitmap)")
@@ -287,10 +288,21 @@ need("it.url = persistUrl(it.url);" in de_code,
 need("if (it.status == ST_DONE) {" in de_code and "trimmed = true" in de_code,
      "load() trims the historical 12 MB bloat once (done items only)")
 
-print("G — fix 7: the official engine marks")
+print("G — fix 7: the official engine marks — v1.4.23 raster turn: "
+      "provenance on the ARCHIVED vectors, shipping as the PNGs")
+dr = os.path.join(ROOT, "scripts", "engine_vectors")  # v1.4.23 re-point (2026-11-20): vectors retired to the archive
+for d in ("ic_engine_google", "ic_engine_ddg", "ic_engine_bing",
+          "ic_engine_brave", "ic_engine_startpage"):
+    png = os.path.join(RES, "drawable-nodpi", d + ".png")
+    need(os.path.isfile(png) and 1024 <= os.path.getsize(png) <= 10240,
+         f"the {d} mark ships as a tiny raster PNG (drawable-nodpi)")
+    need(not os.path.isfile(os.path.join(RES, "drawable", d + ".xml")),
+         f"the {d} vector is retired from res (no duplicate names)")
+need(os.path.isfile(os.path.join(ROOT, "scripts", "rasterize_engine_logos.py")),
+     "the rasterizer script is committed (offline-reproducible marks)")
 need("pathData=\"M4.842.005" in open(os.path.join(dr, "ic_engine_bing.xml"),
      encoding="utf8").read(),
-     "Bing carries the official Fluent mark path (bing.com's own icon)")
+     "Bing keeps the official Fluent mark path (bing.com's own icon)")
 ddgx = open(os.path.join(dr, "ic_engine_ddg.xml"), encoding="utf8").read()
 need("M12 0C5.373 0 0 5.373" in ddgx and "#DE5833" in ddgx,
      "DDG carries the simple-icons outline in the brand orange")
@@ -327,7 +339,7 @@ need("(t.tag as? String) ?: t.text.toString()" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 135") == 1,
+need(gradle.count("versionCode 137") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 135" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.21"' in gradle, 'versionName "1.4.21"')
+need("versionCode 137" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.23"' in gradle, 'versionName "1.4.23"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -230,10 +230,11 @@ need('"ai translate 400 raw cap=$c body="' in ab,
      "the RAW 400 body rides to Diag (shortErr hid the exact rejection; RAW)")
 need("while (r.first == 400) {" in ab_code,
      "ANY 400 walks the ladder-down (not just a body naming thinking)")
-need('translateTiled(a, bmp, tl, g)' in st_code
-     and 'val boxes = translateTiled(a, bmp, tl, g)' in st_code,
-     "TILES FIRST: the 2x2 grid is the DEFAULT path (no doomed full-screen "
-     "requests before it)")
+need("AiBridge.textTranslate(a, lines, tl)" in st_code  # v1.4.23 re-point (2026-11-20): OCR-first hybrid — tiling demoted to the genuine-cut fallback (visionFallback); the fresh pins live in test_v1423 section B
+     and "visionFallback(a, bmp, g, tl," in st_code,
+     "OCR FIRST, ONE pure-text request, the vision path demoted to the "
+     "genuine-cut / OCR-blind fallback (the hybrid; the old proactive-"
+     "tiles pin retired)")
 need("scr ai tile split" in st,
      "the per-tile escalation breadcrumb: a quadrant that still exhausts "
      "the cap splits once more (shouldTile stays live as its contract; RAW)")
@@ -247,21 +248,24 @@ print("D — fix 4: the IMG + background-image icon classifier")
 need("function iconNamed(el){" in mh
      and "(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)" in mh,
      "the icon-name matcher (class/id, SVG baseVal aware)")
-need("function uiCtx(el){" in mh
-     and "t==='BUTTON'||t==='HEADER'||t==='NAV'||t==='LABEL'||t==='SUMMARY'" in mh,
-     "the UI-context walk: strong chrome ancestors within 6 levels")
-need("if(ctx===1)return m<=48;" in mh,
-     "a bare link is WEAK: only a TINY img inside it is chrome (article "
-     "thumbnails ride links too — context first, size second)")
-need("function bgUiIcon(el){" in mh
-     and "if(bgUiIcon(e))e.classList.add(IC);" in mh,
+need("function photoCtx(el){" in mh  # v1.4.23 re-point (2026-11-20): the uiCtx family is RETIRED — the DEFAULT-FLIP round (small media rides the inversion unless clearly content); the fresh pins live in test_v1423 section A
+     and "t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE'" in mh,
+     "the CONTENT walk: photo-classed ancestors (article/main/p/figure) "
+     "within 6 levels keep their media un-inverted")
+need("function bannerish(el){" in mh and "(mx/mn)>=2.5" in mh,  # v1.4.23 re-point (2026-11-20): the uiCtx family is RETIRED — the DEFAULT-FLIP round; the fresh pins live in test_v1423 section A
+     "the CONTENT markers: banner-shaped (aspect >= 2.5) small media "
+     "stays un-inverted; everything else small RIDES the flip (the "
+     "uiCtx link-guess retired)")
+need("function bgUiIcon(el){" in mh  # v1.4.23 re-point (2026-11-20): the uiCtx family is RETIRED — the DEFAULT-FLIP round; the fresh pins live in test_v1423 section A
+     and "if(bgUiIcon(e)){e.classList.add(IC);cnt.ic++;}" in mh,
      "small background-image icons on interactive elements ride the IC "
-     "class too (the NI pin alone kept them black)")
+     "class too (the NI pin alone kept them black; the census counts)")
 need("try{if(el.classList&&el.classList.contains(IC))return inv;}catch(x){}" in mh,
      "an IC-pinned element is a LEAF (the walk never stacks DK on top of "
      "the IC filter — one class, one meaning)")
 
 print("E — fix 5: the DDG two-color mark + the binding breadcrumb")
+dr = os.path.join(ROOT, "scripts", "engine_vectors")  # v1.4.23 re-point (2026-11-20): the vectors retired to the archive
 ddgx = open(os.path.join(dr, "ic_engine_ddg.xml"), encoding="utf8").read()
 need(ddgx.count("<path") == 2 and "#DE5833" in ddgx and "#FFFFFF" in ddgx,
      "DDG is the OFFICIAL two-color mark: the orange disc + a WHITE duck "
@@ -324,7 +328,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 135") == 1,
+need(gradle.count("versionCode 137") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

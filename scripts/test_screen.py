@@ -199,7 +199,9 @@ def main():
     # CN/EN scripts and their models are GONE, and the on-disk diet deletes
     # the orphaned jpn_vert/jpn_vertb files (~17 MB of the storage bill).
     for probe in ('private val SCRIPT_KEYS = arrayOf("ai", "auto")',
-                  '"AI \\u2014 translate (recommended)"',
+                  # v1.4.23 re-point (2026-11-20): the label names the hybrid
+                  # (OCR + ONE pure-text pass); the mode set is unchanged
+                  '"AI \\u2014 OCR + one text pass (recommended)"',
                   '"Basic OCR \\u2014 no AI (works offline of the AI key)"',
                   # v1.3.82: public + @JvmStatic — the update receiver calls
                   # the diet at install time (an un-openable app never ran
@@ -320,8 +322,9 @@ def main():
                   "AiBridge.visionTranslate",
                   "openOverlay(a, bmp, blocks, true)",
                   'if (!ai) translateAll(a, view, tl)',
-                  'scr ai ask prov=',
-                  'scr ai ok lines='):
+                  'scr ai hybrid ask prov=',  # v1.4.23 re-point (2026-11-20): the hybrid's ask diag (provider+model+tl)
+                  'scr ai hybrid ok lines=',  # v1.4.23 re-point (2026-11-20): the hybrid's delivery diag
+                  'scr ai vision ok lines='):
         if probe not in scr:
             print(f"FAIL: ScreenTranslate's AI branch lacks {probe}")
             return 1

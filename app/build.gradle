@@ -44,8 +44,27 @@ android {
         // classifier, the DDG two-color mark + the engine-logo binding
         // breadcrumb, the AI formatting completion (strikethrough, styled
         // tables, syntax colors, jlatexmath matrices).
-        versionCode 135
-        versionName "1.4.21"
+        // v1.4.23 (2026-11-20) — THE CRITICAL REBUILD: this version is a
+        // FRESH re-implementation of the four v1.4.22 fixes on the clean
+        // v1.4.21 source (the v1.4.22 decompile-port crashed on launch —
+        // see README, THE LAUNCH LAW): the forced-dark DEFAULT-FLIP round
+        // (small media rides the page inversion by default; the uiCtx
+        // guessing retired; the raiseCss font-icon lift; the bounded
+        // canvas/SVG contrast rescue; the per-page census Diag), the
+        // engine-logo RASTER TURN (five official 64x64 PNGs in
+        // drawable-nodpi, offline-reproducible; the home search pill + the
+        // icon-row picker + the homeGen follow at both engine-selection
+        // entry points), the screen-translate HYBRID (on-device OCR for
+        // accurate text + boxes, ONE pure-text numbered-lines request with
+        // full context, the vision path demoted to a genuine-cut/OCR-blind
+        // fallback with the transcript as tile context), and the AiRender
+        // FOUR-PACK (HTML mark/u/del/sub/sup/b/i/code/br/a span stack,
+        // nested quote bars, tappable task checkboxes, footnotes + ins).
+        // THE LAUNCH LAW rides below too: the release pipeline now runs a
+        // real launch smoke test (Robolectric: Application.onCreate -> the
+        // launcher activity -> buildHomeView) before any publish.
+        versionCode 137
+        versionName "1.4.23"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand
@@ -130,6 +149,17 @@ android {
             excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*', 'META-INF/NOTICE*']
         }
     }
+
+    // v1.4.23 — THE LAUNCH LAW (the v1.4.22 decompile-port corpse): the
+    // unit-test source set is REAL now — Robolectric drives the actual
+    // Application.onCreate through the launcher activity into the first
+    // home render before any release publishes (see LaunchSmokeTest and
+    // scripts/release.sh's launch-smoke rung).
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -170,6 +200,20 @@ dependencies {
     implementation 'org.commonmark:commonmark:0.24.0'
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
     implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0'
+    // v1.4.23: THE FOUR-PACK — task-list items (tappable [x] checkboxes),
+    // footnotes (superscript refs + the appended trailer), and ins
+    // (<ins> == underline == ++text++) join the markdown set behind
+    // AiRender.kt. Same plain -ext-<name> artifact family as the GFM pair,
+    // BSD-2 pure Java, and R8 tree-shakes them to the node classes the
+    // visitor walks (the three together are ~25 KB of class files).
+    implementation 'org.commonmark:commonmark-ext-task-list-items:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-footnotes:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-ins:0.24.0'
+    // v1.4.23 — THE LAUNCH LAW runtime: Robolectric gives the unit tests a
+    // real instrumented Android framework so the launch smoke can drive
+    // Application -> launcher activity -> buildHomeView for real.
+    testImplementation 'org.robolectric:robolectric:4.13'
+    testImplementation 'junit:junit:4.13.2'
     implementation 'ru.noties:jlatexmath-android:0.2.0'
     // v1.3.73: NO ML Kit — the bundled OCR models cost +20.9 MB of APK
     // (17.8 MB native .so across ARM ABIs + 3.5 MB model assets) and the

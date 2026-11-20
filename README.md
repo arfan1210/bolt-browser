@@ -1465,6 +1465,132 @@ above).
   outside the monitor law (individually-atomic reads; sweep only if a
   field report ever names one).
 
+**v1.4.23 — THE CRITICAL REBUILD + THE LAUNCH LAW** (the sixteenth
+session, 2026-11-20):
+
+1. *THE DECOMPILE-PORT CORPSE (the lesson this release exists for).*
+   v1.4.22 was reconstructed by DECOMPILING the shipped APK and porting
+   R8-obfuscated bytecode back to source — a lost-commit recovery that
+   produced source which compiled, passed every one of the 72 static
+   gate commands, and CRASHED ON LAUNCH on the user's Realme RMX2020 /
+   Android 10: no UI, no crash page, dead even after a clean reinstall.
+   THE LAUNCH LAW, now named forever: **a static gate proves code EXISTS,
+   not that the app OPENS.** A rebuild must never be trusted because its
+   probes are green; the only proof that matters is Application.onCreate
+   -> launcher activity -> first home render actually executing.
+   v1.4.23 started from the clean v1.4.21 tag and re-implemented the
+   four fixes from scratch as fresh hand-written code (the v1.4.22 diff
+   was read for understanding only — nothing was ported; the engine PNGs
+   and the rasterizer script are the one carry-over, being
+   script-generated binary artifacts with no code semantics).
+2. *The launch-verification rung.* `app/src/test/java/.../LaunchSmokeTest.java`
+   (Robolectric, sdk 34): it drives the REAL BoltApp through the REAL
+   launcher path (every launcher face is an activity-alias whose target
+   is BrowserActivity) into buildHomeView, asserts the home view rendered
+   with content, and asserts the v1.4.23 engine-mark pill binding ran on
+   the launch path. `release.sh` runs `testDebugUnitTest` BEFORE the
+   build signs or publishes anything — a FATAL EXCEPTION stops the
+   release. Robolectric's android-all jar fetches from repo1.maven.org
+   directly (not the Gradle repo chain): when maven central 429s, pre-seed
+   `~/.m2/repository/org/robolectric/android-all-instrumented/...` from
+   the aliyun mirror (the sandbox recipe, kept here so the next session
+   does not rediscover it).
+3. *The law paid for itself on day one (the autobox ternary).* The
+   first smoke run died with `Cannot invoke Integer.intValue()` at the
+   home pill's `setColorFilter(cond ? intColor : null)` — the ternary
+   types as Integer, ImageView's setColorFilter(int) overload UNBOXES
+   it, and the null branch is a NullPointerException inside onCreate:
+   the app-dies-on-launch shape, the exact corpse class of v1.4.22.
+   v1.4.21's own applyEngineLogo carries the same ternary but its
+   surrounding catch swallowed it (the chip survived, tinted-but-alive);
+   the unguarded port put it on the launch path and killed the app. Fix:
+   explicit branches — `setColorFilter(dim)` /
+   `setColorFilter((android.graphics.ColorFilter) null)`. Learning:
+   any `(cond ? primitive : null)` feeding an overloaded setter is a
+   launch-crash landmine; the gate now pins the pattern's absence.
+4. *The four fixes, re-written fresh:* (a) the DEFAULT-FLIP dark-icon
+   round — small media (<= 64 px, IMG/SVG) rides the page inversion BY
+   DEFAULT and stays un-inverted only when clearly content (> 64 px /
+   banner >= 2.5 / photo-classed in article/main/p/figure); the uiCtx
+   ancestor-guessing family is retired; raiseCss lifts pinned-dark
+   icon-font glyphs to a visible mid-gray inside preserved dark
+   subtrees; a bounded canvas/SVG rescue flips dark-on-dark leftovers;
+   the per-page census (`window.__boltDarkCount`, the `dark icons
+   <host> small=N ic=N ni=N rescue=N` Diag line) ships real numbers for
+   the next field report. (b) the engine-logo RASTER TURN — five official
+   64x64 PNGs in drawable-nodpi (2.0-6.6 KB, offline-reproducible via
+   scripts/rasterize_engine_logos.py, retired vectors archived), the
+   mark on the omnibox chip + the home pill + the picker rows
+   (Ui.choiceSheetIcons), Fx.homeGen bumps at BOTH engine-selection
+   entry points. (c) the screen-translate HYBRID — on-device OCR reads
+   accurate text + real boxes, ONE pure-text numbered-lines request
+   translates the whole screen with full context (no hallucinated
+   box_2d, no screenshot at all), the vision path demoted to the
+   OCR-blind / genuine-MAX_TOKENS fallback (full-screen first, tiles
+   with the transcript as context); thinkingLevel low with a clean
+   drop-on-400. (d) the AiRender FOUR-PACK — the HTML span stack
+   (mark/u/ins/del/s/sub/sup/b/strong/i/em/code/br/a), nested quote
+   bars + indents, tappable task checkboxes, footnotes + ins (three
+   BSD-2 commonmark extensions, ~25 KB).
+5. *The gate-sweep mechanics, v1.4.23 edition.* 49 gate files repinned
+   to 137/1.4.23 (repin_gates_1423.py) — and the sweep law grew again:
+   version pins come in SIX literal shapes now (plain, escaped-regex,
+   \s+-form, single-quoted, ==-comparison, format-message), and the
+   changelog-position slide must cover NON-startswith `entries[N]`
+   references too (the v1.4.19 content-checks). Four dated re-points
+   where the fresh implementations legitimately moved pinned targets:
+   test_v1420 (uiIcon family -> smallOf/ridesFlip; iconFloor ->
+   iconClamp; the tile pin -> the region form), test_v1421 (the uiCtx
+   pins -> photoCtx/bannerish; the proactive-tiles pin -> the hybrid
+   OCR-first pins), test_v1418 (walk-site count 2 -> 3: the hybrid's
+   textTranslate chain walks too), test_v1419/v1420/v1421 (the engine
+   vectors retired — provenance pins now read the ARCHIVED sources and
+   the shipped marks are the PNGs). The new test_v1423.py carries the
+   behavioral probes: the mock-DOM dark walk (11 verdicts + census),
+   the numbered-reply parser transcription, and a COMPILED commonmark
+   four-pack probe against the exact jars the build ships.
+6. *Robolectric + the repo chain.* settings.gradle's
+   dependencyResolutionManagement now lists aliyun FIRST: repo.maven
+   apache 429'd the nativeruntime jar hard and Gradle treats a 429 as
+   a repository-level failure (the fallback chain never reached the
+   healthy mirror) — the v1.3.31 lesson, symmetric, now recorded in the
+   settings file itself.
+7. *Known-good numbers (v1.4.23, release build):* APK 3,325,166 B
+   (budget 6,000,000; the three commonmark extensions ~25 KB, the
+   engine PNGs 21.1 KB total); signature verifies against the pinned
+   cert; suite: all gates green INCLUDING the launch smoke (2 Robolectric
+   tests, 0 failures) — the first release ever to prove the app opens
+   before publishing.
+
+**Plans / candidates for future versions (v1.4.23 edition):**
+- THE LAUNCH LAW stays forever: no release publishes without the launch
+  smoke green. If a future change breaks Robolectric compatibility,
+  fix the test — never delete the rung. The next rung up from here is an
+  emulator/AVD probe on a real system image if the toolchain ever grows
+  KVM.
+- jlatexmath ON-DEMAND (the recorded size lever, NOT risked this round —
+  this release's whole point was launch stability): fetch the engine +
+  font pack on first math use (the v1.3.73 tesseract.js pattern) to
+  reclaim ~470 KB, or a lighter KaTeX-in-WebView-from-CDN path. Only
+  with a launch-smoke green before AND after.
+- The dark census (`window.__boltDarkCount`) wants one field report read
+  back: the DIU Moodle bare-hamburger page now logs real numbers
+  (small/ic/ni/rescue) — the next round's tuning rides DATA, not
+  guesses. If small=N ic=N and the glyph is still black, the suspect is
+  a DK-preserved ancestor (the rescue's IC add is a no-op inside DK) —
+  the fix would be raising the SVG fills there instead.
+- The hybrid's numbered-lines protocol is ready for a translate-model
+  picker note in the docs (a dense 160-line screen at ~40 tokens/line
+  fits the 16384 rung comfortably; the 32768 rung + the tile fallback
+  exist for the pathological case).
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget; the widget rebuild is the
+  bigger half.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked; the forward can grow a VIEW branch.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate; the in-app updater exists but the APK baseline drifts.
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

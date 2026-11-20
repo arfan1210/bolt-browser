@@ -315,9 +315,25 @@ object AiBridge {
      * the model's boxes to them (v1.3.76).
      */
     @JvmStatic
-    fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int): ArrayList<AiBox>? {
+    fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int): ArrayList<AiBox>? =
+            visionTranslateX(ctx, b64, tl, iw, ih, null)
+
+    /** v1.4.23 — THE TILE-CONTEXT VARIANT: the tile request carries the
+     *  full-screen OCR transcript (bounded) so a model reading ONE quadrant
+     *  still knows the whole screen's text — headers cut by the seam join,
+     *  terminology stays consistent; it reports ONLY the region's own text.
+     *  The pure [visionTranslate] is the no-context full-screen call. */
+    @JvmStatic
+    fun visionTranslateX(ctx: Context, b64: String, tl: String, iw: Int, ih: Int,
+                         screenCtx: String?): ArrayList<AiBox>? {
         lastError = ""
-        val p = prompt(tl, iw, ih)
+        var p = prompt(tl, iw, ih)
+        if (!screenCtx.isNullOrEmpty()) {
+            p += "\nContext: the FULL screen this region was cut from contains this text: " +
+                    screenCtx.take(4000) +
+                    " — use it for terminology and continuity; report ONLY the text " +
+                    "visible in THIS region's image."
+        }
         // v1.4.21: the translate-model picker — the dedicated screen-
         // translate model when set, the shared chat model otherwise
         return if (prov(ctx) == "gemini") {
@@ -626,6 +642,238 @@ object AiBridge {
             val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
                 ?: run { lastError = "empty reply"; return null }
             parseBoxes(msg.optString("content", ""), iw, ih)
+        } catch (t: Throwable) {
+            lastError = (t.message ?: t.javaClass.simpleName).take(80)
+            null
+        } finally {
+            try { c?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
+
+    // ---------------- v1.4.23 — the pure-text translate stage (the hybrid) ----------------
+
+    /** v1.4.23 — PURE (probe-pinned): the numbered-lines protocol prompt for
+     *  [textTranslate]. ONE request carries the OCR-read lines with the FULL
+     *  screen as context — no image, and no box_2d for the model to
+     *  hallucinate; the numbers map the reply back onto the OCR boxes 1:1
+     * (coordinates never leave the device). */
+    internal fun textLinesPrompt(tl: String, lines: List<String>): String {
+        val sb = StringBuilder()
+        sb.append("You are a precise screen translator. The numbered lines below " +
+                "were read from ONE screen in top-to-bottom, left-to-right order. " +
+                "Translate EVERY line into natural, concise ")
+        sb.append(langName(tl))
+        sb.append(". Reply with ONLY the translated lines, one per input line, each " +
+                "prefixed by its number and a pipe character, in the same order " +
+                "(for example 7|translated text). Keep terminology consistent across " +
+                "lines - the same term translates the same way everywhere, because " +
+                "these lines share one screen. A line that is a URL, an email, a code " +
+                "fragment, a number or pure punctuation stays exactly as it is. " +
+                "A translation must fit the line's on-screen box: concise beats literal.\n")
+        sb.append("Lines:\n")
+        for ((i, l) in lines.withIndex()) sb.append(i + 1).append('|').append(l).append('\n')
+        return sb.toString()
+    }
+
+    /** v1.4.23 — PURE (probe-pinned): parse a numbered-lines reply
+     *  (7|translated) into the slot array; entries the reply did not cover
+     *  stay null (the caller counts coverage). Tolerates stray prose lines,
+     *  markdown fences and blank lines; out-of-range or repeated numbers
+     *  are skipped (first write to a slot wins). */
+    @JvmStatic
+    internal fun parseNumberedReply(txt: String, want: Int): Array<String?> {
+        val out = arrayOfNulls<String>(want)
+        for (raw in txt.split('\n')) {
+            val line = raw.trim()
+            if (line.isEmpty()) continue
+            val m = NUMBERED_LINE.find(line) ?: continue
+            val n = m.groupValues[1].toIntOrNull() ?: continue
+            if (n < 1 || n > want) continue
+            val t = m.groupValues[2].trim()
+            if (t.isEmpty()) continue
+            if (out[n - 1] == null) out[n - 1] = t
+        }
+        return out
+    }
+
+    /** v1.4.23 — the numbered-reply line matcher (PURE; probe-pinned). */
+    private val NUMBERED_LINE = Regex("^(\\d{1,4})\\s*\\|\\s?(.*)$")
+
+    /**
+     * BLOCKING (call from a worker thread only). v1.4.23 — THE PURE-TEXT
+     * TRANSLATE STAGE of the screen-translate hybrid: ONE request carries
+     * the OCR-read lines (numbered) with the FULL screen as context — no
+     * image, no box_2d to hallucinate; coordinates never leave the device.
+     * thinkingLevel "low" rides the first try (quality); ANY 400 drops the
+     * field cleanly and retries (the v1.4.20 lesson — thinkingBudget=0 is
+     * NEVER sent, that field caused the 400s), then the cap steps down the
+     * model's own ceiling like the vision ladder. Returns the per-line
+     * translations (null entries = lines the reply did not cover; the
+     * overlay shows the original for those), or null with [lastError] set
+     * on failure — CUT_OFF_ERR ONLY on a genuine MAX_TOKENS cut with poor
+     * coverage, which is the caller's key for the vision fallback.
+     */
+    @JvmStatic
+    fun textTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>? {
+        lastError = ""
+        return if (prov(ctx) == "gemini") {
+            val m = translateModel(ctx)
+            val chain = buildChain(m)
+            for (name in chain) {
+                val r = geminiTextTranslate(ctx, name, lines, tl)
+                if (r != null) {
+                    noteAnsweredModel(ctx, m, name)
+                    return r
+                }
+                // v1.4.18: the chain advances on model-not-found AND the
+                // 5xx provider bucket (see advanceChain)
+                if (!advanceChain(lastError)) return null
+            }
+            null
+        } else {
+            openaiTextTranslate(ctx, lines, tl)
+        }
+    }
+
+    /** v1.4.23 — the Gemini text pass: the 16384 -> 32768 cap rungs (a
+     *  160-line dense screen is rare but real), thinkingLevel low with the
+     *  clean 400 drop, coverage-gated delivery — the numbered protocol
+     *  makes a STOP-shape partial usable (missing lines keep the original),
+     *  so ONLY a MAX_TOKENS cut under the 70% coverage floor hands off to
+     *  the vision fallback (CUT_OFF_ERR). */
+    private fun geminiTextTranslate(ctx: Context, mdl: String, lines: List<String>,
+                                    tl: String): List<String?>? {
+        val p = textLinesPrompt(tl, lines)
+        for (cap in intArrayOf(16384, 32768)) {
+            val r = postText(ctx, mdl, p, cap)
+            if (r.first != 200) {
+                lastError = shortErr(r.first, r.second)
+                return null
+            }
+            val fr = finishReason(r.second)
+            val txt = geminiText(r.second)
+            val out = parseNumberedReply(txt, lines.size)
+            var got = 0
+            for (o in out) if (o != null) got++
+            try {
+                Diag.log(ctx, "ai texttranslate fr=" + (if (fr.isEmpty()) "?" else fr) +
+                        " lines=" + lines.size + " got=" + got + " len=" + txt.length)
+            } catch (_: Throwable) {}
+            if (got == 0) {
+                try { Diag.log(ctx, "ai texttranslate head " + txt.take(160)) } catch (_: Throwable) {}
+                lastError = "the AI reply was not numbered lines"
+                return null
+            }
+            // full or majority coverage: deliver (the numbered protocol
+            // maps partials safely — missing lines show the original text)
+            if (got * 10 >= lines.size * 7) return out.toList()
+            if (fr == "MAX_TOKENS" && cap < 32768) {
+                try { Diag.log(ctx, "ai texttranslate MAX_TOKENS at $cap, retrying higher") }
+                catch (_: Throwable) {}
+                continue
+            }
+            if (fr == "MAX_TOKENS") {
+                // the ONE honest hand-off to the vision fallback
+                lastError = CUT_OFF_ERR
+                return null
+            }
+            return out.toList()
+        }
+        return null
+    }
+
+    /** v1.4.23 — one text POST: thinkingLevel low first; ANY 400 drops the
+     *  thinking field cleanly and retries once (never thinkingBudget — the
+     *  v1.4.20 corpse); a STILL-400 walks the cap down the model's own
+     *  output ceiling (the v1.4.21 ladder-down) until the floor, with the
+     *  RAW body on Diag so a rejection is never a silent dead end. */
+    private fun postText(ctx: Context, mdl: String, p: String, cap: Int): Pair<Int, String> {
+        var c = cap
+        var r = geminiPostRetry(ctx, mdl, textBody(p, c, true))
+        if (r.first == 400) {
+            try { Diag.log(ctx, "ai texttranslate 400 raw cap=$c body=" + r.second.take(240)) }
+            catch (_: Throwable) {}
+            r = geminiPostRetry(ctx, mdl, textBody(p, c, false))
+        }
+        while (r.first == 400) {
+            try { Diag.log(ctx, "ai texttranslate 400 raw cap=$c body=" + r.second.take(240)) }
+            catch (_: Throwable) {}
+            val next = cap400Next(c)
+            if (next <= 0) return r
+            c = next
+            r = geminiPostRetry(ctx, mdl, textBody(p, c, false))
+        }
+        return r
+    }
+
+    /** v1.4.23 — the pure-text request body: a plain user turn, NO image,
+     *  NO responseMimeType (the reply is numbered plain text, not JSON);
+     *  thinkingLevel low only when [think] (dropped cleanly on any 400). */
+    private fun textBody(p: String, cap: Int, think: Boolean): JSONObject {
+        val body = JSONObject()
+        body.put("contents", JSONArray().put(
+            JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", p)))))
+        val gc = JSONObject()
+            .put("temperature", 0.1)
+            .put("maxOutputTokens", cap)
+        if (think) gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+        body.put("generationConfig", gc)
+        return body
+    }
+
+    /** v1.4.23 — the OpenAI-compatible text pass (same numbered protocol,
+     *  no image part). A length cut with poor coverage is the vision
+     *  hand-off; everything else delivers what arrived. */
+    private fun openaiTextTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>? {
+        var c: HttpURLConnection? = null
+        return try {
+            val mdl = translateModel(ctx)
+            if (mdl.isBlank()) { lastError = "set a model in the AI settings"; return null }
+            val body = JSONObject()
+                .put("model", mdl)
+                .put("messages", JSONArray().put(
+                    JSONObject().put("role", "user")
+                        .put("content", textLinesPrompt(tl, lines))))
+                .put("max_tokens", 6000)
+                .put("temperature", 0.1)
+            val base = baseUrl(ctx).trimEnd('/')
+            c = URL(base + "/chat/completions").openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.connectTimeout = 15000
+            c.readTimeout = 120000
+            c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.setRequestProperty("Authorization", "Bearer " + key(ctx))
+            val out = body.toString().toByteArray(Charsets.UTF_8)
+            c.setFixedLengthStreamingMode(out.size)
+            c.outputStream.use { it.write(out) }
+            val code = try { c.responseCode } catch (_: Throwable) { -1 }
+            val txt = readText(if (code in 200..299) c.inputStream else c.errorStream)
+            if (code != 200) { lastError = shortErr(code, txt); return null }
+            val o = JSONObject(txt)
+            val choice = o.optJSONArray("choices")?.optJSONObject(0)
+                ?: run { lastError = "empty reply"; return null }
+            val fr = choice.optString("finish_reason", "")
+            val reply = choice.optJSONObject("message")?.optString("content", "") ?: ""
+            val outArr = parseNumberedReply(reply, lines.size)
+            var got = 0
+            for (x in outArr) if (x != null) got++
+            try {
+                Diag.log(ctx, "ai texttranslate fr=" + (if (fr.isEmpty()) "?" else fr) +
+                        " lines=" + lines.size + " got=" + got)
+            } catch (_: Throwable) {}
+            if (got == 0) {
+                try { Diag.log(ctx, "ai texttranslate head " + reply.take(160)) } catch (_: Throwable) {}
+                lastError = "the AI reply was not numbered lines"
+                return null
+            }
+            if (got * 10 < lines.size * 7 && fr == "length") {
+                lastError = CUT_OFF_ERR
+                return null
+            }
+            outArr.toList()
         } catch (t: Throwable) {
             lastError = (t.message ?: t.javaClass.simpleName).take(80)
             null

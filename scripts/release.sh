@@ -534,6 +534,34 @@ python3 scripts/test_v1420.py
 # matrices)
 python3 scripts/test_v1421.py
 
+# v1.4.23 gate: THE CRITICAL REBUILD (the four fixes re-implemented fresh
+# on the clean v1.4.21 source after the decompile-port launch crash; the
+# default-flip dark-icon round + the census, the engine-logo raster turn +
+# the home pill/icon-row/homeGen follow, the OCR-first screen-translate
+# hybrid with the numbered-lines text pass, the AiRender four-pack, and
+# the launch-law pins themselves — the mock-DOM dark probe, the
+# numbered-parser probe, the compiled commonmark four-pack probe)
+python3 scripts/test_v1423.py
+
+# ---- 1z. v1.4.23 — THE LAUNCH LAW (the v1.4.22 decompile-port corpse) ----
+# "static gates prove code EXISTS, not that the app OPENS." The v1.4.22
+# release was reconstructed by decompiling the shipped APK and porting
+# R8-obfuscated bytecode back to source; every static gate above was green
+# and the app CRASHED ON LAUNCH on the user's Realme RMX2020 / Android 10
+# (no UI, no crash page, clean reinstall included). This rung drives the
+# REAL Application.onCreate (BoltApp) through the REAL launcher path (the
+# aliases all target BrowserActivity) into the first home-tab render
+# (buildHomeView) under Robolectric — 2 tests, any FATAL EXCEPTION fails
+# the release here, BEFORE the build signs and publishes anything. (It
+# already paid for itself: the v1.4.23 smoke run caught a launch-crashing
+# autobox NPE in the home pill's setColorFilter ternary — the exact
+# corpse class — before any user did.)
+echo "== launch smoke (Robolectric: Application.onCreate -> launcher -> home) =="
+export GRADLE_USER_HOME=$BASE/.gradle-home
+$BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR testDebugUnitTest \
+  || { echo "ERROR: LAUNCH SMOKE FAILED — the app does not open; NOT publishing (README, THE LAUNCH LAW)"; exit 1; }
+echo "== launch smoke OK =="
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

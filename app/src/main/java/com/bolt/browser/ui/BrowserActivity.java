@@ -2722,6 +2722,24 @@ public class BrowserActivity extends AppCompatActivity {
                             }
                         } catch (Throwable ignored) {}
                     });
+                    // v1.4.23 — THE SMALL-ICON CENSUS (the round-4 evidence):
+                    // the fresh walk publishes its decision counts into
+                    // window.__boltDarkCount (small media seen / IC flips /
+                    // NI pins / rescue adds); this reads them back after the
+                    // late re-probe settles and logs the per-page verdict —
+                    // "dark icons <host> small=N ic=N ni=N rescue=N" — so the
+                    // next dark-mode field report carries the classifier's
+                    // actual numbers, not guesses (the DIU Moodle bare
+                    // hamburger ships real counts).
+                    w.evaluateJavascript(MediaHook.darkCountJs(), res3 -> {
+                        try {
+                            String cnt = res3 == null ? "" : res3.replace("\"", "");
+                            if (!cnt.isEmpty()) {
+                                com.bolt.browser.util.Diag.log(getApplicationContext(),
+                                        "dark icons " + host + " " + cnt);
+                            }
+                        } catch (Throwable ignored) {}
+                    });
                 } catch (Throwable ignored) {}
             }, 2500);
         } catch (Throwable ignored) {}
@@ -8477,8 +8495,31 @@ public class BrowserActivity extends AppCompatActivity {
         plp.bottomMargin = Fx.dp(this, 22);
         content.addView(pill, plp);
         ImageView si = new ImageView(this);
-        si.setImageResource(R.drawable.ic_search);
-        si.setColorFilter(dim);
+        // v1.4.23 — THE HOME PILL CARRIES THE ACTIVE ENGINE MARK: the pill's
+        // left glyph is the ACTIVE engine's official logo — the fixed
+        // 64x64 raster PNGs (drawable-nodpi, ~2-7 KB each) so every device
+        // draws the same pixels regardless of vector rendering differences
+        // across OEM GPU/driver stacks. The generic magnifier (custom /
+        // unknown engine fallback) keeps the theme tint; brand marks are
+        // NEVER tinted. The Fx.homeGen bumps at BOTH engine-selection entry
+        // points (the omnibox picker + the Settings row) rebuild the home so
+        // the pill follows a switch everywhere — never a recreate.
+        int plogo = engineLogo(prefs.searchEngine());
+        si.setImageResource(plogo);
+        // v1.4.23 — THE LAUNCH-LAW CATCH (the real corpse class): a ternary
+        // like (cond ? intColor : null) types as Integer and ImageView's
+        // setColorFilter(int) overload UNBOXES it — the null branch is a
+        // NullPointerException inside onCreate, the app-dies-on-launch
+        // shape. The Robolectric smoke test caught this exact line; the
+        // guard is now explicit branches (setColorFilter(null) binds the
+        // ColorFilter overload — unambiguous, never unboxed).
+        if (plogo == R.drawable.ic_search) si.setColorFilter(dim);
+        else si.setColorFilter((android.graphics.ColorFilter) null);
+        try {
+            com.bolt.browser.util.Diag.log(this, "engine pill set engine="
+                    + prefs.searchEngine() + " res="
+                    + getResources().getResourceEntryName(plogo));
+        } catch (Throwable ignored) {}
         pill.addView(si, new LinearLayout.LayoutParams(Fx.dp(this, 20), Fx.dp(this, 20)));
         TextView stv = new TextView(this);
         stv.setHint(R.string.search_hint);
@@ -13149,9 +13190,17 @@ public class BrowserActivity extends AppCompatActivity {
 
     /** v1.4.19 — PURE (probe-pinned): the engine-chip logo resource for an
      *  engine index (R.array.search_engine_names order: 0 Google,
-     *  1 DuckDuckGo, 2 Bing, 3 Brave, 4 Startpage). Brand logos keep their
-     *  own colors — the chip NEVER tints them; the generic magnifier (the
-     *  custom / unknown fallback) follows the theme tint instead. */
+     *  1 DuckDuckGo, 2 Bing, 3 Brave, 4 Startpage). v1.4.23 — THE RASTER
+     *  TURN: the five official marks ship as fixed 64x64 PNGs
+     *  (drawable-nodpi; byte-exact offline-reproducible via
+     *  scripts/rasterize_engine_logos.py — the retired vector sources
+     *  are archived at scripts/engine_vectors/) so every device draws the
+     *  same pixels regardless of vector rasterization differences; the
+     *  mapping and the resource IDs are UNCHANGED, so every binding site
+     *  (omnibox chip, home search pill, engine rows) flips with no wiring
+     *  change. Brand logos keep their own colors — brand marks are NEVER
+     *  tinted; the generic magnifier (the custom / unknown fallback)
+     *  follows the theme tint instead. */
     static int engineLogo(int engineIdx) {
         switch (engineIdx) {
             case 0: return R.drawable.ic_engine_google;
@@ -13203,7 +13252,12 @@ public class BrowserActivity extends AppCompatActivity {
             if (iv == null) return;
             int logo = engineLogo(prefs.searchEngine());
             iv.setImageResource(logo);
-            iv.setColorFilter(logo == R.drawable.ic_search ? Fx.tint(this) : null);
+            // v1.4.23 — the null-safe form (the old ternary (cond ? int :
+            // null) unboxed to Integer and NPE'd on the brand branch — the
+            // surrounding catch swallowed it, so the chip survived, but the
+            // same shape in buildHomeView killed v1.4.22 ON LAUNCH)
+            if (logo == R.drawable.ic_search) iv.setColorFilter(Fx.tint(this));
+            else iv.setColorFilter((android.graphics.ColorFilter) null);
             try {
                 com.bolt.browser.util.Diag.log(this, "engine logo set engine="
                         + prefs.searchEngine() + " res="
@@ -13462,13 +13516,27 @@ public class BrowserActivity extends AppCompatActivity {
      */
     protected void showEnginePicker(View lay, EditText et) {
         final String[] names = getResources().getStringArray(R.array.search_engine_names);
-        Ui.choiceSheet(this, getString(R.string.search_engine), names,
+        // v1.4.23 — THE ENGINE ROWS CARRY THEIR MARKS: the picker rows bind
+        // each engine's official 64x64 raster PNG beside its name (the
+        // brand marks untinted; no logo row rides a bare text label any
+        // more) — the same engineLogo mapping the chip and the home pill
+        // use, so one bump of the map moves every surface.
+        int[] marks = new int[names.length];
+        for (int i = 0; i < names.length; i++) marks[i] = engineLogo(i);
+        Ui.choiceSheetIcons(this, getString(R.string.search_engine), names, marks,
                 prefs.searchEngine(), idx -> {
                     try { prefs.set("searchEngine", idx); } catch (Throwable ignored) {}
                     // v1.4.19 — the chip's logo follows the switch
                     // immediately (the active engine is visible in the
                     // field the user is still typing into)
                     try { applyEngineLogo(lay); } catch (Throwable ignored) {}
+                    // v1.4.23 — THE HOME-PILL FOLLOW: the home search pill
+                    // carries the active engine's mark now (raster PNG); a
+                    // homeGen bump rebuilds the home so the pill shows the
+                    // new mark the moment the engine switches here (the
+                    // homeGen channel — never a recreate, which would
+                    // destroy every tab's WebView)
+                    Fx.homeGen++;
                     String q = et == null ? "" : et.getText().toString().trim();
                     String cur = "";
                     try {

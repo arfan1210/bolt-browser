@@ -154,7 +154,7 @@ object ScreenTranslate {
      *  same engine, same overlay, one line on the picker. */
     private val SCRIPT_KEYS = arrayOf("ai", "auto")
     private val SCRIPT_LABELS = arrayOf(
-        "AI \u2014 translate (recommended)",
+        "AI \u2014 OCR + one text pass (recommended)",
         "Basic OCR \u2014 no AI (works offline of the AI key)")
 
     private fun langsOf(k: String): Array<String> = when (k) {
@@ -562,42 +562,16 @@ object ScreenTranslate {
         else -> "Reading text\u2026"
     }
 
-    /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay. */
+    /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay
+     *  (the BASIC script path; the AI hybrid shares [ocrBlocks]). */
     private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int, t0: Long) {
         if (gen.get() != g) return
         try {
-            val arr = JSONArray(json)
-            val sx = bmp.width.toFloat() / enc.w
-            val sy = bmp.height.toFloat() / enc.h
-            val blocks = ArrayList<SBlock>()
-            var chars = 0
-            for (i in 0 until arr.length()) {
-                val e = arr.optJSONArray(i) ?: continue
-                if (e.length() < 5) continue
-                val txt = cjkNormalize(e.optString(4).trim())
-                if (txt.length < 2) continue
-                val l = (e.optInt(0) * sx).toInt().coerceIn(0, bmp.width - 2)
-                val t = (e.optInt(1) * sy).toInt().coerceIn(0, bmp.height - 2)
-                val r = (e.optInt(2) * sx).toInt().coerceIn(l + 2, bmp.width)
-                val b = (e.optInt(3) * sy).toInt().coerceIn(t + 2, bmp.height)
-                val rect = Rect(l, t, r, b)
-                if (rect.width() < 6 || rect.height() < 6) continue
-                chars += txt.count { !it.isWhitespace() }
-                // v1.3.77 — EVERY mode gets the matching kit: the ink
-                // analysis tightens tesseract's boxes to the glyphs, paints
-                // the card in the LOCAL background, and reads the original's
-                // own line height for the font ("all the modes are not
-                // accurate enough" — the v1.3.76 kit was AI-only)
-                val an = analyze(bmp, rect)
-                val sb = SBlock(an.rect, txt, regionLight(bmp, an.rect))
-                sb.bg = an.bg
-                sb.thPx = an.linePx
-                blocks.add(sb)
-                if (blocks.size >= MAXBLK) break
-            }
+            val parsed = ocrBlocks(json, bmp, enc)
+            val blocks = parsed.first
             try {
                 Diag.log(a, "scr ocr langs=" + langsOf(lastScript).joinToString("+") +
-                        " chars=" + chars + " lines=" + blocks.size +
+                        " chars=" + parsed.second + " lines=" + blocks.size +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
             if (blocks.isEmpty()) {
@@ -608,6 +582,45 @@ object ScreenTranslate {
         } catch (t: Throwable) {
             failOcr(a, bmp, g, "parse", null)
         }
+    }
+
+    /** v1.4.23 — THE SHARED OCR BLOCK PARSER (pure-ish, probe-pinned in
+     *  scripts/test_v1423.py): tesseract's line array -> SBlocks in BITMAP
+     *  coordinates (the sent-image scale mapped back up), the ink
+     *  analysis tightening every box to the glyphs, the local background
+     *  and the original's own line height riding the matching kit. The
+     *  BASIC path and the AI hybrid's stage (1) both call THIS — one
+     *  parse, one law. Returns (blocks, non-whitespace chars). */
+    private fun ocrBlocks(json: String, bmp: Bitmap, enc: Enc): Pair<ArrayList<SBlock>, Int> {
+        val arr = JSONArray(json)
+        val sx = bmp.width.toFloat() / enc.w
+        val sy = bmp.height.toFloat() / enc.h
+        val blocks = ArrayList<SBlock>()
+        var chars = 0
+        for (i in 0 until arr.length()) {
+            val e = arr.optJSONArray(i) ?: continue
+            if (e.length() < 5) continue
+            val txt = cjkNormalize(e.optString(4).trim())
+            if (txt.length < 2) continue
+            val l = (e.optInt(0) * sx).toInt().coerceIn(0, bmp.width - 2)
+            val t = (e.optInt(1) * sy).toInt().coerceIn(0, bmp.height - 2)
+            val r = (e.optInt(2) * sx).toInt().coerceIn(l + 2, bmp.width)
+            val b = (e.optInt(3) * sy).toInt().coerceIn(t + 2, bmp.height)
+            val rect = Rect(l, t, r, b)
+            if (rect.width() < 6 || rect.height() < 6) continue
+            chars += txt.count { !it.isWhitespace() }
+            // v1.3.77 — EVERY mode gets the matching kit: the ink analysis
+            // tightens tesseract's boxes to the glyphs, paints the card in
+            // the LOCAL background, and reads the original's own line
+            // height for the font
+            val an = analyze(bmp, rect)
+            val sb = SBlock(an.rect, txt, regionLight(bmp, an.rect))
+            sb.bg = an.bg
+            sb.thPx = an.linePx
+            blocks.add(sb)
+            if (blocks.size >= MAXBLK) break
+        }
+        return Pair(blocks, chars)
     }
 
     /** blocks ready → new overlay, or swap into the open one (script re-run). */
@@ -691,15 +704,15 @@ object ScreenTranslate {
      *  STILL exhausts the cap (shouldTile) is split 2x2 again — a dense
      *  quadrant gets four half-density sub-requests instead of a lost
      *  region. */
-    private fun translateTiled(a: Activity, bmp: Bitmap, tl: String,
-                               g: Int): ArrayList<AiBridge.AiBox>? =
-            translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0)
+    private fun translateTiled(a: Activity, bmp: Bitmap, tl: String, g: Int,
+                               ctx: String? = null): ArrayList<AiBridge.AiBox>? =
+            translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0, ctx)
 
     /** one (sub)region through the AI; depth caps the recursion at one
      *  extra level (a 2x2 of 2x2 = 16 sub-requests worst case, bounded). */
     private fun translateRegion(a: Activity, bmp: Bitmap, tl: String, g: Int,
                                 rx: Int, ry: Int, rw: Int, rh: Int,
-                                depth: Int): ArrayList<AiBridge.AiBox>? {
+                                depth: Int, ctx: String? = null): ArrayList<AiBridge.AiBox>? {
         val merged = ArrayList<AiBridge.AiBox>()
         val cols = 2
         val rows = 2
@@ -719,14 +732,16 @@ object ScreenTranslate {
                 val enc = encodeAi(tile)
                 try { tile.recycle() } catch (_: Throwable) {}
                 if (enc == null) continue
-                val part = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+                // v1.4.23 — the tile carries the full-screen transcript as
+                // context (visionTranslateX); null context = the plain call
+                val part = AiBridge.visionTranslateX(a, enc.b64, tl, enc.w, enc.h, ctx)
                 if (part == null) {
                     // v1.4.21 — the per-tile rung: a region that exhausted
                     // the cap ladder (shouldTile) splits once more instead
                     // of losing its text; any other failure costs the region
                     if (depth < 1 && AiBridge.shouldTile(AiBridge.lastError)) {
                         try { Diag.log(a, "scr ai tile split r$row c$col depth=$depth") } catch (_: Throwable) {}
-                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1)
+                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1, ctx)
                         if (sub != null) {
                             for (b in sub) {
                                 var dup = false
@@ -761,10 +776,20 @@ object ScreenTranslate {
     }
 
     /**
-     * POOL thread. The AI script: config check (setup dialog when empty),
-     * the one-time-per-process privacy confirm, then ONE vision request
-     * that reads AND translates in the same pass — no OCR models, no
-     * gtx round per line. Boxes arrive on a 1000×1000 grid.
+     * POOL thread. v1.4.23 — THE HYBRID AI SCRIPT (accuracy first):
+     * (1) the on-device OCR pass (tesseract) reads the screen for ACCURATE
+     *     text + box coordinates — nothing is hallucinated, boxes are real;
+     * (2) ONE pure-text [AiBridge.textTranslate] request carries every
+     * line, numbered, with the FULL screen as context — terminology stays
+     * consistent, the model never invents box_2d, and the screenshot is
+     * not sent at all;
+     * (3) the vision path is DEMOTED to a fallback: it fires only when OCR
+     *     cannot read the screen at all (empty result / engine failure —
+     *     stylised manga) or on a genuine MAX_TOKENS cut of the text reply
+     *     (CUT_OFF_ERR). The fallback goes full-screen FIRST, tiles only
+     *     when the full-screen reply is itself cut (too dense), each tile
+     *     carrying the full-screen OCR transcript as context, and merges
+     *     boxes by absolute coordinates with the iou seam dedup.
      */
     private fun runAiStage(a: Activity, bmp: Bitmap, g: Int) {
         if (gen.get() != g) return
@@ -789,87 +814,204 @@ object ScreenTranslate {
         if (!aiConfirmed) {
             // confirmDialog is POOL-safe (it posts the dialog to main itself
             // and latches HERE — wrapping it in onMainGet would deadlock main)
-            val ok = confirmDialog(a, "Send the screenshot for AI translation?",
-                "AI translate sends this screenshot to " + AiBridge.providerName(a) +
-                        ". Everything else in Bolt stays on-device. The AI reads and " +
-                        "translates it in one pass.")
+            val ok = confirmDialog(a, "Send text for AI translation?",
+                "On-device OCR reads this screen first, and only the TEXT goes to " +
+                        AiBridge.providerName(a) + " for translation in one request. " +
+                        "If OCR cannot read the screen at all, the screenshot itself is " +
+                        "sent instead. Everything else in Bolt stays on-device.")
             if (!ok) { cancelOcr(a, bmp, g); return }
             aiConfirmed = true
         }
         if (gen.get() != g) return
-        val pr = onMainGet { ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) } }
-            ?: return
-        prog = pr
         try {
             val tl = lastTl ?: PageTranslate.deviceTl()
             try {
-                Diag.log(a, "scr ai ask prov=" + AiBridge.providerName(a) +
-                        " model=" + aiModelForDiag(a))
+                Diag.log(a, "scr ai hybrid ask prov=" + AiBridge.providerName(a) +
+                        " model=" + aiModelForDiag(a) + " tl=" + tl)
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
-            // v1.4.21 — TILES FIRST (proactive; supersedes the v1.4.20
-            // single-shot + MAX_TOKENS-then-tile shape): every AI screen
-            // translate rides the 2x2 grid from the start. WHY: the field
-            // corpse was a dense screen on a low-ceiling lite model — the
-            // old shape burned two full-screen requests (one at 32768, one
-            // at 65536) before tiling, and a lite model that caps below the
-            // rung 400s instead (the ladder-down helps, but the screen is
-            // still too dense for ONE reply). A quadrant is a quarter the
-            // text; each tile rides its own ladder (400-down / MAX_TOKENS-
-            // up) and a still-dense quadrant splits once more (see
-            // translateRegion). Four smaller asks replace one doomed big
-            // one; the seam dedup (iou) cleans the borders.
-            pr.set("Translating in regions\u2026", -1)
-            val boxes = translateTiled(a, bmp, tl, g)
+            // (1) THE OCR STAGE — the same encoder + models the basic script
+            // rides (chi_sim+jpn+eng in one pass); the models download on
+            // demand exactly as before (metered confirm + progress)
+            val enc = encodeFor(bmp, "auto")
             if (gen.get() != g) return
-            try { Diag.log(a, "scr ai tiled done ms=" +
-                    (System.currentTimeMillis() - t0)) } catch (_: Throwable) {}
-            if (boxes == null) {
+            if (enc == null) {
+                failOcr(a, bmp, g, "encode", "Could not read the screen")
+                return
+            }
+            val langs = langsOf("auto")
+            if (!ensureModels(a, bmp, g, langs)) {
+                if (gen.get() != g) return
+                if (cancelled) cancelOcr(a, bmp, g)
+                else failOcr(a, bmp, g, "dl", "Couldn't download OCR data — check connection")
+                return
+            }
+            if (gen.get() != g) return
+            main.post { aiOcrStage(a, bmp, enc, langs, g, tl, t0) }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "pipe", null)
+        }
+    }
+
+    /** MAIN. (1) continued — spin the OCR host and fire the recognize job;
+     *  a host that cannot even start (no wasm) falls straight to the vision
+     *  fallback (the old honest failure was a dead end for readable text). */
+    private fun aiOcrStage(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>,
+                           g: Int, tl: String, t0: Long) {
+        if (gen.get() != g) return
+        if (prog == null) {
+            prog = ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) }
+        }
+        val h = try {
+            host ?: OcrHost(a).also { host = it }
+        } catch (t: Throwable) {
+            try { Diag.log(a, "scr ai ocr host fail -> vision") } catch (_: Throwable) {}
+            POOL.execute { visionFallback(a, bmp, g, tl, null) }
+            return
+        }
+        h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
+        h.run(langs, enc.b64,
+            { json -> POOL.execute { aiOcrDone(a, bmp, enc, json, g, tl, t0) } },
+            { msg ->
+                try { Diag.log(a, "scr ai ocr fail " + (msg ?: "").take(40) + " -> vision") }
+                catch (_: Throwable) {}
+                POOL.execute { visionFallback(a, bmp, g, tl, null) }
+            })
+    }
+
+    /** POOL. (1)+(2): the OCR json -> blocks (the shared parser), then ONE
+     *  pure-text translate over the numbered lines; empty OCR -> the vision
+     *  model is the only reader (fallback). */
+    private fun aiOcrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int,
+                           tl: String, t0: Long) {
+        if (gen.get() != g) return
+        try {
+            val parsed = ocrBlocks(json, bmp, enc)
+            val blocks = parsed.first
+            try {
+                Diag.log(a, "scr ai ocr langs=" + langsOf("auto").joinToString("+") +
+                        " chars=" + parsed.second + " lines=" + blocks.size +
+                        " ms=" + (System.currentTimeMillis() - t0))
+            } catch (_: Throwable) {}
+            if (blocks.isEmpty()) {
+                visionFallback(a, bmp, g, tl, null)
+                return
+            }
+            prog?.set("Translating\u2026", -1)
+            val lines = ArrayList<String>(blocks.size)
+            for (b in blocks) lines.add(b.orig)
+            val out = AiBridge.textTranslate(a, lines, tl)
+            if (gen.get() != g) return
+            if (out == null) {
+                if (AiBridge.shouldTile(AiBridge.lastError)) {
+                    // a genuine MAX_TOKENS cut of the ONE text reply: the
+                    // vision fallback, with the OCR transcript as the
+                    // full-screen context the tiles need
+                    val transcript = lines.joinToString("\n")
+                    visionFallback(a, bmp, g, tl, transcript)
+                    return
+                }
                 failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
                     "AI translation failed — " + AiBridge.lastError.take(60))
                 return
             }
-            val blocks = ArrayList<SBlock>()
-            for (b in boxes) {
-                if (blocks.size >= MAXBLK) break
-                // v1.3.77: AiBox arrives in 0-1 fractions of the SENT image —
-                // map straight into bitmap pixels (no 1000-grid detour)
-                val l = (b.x * bmp.width).toInt().coerceIn(0, bmp.width - 2)
-                val t = (b.y * bmp.height).toInt().coerceIn(0, bmp.height - 2)
-                val r = ((b.x + b.w) * bmp.width).toInt().coerceIn(l + 2, bmp.width)
-                val bo = ((b.y + b.h) * bmp.height).toInt().coerceIn(t + 2, bmp.height)
-                val rect = Rect(l, t, r, bo)
-                if (rect.width() < 6 || rect.height() < 6) continue
-                // v1.3.77 — the matching kit's second act: the ink analysis
-                // shrinks the model's box to the TEXT ITSELF ("overlaying
-                // covering only the old text portion"), the ring gives the
-                // local background, the median ink band gives the original's
-                // own line height (the model's th is only the fallback now).
-                // v1.3.78 — NO ROTATION, EVER: the field said the translated
-                // text is "90 degree rotated on the screen in the correct
-                // place and size" — a vertical original gets HORIZONTAL
-                // multi-line text riding the column, never sideways glyphs.
-                val an = analyze(bmp, rect)
-                val sb = SBlock(an.rect, b.orig, regionLight(bmp, an.rect))
-                sb.trans = b.trans
-                sb.rev = 1
-                sb.bg = an.bg
-                sb.thPx = if (an.linePx > 0f) an.linePx else b.th * bmp.height
-                blocks.add(sb)
+            var got = 0
+            for (i in blocks.indices) {
+                val t = if (i < out.size) out[i] else null
+                blocks[i].trans = t
+                blocks[i].rev = 1
+                if (t != null) got++
             }
             try {
-                Diag.log(a, "scr ai ok lines=" + blocks.size +
+                Diag.log(a, "scr ai hybrid ok lines=" + blocks.size + " got=" + got +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
-            if (blocks.isEmpty()) {
-                failOcr(a, bmp, g, "ai empty", "No readable text on this screen")
+            main.post { deliverAiBlocks(a, bmp, blocks, g) }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "parse", null)
+        }
+    }
+
+    /** POOL. (3) THE VISION FALLBACK (demoted): full-screen first; tiles
+     *  only on a genuine cut (shouldTile), each tile request carrying the
+     *  full-screen transcript as context; the SBlocks ride the same ink
+     *  analysis + matching kit as every other path. */
+    private fun visionFallback(a: Activity, bmp: Bitmap, g: Int, tl: String,
+                               transcript: String?) {
+        if (gen.get() != g || cancelled) return
+        try {
+            Diag.log(a, "scr ai vision fallback" +
+                    (if (transcript != null) " ctx=" + transcript.length + "ch" else ""))
+        } catch (_: Throwable) {}
+        try {
+            prog?.set("Translating\u2026", -1)
+            val enc = encodeAi(bmp)
+            if (enc == null) {
+                failOcr(a, bmp, g, "encode", "Could not read the screen")
                 return
             }
-            main.post { deliverAiBlocks(a, bmp, blocks, g) }
-        } finally {
-            main.post { pr.close() }
-            if (prog === pr) prog = null
+            val boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+            if (boxes != null) {
+                deliverVisionBoxes(a, bmp, boxes, g)
+                return
+            }
+            if (AiBridge.shouldTile(AiBridge.lastError)) {
+                // too dense for one reply: the tile road, every tile
+                // carrying the full-screen transcript as context; boxes
+                // re-placed by absolute coordinates + iou seam dedup
+                prog?.set("Translating in regions\u2026", -1)
+                val tiled = translateRegion(a, bmp, tl, g,
+                        0, 0, bmp.width, bmp.height, 0, transcript)
+                if (tiled != null) {
+                    deliverVisionBoxes(a, bmp, tiled, g)
+                    return
+                }
+            }
+            failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
+                    "AI translation failed — " + AiBridge.lastError.take(60))
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "vision", null)
         }
+    }
+
+    /** POOL. vision boxes -> SBlocks (fractions of the SENT image -> bitmap
+     *  pixels, the ink analysis, the matching kit) -> the shared AI
+     *  delivery (translations are already in the boxes). */
+    private fun deliverVisionBoxes(a: Activity, bmp: Bitmap,
+                                   boxes: ArrayList<AiBridge.AiBox>, g: Int) {
+        if (gen.get() != g) return
+        val blocks = ArrayList<SBlock>()
+        for (b in boxes) {
+            if (blocks.size >= MAXBLK) break
+            // AiBox arrives in 0-1 fractions of the SENT image — map
+            // straight into bitmap pixels (no 1000-grid detour)
+            val l = (b.x * bmp.width).toInt().coerceIn(0, bmp.width - 2)
+            val t = (b.y * bmp.height).toInt().coerceIn(0, bmp.height - 2)
+            val r = ((b.x + b.w) * bmp.width).toInt().coerceIn(l + 2, bmp.width)
+            val bo = ((b.y + b.h) * bmp.height).toInt().coerceIn(t + 2, bmp.height)
+            val rect = Rect(l, t, r, bo)
+            if (rect.width() < 6 || rect.height() < 6) continue
+            // the ink analysis shrinks the box to the TEXT ITSELF, the ring
+            // gives the local background, the median ink band gives the
+            // original's own line height (the model's th is the fallback).
+            // NO ROTATION, EVER: a vertical original gets HORIZONTAL
+            // multi-line text riding the column.
+            val an = analyze(bmp, rect)
+            val sb = SBlock(an.rect, b.orig, regionLight(bmp, an.rect))
+            sb.trans = b.trans
+            sb.rev = 1
+            sb.bg = an.bg
+            sb.thPx = if (an.linePx > 0f) an.linePx else b.th * bmp.height
+            blocks.add(sb)
+        }
+        try {
+            Diag.log(a, "scr ai vision ok lines=" + blocks.size)
+        } catch (_: Throwable) {}
+        if (blocks.isEmpty()) {
+            failOcr(a, bmp, g, "ai empty", "No readable text on this screen")
+            return
+        }
+        main.post { deliverAiBlocks(a, bmp, blocks, g) }
     }
 
     /** the model name WITHOUT the key ever leaving the diag channel.

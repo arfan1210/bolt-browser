@@ -128,6 +128,14 @@ public class SettingsItemsActivity extends BaseListActivity {
                 Ui.choiceSheet(this, getString(R.string.search_engine), names,
                         prefs.searchEngine(), w -> {
                     prefs.set("searchEngine", w);
+                    // v1.4.23 — THE HOME-PILL FOLLOW (the settings entry):
+                    // the home search pill carries the active engine's mark
+                    // (the raster PNG); the homeGen bump rebuilds the home
+                    // so the pill shows the new mark the moment the engine
+                    // switches here too — BOTH engine-selection entry
+                    // points (this one + the omnibox picker) bump it, so the
+                    // pill follows every switch (never a recreate).
+                    com.bolt.browser.util.Fx.homeGen++;
                     refresh();
                 }));
         se.section = getString(R.string.cat_general);
