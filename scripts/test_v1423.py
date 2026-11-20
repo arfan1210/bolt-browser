@@ -111,7 +111,8 @@ need("function rescuePass(){" in mh and "function darkImgEl(el)" in mh
      "the bounded contrast rescue: SVG luminance + same-origin IMG canvas sample")
 need("rCand<240&&rSave<80" in mh and "rCanvas>=40" in mh,
      "the rescue is bounded (240 candidates / 80 rescues / 40 canvas samples)")
-need("window.__boltDarkCount=cnt" in mh and "var cnt={small:0,ic:0,ni:0,rescue:0};" in mh,
+need("window.__boltDarkCount=cnt" in mh
+     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)
      "the census publishes window.__boltDarkCount")
 need("function clampCss(c)" in mh and "if(y<=153)return null;" in mh,
      "the v1.4.19 downward clamp survived the rewrite (light -> 0.6 floor)")
