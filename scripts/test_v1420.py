@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 135" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
-need('versionName "1.4.21"' in gradle, 'versionName "1.4.21"')
+need("versionCode 136" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.22"' in gradle, 'versionName "1.4.22"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -170,12 +170,15 @@ print("B — fix 2: the forced-dark icon + thickness floor")
 need("function uiIcon(el)" in mh and "m>0&&m<=64" in mh,
      "the icon classifier exists: a small svg (<=64 px longest edge) is a "
      "UI icon (RAW source — the size cut is the classifier)")
-need("if((t==='SVG'||t==='IMG')&&uiIcon(el))return false;" in mh,
+need("if(uiIcon(el))return false;niS++;" in mh,
      "isMedia lets UI icons through to the walk (they were skipped AND "
      "left un-inverted — the dark-hamburger vanish) "
      "(v1.4.21 re-point 2026-11-20: IMG joined SVG — menu images were "
      "media too and stayed black; context-first classification in "
-     "test_v1421 section D)")
+     "test_v1421 section D; v1.4.22 re-point 2026-11-20: THE ROUND-4 "
+     "DEFAULT-FLIP — small img/svg is NOT media when the classifier "
+     "calls it an icon, and every such decision is counted (niS) for "
+     "the per-page census)")
 need("function iconFloor(el,cs,inv){" in mh
      and "el.classList.add(IC);" in mh,
      "the icon floor: classed .__boltIC (filter:none — rides the page "
@@ -210,10 +213,14 @@ print("C — fix 3: translate thinking-off + the evidence line + the tile road")
 # chat body keeps thinkingLevel minimal — different budget, untouched).
 import re as _re
 _vb = _re.search(r"private fun visionBody\(.*?\n    \}", ab, _re.S)
-need(_vb is not None and "thinkingConfig" not in _vb.group(0),
+need(_vb is not None and 'gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))' in _vb.group(0),
      "the translate body sends NO thinkingConfig (v1.4.21: omitted "
      "entirely — a field never sent cannot be rejected; the chat body's "
-     "thinkingLevel is a different path)")
+     "thinkingLevel is a different path) "
+     "(v1.4.22 re-point 2026-11-20: THE HYBRID TURN brought the field "
+     "back as thinkingLevel:low — tried FIRST for the fuller replies, "
+     "then dropped CLEANLY on the 400 and retried without it; the "
+     "conditional rides the think: Boolean parameter of visionBody)")
 need("internal fun usageDiag(fr: String, thoughts: Int, candidates: Int, len: Int): String {" in ab_code,
      "the one-line evidence form is PURE (probe-pinned)")
 need('usageInt(r.second, "thoughtsTokenCount")' in ab,
@@ -231,10 +238,14 @@ need("internal fun shouldTile(err: String): Boolean" in ab_code
      "the tile contract is PURE (the error string IS the contract)")
 need("internal fun tilePlace(" in st_code and "internal fun iou(" in st_code,
      "the tile mapping + seam dedup are PURE (probe-pinned)")
-need("translateTiled(a, bmp, tl, g)" in st_code
+need("translateTiled(a, bmp, tl, g, AiBridge.lastTranscript)" in st_code
      and "AiBridge.shouldTile(AiBridge.lastError)" in st_code,
      "ScreenTranslate tiles the 2x2 grid when the ladder exhausts (the "
-     "caller owns the bitmap)")
+     "caller owns the bitmap) "
+     "(v1.4.22 re-point 2026-11-20: the hybrid turn demoted tiling to a "
+     "GENUINE MAX_TOKENS-only fallback (full-screen first) and the tiles "
+     "carry the full-screen transcript as context — translateTiled's ctx "
+     "parameter)")
 need('"scr ai tile' in st,
      "the tile Diag breadcrumbs (enter + per-tile failure)")
 
@@ -288,22 +299,30 @@ need("if (it.status == ST_DONE) {" in de_code and "trimmed = true" in de_code,
      "load() trims the historical 12 MB bloat once (done items only)")
 
 print("G — fix 7: the official engine marks")
-need("pathData=\"M4.842.005" in open(os.path.join(dr, "ic_engine_bing.xml"),
-     encoding="utf8").read(),
-     "Bing carries the official Fluent mark path (bing.com's own icon)")
-ddgx = open(os.path.join(dr, "ic_engine_ddg.xml"), encoding="utf8").read()
-need("M12 0C5.373 0 0 5.373" in ddgx and "#DE5833" in ddgx,
-     "DDG carries the simple-icons outline in the brand orange")
-brx = open(os.path.join(dr, "ic_engine_brave.xml"), encoding="utf8").read()
-need("M15.68 0l2.096" in brx and "#FB542B" in brx,
-     "Brave carries the simple-icons lion shield in the brand orange")
-spx = open(os.path.join(dr, "ic_engine_startpage.xml"), encoding="utf8").read()
-need("m16.885 14.254" in spx and "#6563FF" in spx,
-     "Startpage carries the simple-icons mark in the brand violet "
-     "(the table's #6563FF, not the old approximation)")
-gg = open(os.path.join(dr, "ic_engine_google.xml"), encoding="utf8").read()
-need("#4285F4" in gg and "#34A853" in gg,
-     "Google keeps its own four-color drawable (untouched, as ordered)")
+# v1.4.22 re-point (2026-11-20): THE RASTER TURN — the five marks are now
+# fixed 64x64 PNGs in res/drawable-nodpi/ (byte-exact artifacts of the
+# original rasterization; scripts/rasterize_engine_logos.py regenerates
+# them from the retired vectors kept in scripts/engine_vectors/). The
+# v1.4.20 vector pins (pathData + brand colors) moved to the engine_vectors
+# copies; the shipped-asset pins below verify the PNG integrity instead.
+import struct
+drn = os.path.join(RES, "drawable-nodpi")
+for d in ("ic_engine_google", "ic_engine_ddg", "ic_engine_bing",
+          "ic_engine_brave", "ic_engine_startpage"):
+    fpng = os.path.join(drn, d + ".png")
+    need(os.path.isfile(fpng), f"the {d} raster mark exists (drawable-nodpi)")
+    if os.path.isfile(fpng):
+        raw = open(fpng, "rb").read()
+        w, h = struct.unpack(">II", raw[16:24])
+        need(raw[:8] == bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+
+             and w == 64 and h == 64
+             and 1500 <= len(raw) <= 8000,
+             f"the {d} PNG is a real 64x64 mark in the size band")
+need(os.path.isfile("scripts/engine_vectors/ic_engine_bing.xml"),
+     "the retired Bing vector is preserved for reproducibility (engine_vectors)")
+need(os.path.isfile("scripts/rasterize_engine_logos.py"),
+     "the rasterizer pipeline script exists (rasterize_engine_logos.py)")
 
 print("H — fix 8: Markdown + LaTeX in Bolt AI")
 need("implementation 'org.commonmark:commonmark:0.24.0'" in gradle
@@ -327,7 +346,7 @@ need("(t.tag as? String) ?: t.text.toString()" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 135") == 1,
+need(gradle.count("versionCode 136") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

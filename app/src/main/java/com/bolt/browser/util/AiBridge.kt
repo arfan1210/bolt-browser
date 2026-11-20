@@ -28,6 +28,18 @@ import java.net.URL
  * deprecated 2026-12-01), the vision request forces JSON output with a
  * 16384-token budget, configDialog is re-editable any time with an
  * onSaved continuation, and [chat] gives Bolt AI multi-turn text chat.
+ * v1.4.22 — THE HYBRID TURN (see ScreenTranslate.runHybridStage): AI
+ * screen translate stopped sending screenshots by default. On-device OCR
+ * reads the text AND its boxes first, then ONE pure-text request
+ * ([textTranslate]) translates every numbered line with the whole screen
+ * as context — the model never sees a pixel, so it can no longer invent
+ * box positions, and one reply keeps terminology consistent across the
+ * entire screen. The screenshot survives ONLY as the vision fallback
+ * ([visionTranslate] — no OCR text at all / the text road failed), whose
+ * full-screen ask tiles only on a genuine MAX_TOKENS cut, the tiles
+ * riding the full-screen transcript as context ([lastTranscript]).
+ * Every AI request now sends thinkingLevel "low" first — a 400 drops
+ * the field cleanly and retries once without it.
  *
  * THE USER'S IDEA, VERBATIM: "For this onscreen non text translations, I
  * suppose an ai powered translator like gemini might be better and more
@@ -65,6 +77,25 @@ object AiBridge {
      * pinned — it lives here now). */
     const val CUT_OFF_ERR = "the AI reply was cut off (try a less dense screen)"
 
+    /** v1.4.22 — THE HYBRID PROMPT HEAD (byte-pinned to the dex literal):
+     *  the numbered-lines protocol's opening — the target language slots
+     *  in between this and [HYBRID_TAIL] (see [hybridPrompt]). */
+    private const val HYBRID_HEAD = "You are an expert screen translator. Translate EVERY numbered line below into natural "
+
+    /** v1.4.22 — THE HYBRID PROMPT TAIL: the reply contract — a bare JSON
+     *  array of {"i":n,"t":"translation"} objects, the SAME numbers back,
+     *  one object per line, terminology consistent across ALL lines (the
+     *  whole point of the one-request design), each translation concise
+     *  enough to fit its original line's space (the box is fixed). */
+    private const val HYBRID_TAIL = ".\nRespond with ONLY a JSON array (no markdown fences, no commentary) of objects {\"i\":<the line number>,\"t\":\"<the translation>\"} — one object per line, the SAME numbers.\nRules: translate naturally and faithfully; preserve proper nouns, numbers, URLs and code exactly; do not transliterate what has a standard translation; keep terminology consistent across ALL lines; keep each translation concise (it must fit the original line's space).\nLines:\n"
+
+    /** v1.4.22 — THE TILE CONTEXT PREFACE: a tile's vision prompt rides the
+     *  full-screen transcript after this (see [visionTranslate]'s [scrCtx])
+     *  so seams keep sentences and terminology consistent — but the model
+     *  may NEVER re-emit the context as new boxes (box_2d is only for
+     *  text visible in THIS image). */
+    private const val HYBRID_CTX = "For CONTEXT (already read from OTHER regions of this SAME screen — use it to keep sentences and terminology consistent across tile seams, but NEVER repeat it as new boxes; box_2d coordinates are ONLY for text visible in THIS image): "
+
     /**
      * v1.3.75 — Java-friendly link opener (BrowserActivity implements it
      * with its openNewTab path; a Kotlin (String)->Unit would force Java
@@ -96,6 +127,14 @@ object AiBridge {
      *  when the envelope says MAX_TOKENS. */
     @Volatile private var lastParseSalvaged: Boolean = false
         private set
+
+    /** v1.4.22 — THE FULL-SCREEN TRANSCRIPT: the last vision reply's raw
+     *  text (set on every 200 in [geminiCall], before the parse verdict —
+     *  so a reply that later proves GENUINELY cut has already parked its
+     *  partial text here). When the full-screen ask exhausts the cap
+     *  ladder on MAX_TOKENS, ScreenTranslate hands exactly this back to
+     *  the tiles as context ("scr ai full cut -> tiles ctxlen=..."). */
+    @Volatile var lastTranscript: String = ""
 
     // ---------------- config (SharedPreferences "bolt_ai") ----------------
 
@@ -307,17 +346,48 @@ object AiBridge {
                 "image contains no text at all, respond [].")
     }
 
+    /** v1.4.22 — THE NUMBERED-LINES PROTOCOL (the hybrid's ask): the OCR
+     *  pass's texts as "N. <line>" lines under one standing instruction,
+     *  translated into [tl] — ONE request, the WHOLE screen as context,
+     *  and the model invents no positions because none are asked for (the
+     *  boxes never leave the device). Each line is flattened (a stray
+     * newline would break the "one object per line" reply contract) and
+     *  capped at 600 chars — a pathological OCR line must not eat the
+     *  reply's budget. See [HYBRID_HEAD]/[HYBRID_TAIL] for the contract. */
+    private fun hybridPrompt(tl: String, lines: List<String>): String {
+        val sb = StringBuilder(HYBRID_HEAD)
+        sb.append(langName(tl))
+        sb.append(HYBRID_TAIL)
+        var n = 0
+        for (line in lines) {
+            n++
+            sb.append(n).append(". ")
+            sb.append(line.replace('\n', ' ').take(600))
+            sb.append('\n')
+        }
+        return sb.toString()
+    }
+
     /**
      * BLOCKING (call from a worker thread only). Sends the JPEG screenshot
      * (base64, no data: prefix) to the configured provider and returns the
      * parsed boxes, or null with [lastError] set. The key is never echoed.
      * [iw]/[ih] are the SENT image's pixel dimensions — the prompt grounds
      * the model's boxes to them (v1.3.76).
+     * v1.4.22 — THE FALLBACK + THE CONTEXTED PROMPT: this is now the
+     * screenshot road the hybrid turns to ONLY when OCR cannot read the
+     * screen — and a tile's [scrCtx] (the full-screen transcript, see
+     * [lastTranscript]) rides the prompt as plain context after
+     * [HYBRID_CTX], capped at 1200 chars, so tile seams keep the
+     * full-screen terminology and never re-box already-read text. An
+     * empty [scrCtx] keeps the plain v1.3.77 prompt, byte-identical.
      */
     @JvmStatic
-    fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int): ArrayList<AiBox>? {
+    fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int,
+                       scrCtx: String): ArrayList<AiBox>? {
         lastError = ""
-        val p = prompt(tl, iw, ih)
+        val p = if (scrCtx.isBlank()) prompt(tl, iw, ih)
+                else prompt(tl, iw, ih) + HYBRID_CTX + scrCtx.trim().take(1200) + "\n"
         // v1.4.21: the translate-model picker — the dedicated screen-
         // translate model when set, the shared chat model otherwise
         return if (prov(ctx) == "gemini") {
@@ -339,6 +409,52 @@ object AiBridge {
         }
     }
 
+    /**
+     * v1.4.22 — THE TEXT HALF OF THE HYBRID (ScreenTranslate.runHybridStage
+     * is the other half). BLOCKING (worker thread only). [lines] are the
+     * OCR pass's texts in reading order; ONE request translates them ALL
+     * with the whole screen as context — the numbered-lines protocol
+     * ([hybridPrompt]) on the ask side, the {"i":n,"t":"..."} array on the
+     * reply side ([parseHybrid]). Returns the 1-based index → translation
+     * map (an index may be missing when the model skipped a line — the
+     * caller counts coverage), or null with [lastError] set: "no OCR
+     * text" (empty input — the caller should never send one), "text
+     * translate needs the Gemini provider" (the OpenAI-compatible branch
+     * has no hybrid road — the caller falls back to the vision ask, which
+     * speaks both providers), [CUT_OFF_ERR] (all three caps hit
+     * MAX_TOKENS — too many lines for one reply), or "hybrid reply
+     * shape ..." (a reply that is not the protocol's array). No screenshot
+     * is ever attached on this road.
+     */
+    @JvmStatic
+    fun textTranslate(ctx: Context, lines: ArrayList<String>, tl: String): HashMap<Int, String>? {
+        lastError = ""
+        if (lines.isEmpty()) {
+            lastError = "no OCR text"
+            return null
+        }
+        val p = hybridPrompt(tl, lines)
+        if (prov(ctx) != "gemini") {
+            lastError = "text translate needs the Gemini provider"
+            return null
+        }
+        // v1.4.21: the translate-model picker — the dedicated screen-
+        // translate model when set, the shared chat model otherwise
+        val m = translateModel(ctx)
+        val chain = buildChain(m)
+        for (name in chain) {
+            val r = hybridTextCall(ctx, name, p)
+            if (r != null) {
+                noteAnsweredModel(ctx, m, name)
+                return r
+            }
+            // v1.4.18: the chain advances on model-not-found AND the 5xx
+            // provider bucket (see advanceChain)
+            if (!advanceChain(lastError)) return null
+        }
+        return null
+    }
+
     /** Gemini native: POST v1beta/models/{model}:generateContent.
      * v1.3.76 — thinkingLevel minimal: the 3.x flash models think by
      * default and the field called Bolt AI "kind of slow and performance
@@ -348,7 +464,14 @@ object AiBridge {
      * v1.4.20 — THINKING IS NOW OFF FOR TRANSLATE (see visionBody): the
      * ~3 s field cut-offs were never 32768-token generations — the
      * thinking tokens raid maxOutputTokens and the visible JSON
-     * truncates mid-array long before the cap. */
+     * truncates mid-array long before the cap.
+     * v1.4.22 — THINKING LOW IS BACK (supersedes the omit-entirely law,
+     * the release note's "much more accurate"): the vision read is
+     * exactly the task thinking helps, and a 400 that rejects the field
+     * is now dropped CLEANLY and retried once without it (see
+     * [postVision]) — a field we can drop on demand is as safe as one
+     * never sent, and the v1.4.21 cap ladder-down still catches the
+     * low-ceiling models after it. */
     private fun geminiCall(ctx: Context, mdl: String, p: String, b64: String,
                            iw: Int, ih: Int): ArrayList<AiBox>? {
         // v1.4.19 — THE TOKEN-CAP LADDER (the "AI translate: the reply was
@@ -378,6 +501,12 @@ object AiBridge {
             // the raw body went to the box parser and every run "found no
             // text"), THEN the model's text is parsed for boxes
             val txt = geminiText(r.second)
+            // v1.4.22 — THE FULL-SCREEN TRANSCRIPT: parked on every 200,
+            // BEFORE the parse verdict — when this reply later proves
+            // genuinely cut (MAX_TOKENS through the whole ladder), its
+            // partial text is exactly the context the tiles need (the
+            // caller reads it back through [lastTranscript])
+            lastTranscript = txt
             try {
                 Diag.log(ctx, usageDiag(fr,
                         usageInt(r.second, "thoughtsTokenCount"),
@@ -423,21 +552,109 @@ object AiBridge {
      *  recovery. Translate now never SENDS thinkingConfig (see visionBody),
      *  and on ANY 400 the RAW body rides to Diag (shortErr hid the exact
      *  rejection — never again) and the cap steps DOWN the model's own
-     *  output ceiling until it fits or the floor is reached). */
+     *  output ceiling until it fits or the floor is reached).
+     *  v1.4.22 — THE THINK-DROP FIRST (the vision body now SENDS
+     *  thinkingLevel low again): the FIRST 400 drops the field cleanly
+     *  and retries the SAME cap once without it — only a still-400 walks
+     *  the v1.4.21 ladder-down. */
     private fun postVision(ctx: Context, mdl: String, p: String, b64: String,
                            cap: Int): Pair<Int, String> {
+        var think = true
         var c = cap
-        var r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c))
+        var r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c, think))
         while (r.first == 400) {
             try {
                 Diag.log(ctx, "ai translate 400 raw cap=$c body=" + r.second.take(240))
             } catch (_: Throwable) {}
-            val next = cap400Next(c)
-            if (next <= 0) return r
-            c = next
-            r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c))
+            if (think) {
+                think = false
+                r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c, think))
+            } else {
+                val next = cap400Next(c)
+                if (next <= 0) return r
+                c = next
+                r = geminiPostRetry(ctx, mdl, visionBody(p, b64, c, think))
+            }
         }
         return r
+    }
+
+    /** v1.4.22 — one hybrid text POST at a cap: the text twin of
+     *  [postVision]. thinkingLevel "low" is tried FIRST (the whole
+     *  release's accuracy ask), the FIRST 400 drops it cleanly and
+     *  retries the SAME cap once without it — "ai hybrid 400 raw
+     *  cap=" mirrors the raw provider body to the diag ring (never the
+     * key) — and a still-400 walks the v1.4.21 cap ladder-down for the
+     *  low-ceiling lite models. */
+    private fun postText(ctx: Context, mdl: String, p: String,
+                         cap: Int): Pair<Int, String> {
+        var think = true
+        var c = cap
+        var r = geminiPostRetry(ctx, mdl, textBody(p, c, think))
+        while (r.first == 400) {
+            try {
+                Diag.log(ctx, "ai hybrid 400 raw cap=$c body=" + r.second.take(240))
+            } catch (_: Throwable) {}
+            if (think) {
+                think = false
+                r = geminiPostRetry(ctx, mdl, textBody(p, c, think))
+            } else {
+                val next = cap400Next(c)
+                if (next <= 0) return r
+                c = next
+                r = geminiPostRetry(ctx, mdl, textBody(p, c, think))
+            }
+        }
+        return r
+    }
+
+    /** v1.4.22 — the hybrid's cap ladder (the text twin of [geminiCall]):
+     *  16384 -> 32768 -> 65536. A numbered-lines reply is roughly a token
+     *  per 4 chars of translation, so even a dense screen's whole text
+     *  fits the first rung — but MAX_TOKENS still walks UP before the
+     *  honest cut-off error, and a reply that is NOT the protocol's array
+     *  is a SHAPE failure ("hybrid reply shape ..." — never retried with
+     *  a bigger cap: the hybrid has no lenient salvage, a half-guessed
+     *  parse of a text protocol is worse than the vision fallback). */
+    private fun hybridTextCall(ctx: Context, mdl: String, p: String): HashMap<Int, String>? {
+        var lastCutOff = false
+        for (cap in intArrayOf(16384, 32768, 65536)) {
+            val r = postText(ctx, mdl, p, cap)
+            if (r.first != 200) {
+                lastError = shortErr(r.first, r.second)
+                return null
+            }
+            val fr = finishReason(r.second)
+            // v1.3.75 — the envelope is unwrapped FIRST, then the model's
+            // text goes to the protocol parser
+            val txt = geminiText(r.second)
+            try {
+                Diag.log(ctx, usageDiag(fr,
+                        usageInt(r.second, "thoughtsTokenCount"),
+                        usageInt(r.second, "candidatesTokenCount"), txt.length))
+            } catch (_: Throwable) {}
+            val map = parseHybrid(txt)
+            if (map == null) {
+                // v1.4.20 — the evidence line: the raw reply head rides
+                // out after a parse miss (shape vs truncation, the pair
+                // "hybrid reply shape fr=..." / "ai hybrid MAX_TOKENS at"
+                // decides below)
+                try { Diag.log(ctx, "ai hybrid head " + txt.take(160)) } catch (_: Throwable) {}
+            }
+            when {
+                map != null -> return map
+                fr == "MAX_TOKENS" -> {
+                    try { Diag.log(ctx, "ai hybrid MAX_TOKENS at $cap, retrying higher") } catch (_: Throwable) {}
+                    lastCutOff = true
+                }
+                else -> {
+                    lastError = "hybrid reply shape fr=" + fr + " len=" + txt.length
+                    return null
+                }
+            }
+        }
+        lastError = if (lastCutOff) CUT_OFF_ERR else "hybrid reply shape"
+        return null
     }
 
     /** v1.4.21 — PURE (probe-pinned): the HTTP-400 cap ladder. A 400 can be
@@ -511,10 +728,15 @@ object AiBridge {
      *  no thinking config at all — a field we never send cannot be
      *  rejected, and whatever thinking the model does by default is
      *  bounded by its own output ceiling (the ladder-down covers a low
-     *  ceiling; the tile road covers density). The CHAT body keeps its
-     *  thinkingLevel minimal (chat image questions work — the report
-     *  said so — and its 2048 cap rides a different budget entirely). */
-    private fun visionBody(p: String, b64: String, cap: Int): JSONObject {
+     *  ceiling; the tile road covers density).
+     *  v1.4.22 — THINKINGCONFIG LOW, DROPPABLY (supersedes the omit law,
+     *  again): the hybrid release's accuracy ask wants the vision read to
+     *  THINK, and [postVision] now drops the field CLEANLY on the first
+     *  400 and retries — the v1.4.21 omission's safety without its
+     *  no-thinking ceiling. The CHAT body keeps its thinkingLevel minimal
+     *  (chat image questions work — the report said so — and its 2048 cap
+     *  rides a different budget entirely). */
+    private fun visionBody(p: String, b64: String, cap: Int, think: Boolean): JSONObject {
         val body = JSONObject()
         val parts = JSONArray()
         parts.put(JSONObject().put("text", p))
@@ -528,6 +750,29 @@ object AiBridge {
         val gc = JSONObject()
             .put("temperature", 0.1).put("maxOutputTokens", cap)
             .put("responseMimeType", "application/json")
+        if (think) {
+            try { gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "low")) } catch (_: Throwable) {}
+        }
+        body.put("generationConfig", gc)
+        return body
+    }
+
+    /** v1.4.22 — the hybrid's pure-text request body: exactly the vision
+     *  body minus the image part — ONE user turn of plain text, JSON mime,
+     *  the cap as maxOutputTokens, and thinkingLevel "low" while [think]
+     *  (dropped cleanly on a 400 — see [postText]). No screenshot is ever
+     *  attached on this road; that is the whole point of the hybrid. */
+    private fun textBody(p: String, cap: Int, think: Boolean): JSONObject {
+        val body = JSONObject()
+        body.put("contents", JSONArray().put(
+            JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", p)))))
+        val gc = JSONObject()
+            .put("temperature", 0.1).put("maxOutputTokens", cap)
+            .put("responseMimeType", "application/json")
+        if (think) {
+            try { gc.put("thinkingConfig", JSONObject().put("thinkingLevel", "low")) } catch (_: Throwable) {}
+        }
         body.put("generationConfig", gc)
         return body
     }
@@ -1025,6 +1270,34 @@ object AiBridge {
         val b = t.lastIndexOf(']')
         if (a < 0 || b <= a) return null
         return t.substring(a, b + 1)
+    }
+
+    /** v1.4.22 — THE NUMBERED-LINES REPLY PARSER (the hybrid's other
+     *  half): a bare JSON array of {"i":N,"t":"..."} objects. Markdown
+     *  fences are tolerated — a proper fence is sliced between the fence
+     *  lines, a one-line fence is just trimmed of its backticks — but
+     *  NOTHING ELSE is: N is kept only when 1-based and its translation
+     *  non-blank, and ANY other shape returns null. The hybrid has no
+     *  lenient salvage (unlike [parseBoxes]): a truncated array is the
+     *  ladder's business (MAX_TOKENS — see [hybridTextCall]), and a
+     *  half-guessed parse of a text protocol is exactly the wrong
+     *  guess the hybrid was built to eliminate. */
+    private fun parseHybrid(txt: String): HashMap<Int, String>? {
+        var t = txt.trim()
+        if (t.startsWith("```")) {
+            val nl = t.indexOf('\n')
+            val end = t.lastIndexOf("```")
+            t = if (nl < 0 || end <= nl) t.trim('`') else t.substring(nl + 1, end)
+        }
+        val map = HashMap<Int, String>()
+        val arr = try { JSONArray(t) } catch (_: Throwable) { null } ?: return null
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val n = o.optInt("i", -1)
+            val s = o.optString("t", "")
+            if (n >= 1 && s.isNotEmpty()) map[n] = s
+        }
+        return if (map.isEmpty()) null else map
     }
 
     /** the model that actually answered the last successful call (the

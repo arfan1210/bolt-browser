@@ -1422,6 +1422,99 @@ filter rule census unchanged from v1.4.9
 (103,087 network rules, 1,709 on the regex path — see the hardening note
 above).
 
+**v1.4.22 — the dark-icon round 4 + the raster turn + the hybrid + the
+four-pack, and THE LOST-COMMIT RECOVERY** (the sixteenth session of this
+relay, 2026-11-20):
+
+1. *The lost commit (read this first — it shaped the whole session).* The
+   v1.4.22 work — all four fixes below, the gates, the version pins, 65
+   files — was committed locally and AWAITING THE SIGNING KEY (the
+   maintainer had approved a delayed release). The next sandbox recycle
+   wiped the unpushed tree. Recovery path: the unsigned APK and the
+   debug APK survived in the session's staging area, the release key
+   arrived from the maintainer's offline backup (cert fingerprint
+   verified against the v1.4.8/v1.4.9 signers — identical), and the
+   SOURCE was reconstructed against the shipped artifact: the dex
+   string-table diff recovered every new constant byte-exactly
+   (darkSmartJs 10,731 chars, the hybrid prompts, every Diag format),
+   jadx decompile deltas between v1.4.21 and v1.4.22 gave every class
+   change, the resource-table diff gave the About changelog entry
+   verbatim, and the five engine PNGs were extracted byte-exact. The
+   reconstruction was then re-gated and re-built — the released APK is
+   that build, signed with the original key. Learning: THE ARTIFACT IS
+   THE BACKUP — a released (or staged) APK plus a systematic dex diff
+   can regenerate almost everything a lost commit took; and an unpushed
+   commit is an UNSAVED file, whatever the local git says.
+2. *The dark-icon round 4 (the DIU Moodle bare hamburger — the
+   default-flip).* Rounds 1–3 pinned `.__boltIC` (un-inverted) on
+   anything icon-shaped, so a photo-less dark hamburger as an img/svg
+   stayed dark-on-dark. Round 4 flips the default: ≤64px media INVERTS
+   WITH THE PAGE unless it is clearly content — the new
+   photoLike/photoContent line (photo-ish names inside
+   article/main/p/figure) and the wide-banner exclusion (aspect ≥ 2.5);
+   the v1.4.21 uiCtx parent-walk heuristic is RETIRED. The rescue ladder
+   for CSS-pinned dark glyphs: raiseCss (dark → the 0.6 gray floor, the
+   inverse of v1.4.19's clampCss), fontRescue (icon fonts), pseudoRaise
+   (::before/::after). Then the rescuePass pixel measurement: any
+   small media still dark AFTER the walk is sampled (SVG stroke/fill
+   luminance; same-origin 24×24 canvas for imgs — cross-origin throws
+   and is honestly skipped) and flipped; caps 60 rescues/160 looked.
+   The census: `window.__boltDarkCount = small ic=N ni=N rescue=N`,
+   read back 2.5 s after the inject and Diag-logged per host — the next
+   field report names the classifier's actual verdict, not a guess.
+3. *The engine-logo raster turn.* The five official marks were vectors,
+   and OEM rasterization made them drift (warped shapes, off colors).
+   Now fixed 64×64 PNGs in drawable-nodpi/ — identical pixels on every
+   device, resource IDs (and engineLogo()'s mapping) unchanged. The
+   retired vectors live in scripts/engine_vectors/ and
+   scripts/rasterize_engine_logos.py regenerates them (cairosvg at 4×
+   supersample → LANCZOS → optimized PNG; google/ddg/brave/startpage
+   byte-exact, bing content-exact through a different palette encoder —
+   the committed PNGs are canonical). The home search pill now carries
+   the active engine's mark (brand untinted, the generic magnifier keeps
+   the tint), and BOTH engine-selection entry points (the omnibox picker
+   and Settings → Search engine) bump Fx.homeGen so the mark flips
+   everywhere on a switch — the homeGen rebuild channel, never a
+   recreate. The v1.4.21 binding Diag breadcrumb stays.
+4. *The screen-translate hybrid (OCR first, ONE text call).* The old
+   vision path asked a model to place translations in box_2d — it
+   invented positions and drifted terminology across tiles. Now:
+   on-device tesseract OCR reads text+boxes first, ONE
+   AiBridge.textTranslate translates all numbered lines with full
+   context (hybridPrompt/parseHybrid, a JSON-array reply of
+   {"i":N,"t":"…"}), and the screenshot is only ever sent when OCR
+   reads nothing. The vision path is the fallback: full-screen first,
+   tiling ONLY on a genuine MAX_TOKENS truncation, with the full-screen
+   transcript as tile context (hybrid_ctx) so seams stay consistent.
+   thinkingLevel:low tried first, dropped cleanly on the 400; raw reply,
+   merged-boxes count and coverage ride to Diag.
+5. *The AiRender four-pack.* HTML emphasis tags as real spans —
+   mark/u/del/sub/sup/b/i/code/br/a-href, unknown tags render their
+   inner text (a single htmlTag/applyTag stack); nested quotes carry a
+   QuoteSpan + LeadingMarginSpan per level; `- [ ]`/`- [x]` items
+   render tappable TaskToggleSpan checkboxes that flip in place;
+   footnotes render accent superscripts + a `──── Footnotes` section
+   (inlineFootnotes on) — plus ins. Three BSD-2 commonmark extension
+   deps (task-list-items, footnotes, ins — 0.24.0 matching the core).
+   Long-press still copies the raw text.
+6. *The standing sweep, v1.4.22 edition.* The 41-gate version sweep
+   re-pinned 136/1.4.22 (idempotent single-run script); the new
+   test_v1422 gate pins the reconstruction itself — the compiled probe
+   runs the round-4 classifier on representative markup, the raiseCss
+   arithmetic, the hybrid hand-off shapes and the tile-merge math; the
+   About-changelog position pins slid one slot; the hand re-points are
+   listed in the gate file's dated notes.
+
+**Known-good numbers** (v1.4.22, release build): APK
+3,321,910 B (budget 6,000,000; the surviving reference build was
+3,314,146 — the reconstruction is +7,764 B of re-authored source); all
+five engine PNGs and the darkSmartJs payload byte-exact against the
+shipped reference APK; signature verifies (v2 scheme) against the pinned
+cert — the SAME cert the offline backup restored (identity-checked
+against the v1.4.8 and v1.4.9 release signers before any signing);
+suite: 78/78 release-pipeline gate commands green (the new v1422
+reconstruction gate among them).
+
 **Plans / candidates for future versions:**
 - (landed in v1.4.21) The translate tile road now runs PROACTIVELY at
   2x2 with one per-tile recursion rung (translateRegion) and a

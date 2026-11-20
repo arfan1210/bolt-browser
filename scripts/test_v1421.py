@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 135" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.21"' in gradle, 'versionName "1.4.21"')
+need("versionCode 136" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.22"' in gradle, 'versionName "1.4.22"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -221,19 +221,28 @@ need("boolean onMain = android.os.Looper.myLooper()" in tmj_code
      "history at every tabs.json write — never a stale restore)")
 
 print("C — fix 3: the translate 400 ladder-down + proactive tiles")
-need("private fun visionBody(p: String, b64: String, cap: Int): JSONObject {" in ab_code,
+need("private fun visionBody(p: String, b64: String, cap: Int, think: Boolean): JSONObject {" in ab_code,
      "the translate body carries NO think param (thinkingConfig omitted "
-     "entirely — a field never sent cannot be rejected)")
+     "entirely — a field never sent cannot be rejected) "
+     "(v1.4.22 re-point 2026-11-20: THE HYBRID TURN — thinkingLevel:low "
+     "is back as the think: Boolean parameter, tried FIRST and dropped "
+     "cleanly on the 400; the v1.4.21 hard omission was the ladder's "
+     "floor rung, the hybrid's conditional is the new top rung)")
 need("internal fun cap400Next(cur: Int): Int" in ab_code,
      "the 400 cap ladder is PURE (probe-pinned)")
 need('"ai translate 400 raw cap=$c body="' in ab,
      "the RAW 400 body rides to Diag (shortErr hid the exact rejection; RAW)")
 need("while (r.first == 400) {" in ab_code,
      "ANY 400 walks the ladder-down (not just a body naming thinking)")
-need('translateTiled(a, bmp, tl, g)' in st_code
-     and 'val boxes = translateTiled(a, bmp, tl, g)' in st_code,
+need('translateTiled(a, bmp, tl, g, AiBridge.lastTranscript)' in st_code,
      "TILES FIRST: the 2x2 grid is the DEFAULT path (no doomed full-screen "
-     "requests before it)")
+     "requests before it) "
+     "(v1.4.22 re-point 2026-11-20: the hybrid turn DEMOTED tiling — the "
+     "full-screen vision request is now the preferred first ask and "
+     "tiling fires ONLY on a genuine MAX_TOKENS truncation "
+     "(shouldTile), with the full-screen transcript riding every tile "
+     "as context (the ctx parameter); the v1.4.21 proactive 2x2 was "
+     "superseded BY DESIGN — see the changelog)")
 need("scr ai tile split" in st,
      "the per-tile escalation breadcrumb: a quadrant that still exhausts "
      "the cap splits once more (shouldTile stays live as its contract; RAW)")
@@ -247,12 +256,22 @@ print("D — fix 4: the IMG + background-image icon classifier")
 need("function iconNamed(el){" in mh
      and "(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)" in mh,
      "the icon-name matcher (class/id, SVG baseVal aware)")
-need("function uiCtx(el){" in mh
-     and "t==='BUTTON'||t==='HEADER'||t==='NAV'||t==='LABEL'||t==='SUMMARY'" in mh,
-     "the UI-context walk: strong chrome ancestors within 6 levels")
-need("if(ctx===1)return m<=48;" in mh,
+need("function photoLike(el){" in mh and "function photoContent(el){" in mh
+     and "t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE'" in mh,
+     "the UI-context walk: strong chrome ancestors within 6 levels "
+     "(v1.4.22 re-point 2026-11-20: THE ROUND-4 DEFAULT-FLIP retired the "
+     "v1.4.21 uiCtx parent-walk — the heuristic mis-classified content as "
+     "context; the chrome families live on in bgUiIcon "
+     "(BUTTON/A/LABEL/SUMMARY/HEADER/NAV), and the content side is now "
+     "photoLike/photoContent: photo-ish names inside article/main/p/"
+     "figure stay UN-inverted — context first, size second, as ever)")
+need("Math.max(w,h)/Math.min(w,h)>=2.5" in mh
+     and "if(m>0&&m<=64){if(uiIcon(el))return false;niS++;}" in mh,
      "a bare link is WEAK: only a TINY img inside it is chrome (article "
-     "thumbnails ride links too — context first, size second)")
+     "thumbnails ride links too — context first, size second) "
+     "(v1.4.22 re-point 2026-11-20: the weak-link size tier became the "
+     "wide-banner exclusion — aspect >= 2.5 stays CONTENT; everything "
+     "<=64px rides the page inversion and is census-counted in niS)")
 need("function bgUiIcon(el){" in mh
      and "if(bgUiIcon(e))e.classList.add(IC);" in mh,
      "small background-image icons on interactive elements ride the IC "
@@ -262,6 +281,11 @@ need("try{if(el.classList&&el.classList.contains(IC))return inv;}catch(x){}" in 
      "the IC filter — one class, one meaning)")
 
 print("E — fix 5: the DDG two-color mark + the binding breadcrumb")
+# v1.4.22 re-point (2026-11-20): THE RASTER TURN — the official-mark
+# geometry pins read the RETIRED VECTORS (preserved verbatim in
+# scripts/engine_vectors/ for reproducibility; the shipped marks are the
+# drawable-nodpi PNGs those vectors rasterize to).
+dr = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine_vectors")
 ddgx = open(os.path.join(dr, "ic_engine_ddg.xml"), encoding="utf8").read()
 need(ddgx.count("<path") == 2 and "#DE5833" in ddgx and "#FFFFFF" in ddgx,
      "DDG is the OFFICIAL two-color mark: the orange disc + a WHITE duck "
@@ -324,7 +348,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 135") == 1,
+need(gradle.count("versionCode 136") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

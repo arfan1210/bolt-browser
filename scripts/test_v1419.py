@@ -142,18 +142,18 @@ mh_code = strip_comments_strings(mh)
 ifb_code = strip_comments_strings(ifb)
 
 print("A — the version bump")
-need(re.search(r"versionCode 135\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r"versionCode 136\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "versionCode 134 (Android only installs RISING codes)")  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-need(re.search(r'versionName "1\.4\.21"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-     'versionName "1.4.21"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r'versionName "1\.4\.22"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     'versionName "1.4.22"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
                      strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[2].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
+need(entries and entries[3].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.22 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.22 landed at [0])
      "the newest entry is 1.4.19 (the label law)")
-need(len(entries) > 1 and entries[3].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
+need(len(entries) > 1 and entries[4].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.22 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.22 landed at [0])
      "the second entry is 1.4.18 (the previous live release)")
 for word, why in (("incognito", "the crash-loop cure"),
                   ("error", "the offline overlay"),
@@ -164,7 +164,7 @@ for word, why in (("incognito", "the crash-loop cure"),
                   ("tooltip", "the icon-only tooltip law"),
                   ("password", "the vault add/edit"),
                   ("attachment", "the temporary AI attachments")):
-    need(word in entries[2] or word in entries[2].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
+    need(word in entries[3] or word in entries[3].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])
          f"the 1.4.19 line names {why}")
 
 print("C — fix 1: the suffix-first law (the root-caused crash loop)")
@@ -287,11 +287,15 @@ need('finishReason == "MAX_TOKENS"' in ab,
      "the envelope's finishReason is read explicitly (RAW source — the strip pass eats string literals)")
 need('"the AI reply was cut off (try a less dense screen)"' in ab,
      "the standing cut-off error survives the ladder (RAW source — the honest end state)")
-need("private fun visionBody(p: String, b64: String, cap: Int): JSONObject {" in ab_code,
+need("private fun visionBody(p: String, b64: String, cap: Int, think: Boolean): JSONObject {" in ab_code,
      "the output cap is a parameter of the vision body "
      "(v1.4.21 re-point 2026-11-20: the think param is GONE — translate "
      "never sends thinkingConfig at all; the v1.4.20 thinkingBudget-0 "
-     "field was itself the field the lite model rejected with HTTP 400)")
+     "field was itself the field the lite model rejected with HTTP 400; "
+     "v1.4.22 re-point 2026-11-20: the hybrid turn brought the think "
+     "flag BACK as a Boolean — thinkingLevel:low is tried FIRST and "
+     "dropped cleanly on the 400, so the body takes the conditional "
+     "field again)")
 need('"ai translate MAX_TOKENS at $cap, retrying higher"' in ab,
      "the ladder Diag breadcrumb (RAW source)")
 
@@ -343,8 +347,12 @@ need("case 0: return R.drawable.ic_engine_google;" in ba_code
      "all five engines map + the generic fallback")
 for d in ("ic_engine_google", "ic_engine_ddg", "ic_engine_bing",
           "ic_engine_brave", "ic_engine_startpage"):
-    need(os.path.isfile(os.path.join(RES, "drawable", d + ".xml")),
-         f"the {d} drawable exists")
+    need(os.path.isfile(os.path.join(RES, "drawable-nodpi", d + ".png")),
+         f"the {d} drawable exists"
+         " (v1.4.22 re-point 2026-11-20: the raster turn — the official "
+         "marks are fixed 64x64 PNGs in drawable-nodpi now; the retired "
+         "vectors live in scripts/engine_vectors/ with the reproducible "
+         "rasterizer)")
 need("protected void applyEngineLogo(View lay) {" in ba_code
      and "logo == R.drawable.ic_search ? Fx.tint(this) : null" in ba_code,
      "the chip applies the logo; brand marks are NEVER tinted (the fallback keeps the tint)")

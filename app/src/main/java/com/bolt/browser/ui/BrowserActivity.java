@@ -2722,6 +2722,19 @@ public class BrowserActivity extends AppCompatActivity {
                             }
                         } catch (Throwable ignored) {}
                     });
+                    // v1.4.22 — THE SMALL-ICON CENSUS (the round-4 evidence):
+                    // the walk publishes its decision counts into
+                    // window.__boltDarkCount; read them back and log
+                    // "dark icons <host> small ic=N ni=N rescue=N" so the next
+                    // dark-mode field report carries the classifier's actual
+                    // per-page verdict (the DIU Moodle bare-hamburger case
+                    // ships real numbers, not guesses).
+                    w.evaluateJavascript(MediaHook.darkCountJs(), res3 -> {
+                        try {
+                            com.bolt.browser.util.Diag.log(getApplicationContext(),
+                                    "dark icons " + host + " " + res3);
+                        } catch (Throwable ignored) {}
+                    });
                 } catch (Throwable ignored) {}
             }, 2500);
         } catch (Throwable ignored) {}
@@ -8477,8 +8490,16 @@ public class BrowserActivity extends AppCompatActivity {
         plp.bottomMargin = Fx.dp(this, 22);
         content.addView(pill, plp);
         ImageView si = new ImageView(this);
-        si.setImageResource(R.drawable.ic_search);
-        si.setColorFilter(dim);
+        // v1.4.22 — THE HOME PILL CARRIES THE ENGINE MARK: the pill's left
+        // glyph is the ACTIVE engine's logo — the rasterized official PNGs
+        // (drawable-nodpi, 64x64) so every device draws the same mark; the
+        // generic magnifier (custom/unknown fallback) keeps the theme tint.
+        // The Fx.homeGen bumps at both engine-selection entry points (the
+        // omnibox picker + Settings) rebuild the home so the pill follows
+        // the switch everywhere.
+        int plogo = engineLogo(prefs.searchEngine());
+        si.setImageResource(plogo);
+        si.setColorFilter(plogo == R.drawable.ic_search ? dim : null);
         pill.addView(si, new LinearLayout.LayoutParams(Fx.dp(this, 20), Fx.dp(this, 20)));
         TextView stv = new TextView(this);
         stv.setHint(R.string.search_hint);
@@ -13149,9 +13170,16 @@ public class BrowserActivity extends AppCompatActivity {
 
     /** v1.4.19 — PURE (probe-pinned): the engine-chip logo resource for an
      *  engine index (R.array.search_engine_names order: 0 Google,
-     *  1 DuckDuckGo, 2 Bing, 3 Brave, 4 Startpage). Brand logos keep their
-     *  own colors — the chip NEVER tints them; the generic magnifier (the
-     *  custom / unknown fallback) follows the theme tint instead. */
+     *  1 DuckDuckGo, 2 Bing, 3 Brave, 4 Startpage). v1.4.22 — THE RASTER
+     *  TURN: the five official marks ship as fixed 64x64 PNGs
+     *  (drawable-nodpi, byte-exact rasterizations of the retired vectors —
+     *  see scripts/rasterize_engine_logos.py) so every device draws the
+     *  same pixels regardless of vector rendering differences; the mapping
+     *  itself is UNCHANGED and the resource IDs identical, so every binding
+     *  site (omnibox chip, home search pill, engine rows) flips with no
+     *  wiring change. Brand logos keep their own colors — the chip NEVER
+     *  tints them; the generic magnifier (the custom / unknown fallback)
+     *  follows the theme tint instead. */
     static int engineLogo(int engineIdx) {
         switch (engineIdx) {
             case 0: return R.drawable.ic_engine_google;
@@ -13469,6 +13497,12 @@ public class BrowserActivity extends AppCompatActivity {
                     // immediately (the active engine is visible in the
                     // field the user is still typing into)
                     try { applyEngineLogo(lay); } catch (Throwable ignored) {}
+                    // v1.4.22 — THE HOME-PILL FOLLOW: the home search pill
+                    // carries the engine mark now (raster PNG); a homeGen
+                    // bump rebuilds the home so the pill shows the new mark
+                    // the moment the engine switches (never a recreate —
+                    // the homeGen channel, see Fx.homeGen)
+                    Fx.homeGen++;
                     String q = et == null ? "" : et.getText().toString().trim();
                     String cur = "";
                     try {

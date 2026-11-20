@@ -100,22 +100,41 @@ import java.util.concurrent.atomic.AtomicBoolean
  * q75, ~200 KB — the mobile-network timeout/400/413 class). 
  * startWithScript() is the Bolt AI panel's direct entry.
  *
+ * v1.4.22 — THE HYBRID TURN (the release note: "AI screen translate is
+ * much more accurate — on-device OCR reads the text and its exact boxes
+ * first, then ONE AI request translates the whole screen's text with full
+ * context"). The AI path no longer branches away from OCR — it RUNS the
+ * same on-device pass, then [runHybridStage] sends the extracted TEXT to
+ * AiBridge.textTranslate in ONE numbered-lines request: the model cannot
+ * invent box positions (it never sees one — the OCR's own boxes are kept),
+ * terminology stays consistent (one reply for the whole screen), and the
+ * screenshot is only ever sent when OCR cannot read the screen at all.
+ * The old visual path ([runAiStage]) survives as the FALLBACK — full
+ * screen first, tiling ONLY on a genuine MAX_TOKENS cut, tiles carrying
+ * the full-screen transcript as context.
+ *
  * The pipeline:
  *
  *   capture (PixelSnap.viewShot — the window compositor's own PixelCopy
  *     path, the v1.3.40-proven GPU-true capture)
- *     → mode pick (AI — the primary; Basic OCR — the universal
- *       no-AI fallback, EN+JP+CN in one pass; remembered)
- *     → downscale ≤1600 px + JPEG q90 (AI: ≤1280 px q75), pushed to the
- *       OCR WebView in
- *       ~200 KB chunks (binder-safe)
+ *     → mode pick (AI — the primary, now the OCR-first hybrid; Basic
+ *       OCR — the universal no-AI fallback, EN+JP+CN in one pass;
+ *       remembered)
+ *     → downscale ≤1600 px + JPEG q90 (the vision fallback's own ask
+ *       re-encodes ≤1280 px q75, ~200 KB, only when it fires), pushed to
+ *       the OCR WebView in ~200 KB chunks (binder-safe)
  *     → OCR (tesseract.js; language models served from filesDir by
  *       shouldInterceptRequest at https://bolt.ocr/tess — never real
  *       network; paragraph-level units, the same granularity ML Kit's
- *       textBlocks gave; CJK space noise stripped)
- *     → translate (every OCR block through [PageTranslate.gtx] — the
- *       SAME endpoint, SAME SSRF whitelist and SAME dual-shape parser
- *       the page engine rides; one translation channel everywhere)
+ *       textBlocks gave; CJK space noise stripped) — BOTH modes ride this
+ *       pass since v1.4.22 (the AI one under "— AI (reading)")
+ *     → hybrid (v1.4.22): ONE AiBridge.textTranslate request for EVERY
+ *       OCR line — numbered lines, the whole screen as context, the
+ *       translations written back onto the OCR's OWN boxes (the model
+ *       never sees a pixel or a coordinate); Basic: every block through
+ *       [PageTranslate.gtx] — the SAME endpoint, SAME SSRF whitelist and
+ *       SAME dual-shape parser the page engine rides; one translation
+ *       channel everywhere
  *     → overlay (a full-screen dialog: the capture with each block's
  *       translation drawn OVER the original — the box fill and text
  *       color follow the region's sampled luminance, text auto-shrinks
@@ -124,12 +143,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *       different script, Save renders the overlay into the bitmap and
  *       files it under Pictures).
  *
- * Privacy posture: the screenshot NEVER leaves the device — the OCR runs
- * in our own headless WebView against local model files, and the only
- * network touches are (a) the pinned cdn.jsdelivr.net engine download
- * and (b) the same translate endpoint the page translator already uses,
- * carrying the recognized TEXT (never the image). On metered connections
- * the one-time model download asks first.
+ * Privacy posture (v1.4.22, the hybrid turn): the Basic road's screenshot
+ * never leaves the device — and neither does the AI road's, anymore: the
+ * on-device OCR reads it and only the EXTRACTED TEXT goes to the provider
+ * (one request, always confirmed first); the screenshot itself is only
+ * ever sent when OCR cannot read the screen at all (the vision fallback,
+ * confirmed separately). The other network touches are (a) the pinned
+ * cdn.jsdelivr.net engine download and (b) the same translate endpoint
+ * the page translator already uses, carrying the recognized TEXT (never
+ * the image). On metered connections the one-time model download asks
+ * first.
  */
 object ScreenTranslate {
 
@@ -379,12 +402,39 @@ object ScreenTranslate {
     }
 
     /** v1.3.74: the shared POOL-thread pipeline — the AI script branches
-     *  before any OCR/model work; manga scripts get the HD preprocess. */
+     *  before any OCR/model work; manga scripts get the HD preprocess.
+     *  v1.4.22 — THE HYBRID REORDER: the AI script no longer branches AWAY
+     *  from OCR — it RUNS the same on-device read the Basic mode rides
+     *  (the same models, the same encode), and the done callback's hybrid
+     *  flag hands the lines to runHybridStage. Only a model download
+     *  failure skips straight to the vision fallback — without the
+     *  models there is nothing on-device to read, and "ai" must not die
+     *  where the Basic road would (the fallback reads it instead). */
     private fun pipeline(a: Activity, bmp: Bitmap, g: Int) {
         if (gen.get() != g) return
         try { modelDiet(a) } catch (_: Throwable) {}
         val k = lastScript
-        if (k == "ai") { runAiStage(a, bmp, g); return }
+        if (k == "ai") {
+            if (gen.get() != g) return
+            val langs = langsOf(k)
+            if (!ensureModels(a, bmp, g, langs)) {
+                if (gen.get() != g) return
+                if (cancelled) cancelOcr(a, bmp, g)
+                else {
+                    // v1.4.22 — the OCR models are what makes the hybrid
+                    // on-device; without them the vision fallback is the
+                    // only reader left (the user still gets a translate)
+                    try { Diag.log(a, "scr hybrid models-fail -> vision") } catch (_: Throwable) {}
+                    runAiStage(a, bmp, g)
+                }
+                return
+            }
+            if (gen.get() != g) return
+            val enc = encodeFor(bmp, k)
+            if (enc == null) { failOcr(a, bmp, g, "encode", "Could not read the screen"); return }
+            main.post { runOcrStage(a, bmp, enc, langs, g, true) }
+            return
+        }
         val enc = encodeFor(bmp, k)
         if (gen.get() != g) return
         if (enc == null) { failOcr(a, bmp, g, "encode", "Could not read the screen"); return }
@@ -396,7 +446,7 @@ object ScreenTranslate {
             return
         }
         if (gen.get() != g) return
-        main.post { runOcrStage(a, bmp, enc, langs, g) }
+        main.post { runOcrStage(a, bmp, enc, langs, g, false) }
     }
 
     /** downscale ≤1600 px + JPEG q90 → base64 (binder-safe chunking comes later). */
@@ -535,11 +585,18 @@ object ScreenTranslate {
         return false
     }
 
-    /** runs on MAIN: spin the OCR host (lazily) and fire the recognize job. */
-    private fun runOcrStage(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>, g: Int) {
+    /** runs on MAIN: spin the OCR host (lazily) and fire the recognize job.
+     *  v1.4.22 — [hybrid] marks the AI path's read: the progress title
+     *  says "— AI (reading)" and ocrDone hands the lines to the hybrid
+     *  translator instead of the per-line gtx road (the SAME tesseract
+     *  pass either way — the hybrid's accuracy gain costs no second
+     *  read). */
+    private fun runOcrStage(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>, g: Int,
+                            hybrid: Boolean) {
         if (gen.get() != g) return
         if (prog == null) {
-            prog = ScrProgress.show(a, "Translate screen") { cancelOcr(a, bmp, g) }
+            prog = ScrProgress.show(a,
+                if (hybrid) "Translate screen — AI (reading)" else "Translate screen") { cancelOcr(a, bmp, g) }
         }
         val h = try {
             host ?: OcrHost(a).also { host = it }
@@ -550,7 +607,7 @@ object ScreenTranslate {
         h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
         val t0 = System.currentTimeMillis()
         h.run(langs, enc.b64,
-            { json -> POOL.execute { ocrDone(a, bmp, enc, json, g, t0) } },
+            { json -> POOL.execute { ocrDone(a, bmp, enc, json, g, t0, hybrid) } },
             { msg -> failOcr(a, bmp, g, msg, null) })
     }
 
@@ -562,8 +619,15 @@ object ScreenTranslate {
         else -> "Reading text\u2026"
     }
 
-    /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay. */
-    private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int, t0: Long) {
+    /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay.
+     *  v1.4.22 — [hybrid] (the AI path's read, " (hybrid read)" on the
+     *  diag line): an EMPTY read means the screen has no machine-readable
+     *  text — the vision fallback reads it (the manga case tesseract
+     *  cannot crack, 'no OCR text'); otherwise the blocks go to
+     *  [runHybridStage] — ONE text request for all lines — never the
+     *  per-line gtx road. */
+    private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int, t0: Long,
+                        hybrid: Boolean) {
         if (gen.get() != g) return
         try {
             val arr = JSONArray(json)
@@ -598,13 +662,20 @@ object ScreenTranslate {
             try {
                 Diag.log(a, "scr ocr langs=" + langsOf(lastScript).joinToString("+") +
                         " chars=" + chars + " lines=" + blocks.size +
-                        " ms=" + (System.currentTimeMillis() - t0))
+                        " ms=" + (System.currentTimeMillis() - t0) +
+                        (if (hybrid) " (hybrid read)" else ""))
             } catch (_: Throwable) {}
             if (blocks.isEmpty()) {
-                failOcr(a, bmp, g, "empty", "No readable text on this screen")
+                // v1.4.22 — the hybrid's one honest door to the vision
+                // road: OCR read NOTHING (AiBridge's 'no OCR text' guard is
+                // the same verdict from the other side) — a vision model
+                // reads manga/handwriting tesseract cannot
+                if (hybrid) runAiStage(a, bmp, g)
+                else failOcr(a, bmp, g, "empty", "No readable text on this screen")
                 return
             }
-            main.post { deliverBlocks(a, bmp, blocks, g) }
+            if (hybrid) runHybridStage(a, bmp, blocks, g)
+            else main.post { deliverBlocks(a, bmp, blocks, g) }
         } catch (t: Throwable) {
             failOcr(a, bmp, g, "parse", null)
         }
@@ -652,7 +723,7 @@ object ScreenTranslate {
         }
     }
 
-    // ---------------- v1.3.74: the AI stage (see AiBridge.kt) ----------------
+    // ---------------- v1.3.74: the AI stage — v1.4.22: the hybrid + the vision fallback ----------------
 
     /** v1.4.20 — PURE (probe-pinned): re-place a box that arrived as 0-1
      *  fractions of ONE TILE onto the full image (the tile's pixel rect
@@ -690,16 +761,41 @@ object ScreenTranslate {
      *  full-screen requests first. Plus ONE recursion rung: a tile that
      *  STILL exhausts the cap (shouldTile) is split 2x2 again — a dense
      *  quadrant gets four half-density sub-requests instead of a lost
-     *  region. */
+     *  region.
+     *  v1.4.22 — THE CUT ROAD, CONTEXTED (supersedes the proactive rung —
+     *  the hybrid already read the screen, so the tile pass fires only
+     *  when the vision FALLBACK's own full-screen ask was genuinely cut,
+     *  and every tile rides [ctx] — the full-screen transcript
+     *  (AiBridge.lastTranscript) — as prompt context: seams keep the
+     *  whole-screen terminology, and the model is told in so many words
+     *  to never re-emit the context as new boxes). The merged-boxes
+     *  evidence line names the count and the head — the first three
+     *  boxes' fractions, the tile math's report card. */
     private fun translateTiled(a: Activity, bmp: Bitmap, tl: String,
-                               g: Int): ArrayList<AiBridge.AiBox>? =
-            translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0)
+                               g: Int, ctx: String): ArrayList<AiBridge.AiBox>? {
+        val merged = translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0, ctx)
+        if (merged != null) {
+            // v1.4.22 — diagnostics: how many boxes survived the seam
+            // dedup, and where the first ones landed (full-image fractions)
+            try {
+                val sb = StringBuilder()
+                for (i in 0 until minOf(3, merged.size)) {
+                    val b = merged[i]
+                    sb.append(String.format("(%.3f,%.3f,%.3f,%.3f)", b.x, b.y, b.w, b.h))
+                }
+                Diag.log(a, "scr ai merged boxes=" + merged.size + " head=" + sb)
+            } catch (_: Throwable) {}
+        }
+        return merged
+    }
 
     /** one (sub)region through the AI; depth caps the recursion at one
-     *  extra level (a 2x2 of 2x2 = 16 sub-requests worst case, bounded). */
+     *  extra level (a 2x2 of 2x2 = 16 sub-requests worst case, bounded).
+     *  v1.4.22: [ctx] — the full-screen transcript — rides every tile's
+     *  prompt (and every split's) unchanged. */
     private fun translateRegion(a: Activity, bmp: Bitmap, tl: String, g: Int,
                                 rx: Int, ry: Int, rw: Int, rh: Int,
-                                depth: Int): ArrayList<AiBridge.AiBox>? {
+                                depth: Int, ctx: String): ArrayList<AiBridge.AiBox>? {
         val merged = ArrayList<AiBridge.AiBox>()
         val cols = 2
         val rows = 2
@@ -719,14 +815,14 @@ object ScreenTranslate {
                 val enc = encodeAi(tile)
                 try { tile.recycle() } catch (_: Throwable) {}
                 if (enc == null) continue
-                val part = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
+                val part = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h, ctx)
                 if (part == null) {
                     // v1.4.21 — the per-tile rung: a region that exhausted
                     // the cap ladder (shouldTile) splits once more instead
                     // of losing its text; any other failure costs the region
                     if (depth < 1 && AiBridge.shouldTile(AiBridge.lastError)) {
                         try { Diag.log(a, "scr ai tile split r$row c$col depth=$depth") } catch (_: Throwable) {}
-                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1)
+                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1, ctx)
                         if (sub != null) {
                             for (b in sub) {
                                 var dup = false
@@ -761,10 +857,134 @@ object ScreenTranslate {
     }
 
     /**
-     * POOL thread. The AI script: config check (setup dialog when empty),
-     * the one-time-per-process privacy confirm, then ONE vision request
-     * that reads AND translates in the same pass — no OCR models, no
-     * gtx round per line. Boxes arrive on a 1000×1000 grid.
+     * v1.4.22 — THE HYBRID STAGE (the release note's "ONE AI request").
+     * POOL thread, straight off ocrDone's blocks. Sends the EXTRACTED
+     * TEXT — never the screenshot — to AiBridge.textTranslate in ONE
+     * numbered-lines request with the whole screen as context, then
+     * writes the translations back onto the OCR's OWN boxes: the model
+     * never sees a coordinate, so it cannot invent one, and one reply
+     * keeps terminology consistent across the entire screen. Coverage
+     * (how many numbered lines came back) rides the diag line — a model
+     * that skipped lines leaves those boxes untranslated, never guessed.
+     * Every failure hands the screen to the vision fallback
+     * ([runAiStage]) EXCEPT the honest cut-off (too many lines for one
+     * reply even at 65536) — that one fails outright: sending a
+     * screenshot of text we already hold, to be read again, is the one
+     * trade the hybrid exists to eliminate.
+     */
+    private fun runHybridStage(a: Activity, bmp: Bitmap, blocks: ArrayList<SBlock>, g: Int) {
+        if (gen.get() != g) return
+        if (!AiBridge.configured(a)) {
+            main.post {
+                if (gen.get() != g) return@post
+                try { Diag.log(a, "scr ai cfg") } catch (_: Throwable) {}
+                // v1.3.75: saving a key CONTINUES the run on the blocks
+                // still in hand — the v1.3.74 flow dead-ended here
+                AiBridge.configDialog(a, { url -> openAiUrl(a, url) }) {
+                    if (gen.get() == g) {
+                        try { Diag.log(a, "scr ai cfg saved") } catch (_: Throwable) {}
+                        POOL.execute {
+                            try { runHybridStage(a, bmp, blocks, g) } catch (_: Throwable) {}
+                        }
+                    }
+                }
+            }
+            return
+        }
+        if (!aiConfirmed) {
+            // confirmDialog is POOL-safe (it posts the dialog to main itself
+            // and latches HERE — wrapping it in onMainGet would deadlock main)
+            // v1.4.22 — the honest new wording: TEXT leaves, not the screen;
+            // the screenshot is named as the exception, not the rule
+            val ok = confirmDialog(a, "Send the screen's text for AI translation?",
+                "AI translate reads this screen ON-DEVICE with OCR, then sends the " +
+                        "EXTRACTED TEXT to " + AiBridge.providerName(a) +
+                        " in one request. The screenshot itself is only ever sent when " +
+                        "OCR cannot read the screen at all (the vision fallback). " +
+                        "Everything else in Bolt stays on-device.")
+            if (!ok) { cancelOcr(a, bmp, g); return }
+            aiConfirmed = true
+        }
+        if (gen.get() != g) return
+        // v1.4.22: the OCR stage's "— AI (reading)" progress rides ON — the
+        // confirm latch and the text ask happen under the same dialog; only
+        // a cold entry with none open shows a fresh one
+        val pr = prog ?: onMainGet { ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) } }
+                ?: return
+        prog = pr
+        try {
+            val tl = lastTl ?: PageTranslate.deviceTl()
+            try {
+                Diag.log(a, "scr hybrid ask prov=" + AiBridge.providerName(a) +
+                        " model=" + aiModelForDiag(a) + " lines=" + blocks.size)
+            } catch (_: Throwable) {}
+            val t0 = System.currentTimeMillis()
+            pr.set("Translating\u2026", -1)
+            val texts = ArrayList<String>(blocks.size)
+            for (b in blocks) texts.add(b.orig)
+            val map = AiBridge.textTranslate(a, texts, tl)
+            if (gen.get() != g) return
+            if (map == null) {
+                if (AiBridge.lastError != AiBridge.CUT_OFF_ERR) {
+                    // v1.4.22 — any text failure that is NOT the honest
+                    // cut-off falls back to the vision road: the key may be
+                    // gone, the provider may 5xx, the OpenAI-compatible
+                    // endpoint has no text road at all — the screen is
+                    // still translatable the old way
+                    try {
+                        Diag.log(a, "scr hybrid text-fail " + AiBridge.lastError.take(60) +
+                                " -> vision")
+                    } catch (_: Throwable) {}
+                    runAiStage(a, bmp, g)
+                } else {
+                    // the ONE failure that does not: too many lines even at
+                    // 65536 — re-sending pixels to re-read text we hold
+                    // would be a lie about what the hybrid is for
+                    failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
+                        "AI translation " + AiBridge.lastError)
+                }
+                return
+            }
+            // write the translations back onto the OCR's OWN boxes — 1-based
+            // numbers to match the numbered-lines protocol; coverage counts
+            // the lines the model actually answered
+            var covered = 0
+            var idx = 0
+            for (b in blocks) {
+                idx++
+                val t = map[idx]
+                if (t != null) {
+                    b.trans = t
+                    b.rev = 1
+                    covered++
+                }
+            }
+            try {
+                Diag.log(a, "scr hybrid ok lines=" + blocks.size + " covered=" + covered +
+                        " ms=" + (System.currentTimeMillis() - t0))
+            } catch (_: Throwable) {}
+            if (covered == 0) {
+                failOcr(a, bmp, g, "ai empty", "No readable text on this screen")
+                return
+            }
+            main.post { deliverAiBlocks(a, bmp, blocks, g) }
+        } finally {
+            main.post { pr.close() }
+            if (prog === pr) prog = null
+        }
+    }
+
+    /**
+     * POOL thread. v1.4.22 — THE VISION FALLBACK (demoted from the primary
+     * by the hybrid turn): the old whole-screenshot road, now reached
+     * only when OCR read nothing (ocrDone's empty branch), the OCR models
+     * failed to download (pipeline), or the text request itself failed
+     * (runHybridStage). The FULL screen is asked in ONE shot — boxes arrive
+     * on a 1000×1000 grid — and tiling fires ONLY on a genuine MAX_TOKENS
+     * cut of that ask (the reply was cut after the whole cap ladder), the
+     * tiles then riding the full-screen transcript as context so seams
+     * keep the whole-screen terminology and never re-box already-read
+     * text (see translateTiled / AiBridge.HYBRID_CTX).
      */
     private fun runAiStage(a: Activity, bmp: Bitmap, g: Int) {
         if (gen.get() != g) return
@@ -797,32 +1017,47 @@ object ScreenTranslate {
             aiConfirmed = true
         }
         if (gen.get() != g) return
-        val pr = onMainGet { ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) } }
-            ?: return
+        // v1.4.22: same reuse rule as the hybrid stage — the fallback rides
+        // the "(reading)" dialog that is already open instead of flashing a
+        // second one at the user
+        val pr = prog ?: onMainGet { ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) } }
+                ?: return
         prog = pr
         try {
             val tl = lastTl ?: PageTranslate.deviceTl()
             try {
-                Diag.log(a, "scr ai ask prov=" + AiBridge.providerName(a) +
+                Diag.log(a, "scr ai vision ask prov=" + AiBridge.providerName(a) +
                         " model=" + aiModelForDiag(a))
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
-            // v1.4.21 — TILES FIRST (proactive; supersedes the v1.4.20
-            // single-shot + MAX_TOKENS-then-tile shape): every AI screen
-            // translate rides the 2x2 grid from the start. WHY: the field
-            // corpse was a dense screen on a low-ceiling lite model — the
-            // old shape burned two full-screen requests (one at 32768, one
-            // at 65536) before tiling, and a lite model that caps below the
-            // rung 400s instead (the ladder-down helps, but the screen is
-            // still too dense for ONE reply). A quadrant is a quarter the
-            // text; each tile rides its own ladder (400-down / MAX_TOKENS-
-            // up) and a still-dense quadrant splits once more (see
-            // translateRegion). Four smaller asks replace one doomed big
-            // one; the seam dedup (iou) cleans the borders.
-            pr.set("Translating in regions\u2026", -1)
-            val boxes = translateTiled(a, bmp, tl, g)
+            // v1.4.22 — FULL SCREEN FIRST (supersedes the v1.4.21 proactive
+            // tiles-first rung): the hybrid already proved the screen is
+            // UNREADABLE on-device, so the fallback buys the one-shot
+            // whole-screen read — four quadrant asks are the remedy for a
+            // genuinely cut REPLY, not a default. The tiles wait for exactly
+            // that verdict below.
+            pr.set("Translating\u2026", -1)
+            val enc = encodeAi(bmp)
+            var boxes: ArrayList<AiBridge.AiBox>? = null
+            if (enc != null) {
+                boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h, "")
+            }
             if (gen.get() != g) return
-            try { Diag.log(a, "scr ai tiled done ms=" +
+            if (boxes == null && enc != null && AiBridge.shouldTile(AiBridge.lastError)) {
+                // v1.4.22 — THE ONE HONEST CUT: the full-screen reply hit
+                // MAX_TOKENS through the whole ladder, and its partial text
+                // (AiBridge.lastTranscript) is exactly the context the tiles
+                // need — smaller regions, SAME terminology, and the context
+                // preface tells the model to never re-emit it as new boxes
+                pr.set("Translating in regions\u2026", -1)
+                try {
+                    Diag.log(a, "scr ai full cut -> tiles ctxlen=" +
+                            AiBridge.lastTranscript.length)
+                } catch (_: Throwable) {}
+                boxes = translateTiled(a, bmp, tl, g, AiBridge.lastTranscript)
+            }
+            if (gen.get() != g) return
+            try { Diag.log(a, "scr ai vision done ms=" +
                     (System.currentTimeMillis() - t0)) } catch (_: Throwable) {}
             if (boxes == null) {
                 failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),

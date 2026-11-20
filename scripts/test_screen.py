@@ -282,7 +282,11 @@ def main():
                   'put("maxOutputTokens", cap)',
                   "fun interface LinkOpener",
                   # v1.3.76 — the thinking cut + the 429 patience
-                  'fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int)',
+                  # v1.4.22 re-point (2026-11-20): THE HYBRID TURN — the 6th
+                  # scrCtx parameter (the full-screen transcript the fallback
+                  # tiles carry as context; empty = plain prompt)
+                  'fun visionTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int,',
+                  'scrCtx: String',
                   # v1.3.77 — the NATIVE-DIALECT prompt (box_2d = the
                   # model's own 0-1000 [ymin,xmin,ymax,xmax] convention —
                   # the pixel ask fought the training and the field said
@@ -315,12 +319,14 @@ def main():
     if stray:
         print(f"FAIL: AiBridge.kt references unexpected URLs: {sorted(stray)}")
         return 1
-    for probe in ('if (k == "ai") { runAiStage(a, bmp, g); return }',
+    for probe in ('if (k == "ai") {',
+                  'runOcrStage(a, bmp, enc, langs, g, true)',
                   "AiBridge.configured(a)",
                   "AiBridge.visionTranslate",
                   "openOverlay(a, bmp, blocks, true)",
                   'if (!ai) translateAll(a, view, tl)',
-                  'scr ai ask prov=',
+                  'scr hybrid ask prov=',
+                  'scr ai vision ask prov=',
                   'scr ai ok lines='):
         if probe not in scr:
             print(f"FAIL: ScreenTranslate's AI branch lacks {probe}")

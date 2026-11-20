@@ -534,6 +534,16 @@ python3 scripts/test_v1420.py
 # matrices)
 python3 scripts/test_v1421.py
 
+# v1.4.22 gate: THE RECONSTRUCTION GATE (the lost-commit recovery — the
+# dark-icon round 4 default-flip + the census, the engine-logo raster turn,
+# the screen-translate hybrid (OCR first, ONE text call, the vision path
+# demoted to a genuine-MAX_TOKENS-only fallback), the AiRender four-pack
+# (tag stack, nested quotes, tappable task checkboxes, footnotes + ins);
+# compiled+run probes: the round-4 classifier on the bare-hamburger case,
+# the raiseCss arithmetic, the hybrid reply protocol, the tile-merge
+# coverage math, the htmlTag stack)
+python3 scripts/test_v1422.py
+
 # ---- 2. build ----
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment

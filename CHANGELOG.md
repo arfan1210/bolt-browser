@@ -4,6 +4,112 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.22] — 2026-11-20
+
+**The dark-icon round 4, the raster turn, the screen-translate hybrid and
+the AiRender four-pack — every fix root-caused, every payload probe-pinned,
+and the whole release rebuilt from its own shipped artifact after the
+signing-key delay: the 65-file v1.4.22 commit was lost in a sandbox
+recycle (never pushed), so the source was reconstructed against the
+surviving unsigned APK — dex string-table diff for every constant, jadx
+decompile deltas for every class, byte-exact PNG recovery for the engine
+marks — then re-gated and re-built. The release you are installing is
+that reconstruction, signed with the app's original 2026 key.**
+
+### Fixed — FORCED DARK: THE BARE HAMBURGER, ROUND 4 (the default-flip)
+- The corpse in one line: rounds 1–3 pinned `.__boltIC` (un-inverted) on
+  anything that resembled a UI icon, so a photo-less dark hamburger drawn
+  as an `<img>`/`<svg>` (the DIU Moodle case) stayed dark-on-dark.
+- Round 4 flips the default: a ≤64px img/svg now INVERTS WITH THE PAGE by
+  default (it gets NO `.__boltNI` pin); only clear CONTENT stays
+  un-inverted — bigger media, wide banners (aspect ≥ 2.5), and photo-ish
+  names inside article/main/p/figure (`photoLike`/`photoContent`).
+- The v1.4.21 `uiCtx` parent-context heuristic is RETIRED (it was the thing
+  mis-classifying content as context); `iconNamed`/`bgUiIcon` remain for
+  the button/header/nav families.
+- The rescue ladder for icons CSS pins dark: `raiseCss` (a dark color
+  raised to the 0.6 gray floor — the inverse of the v1.4.19 clampCss),
+  `fontRescue` (icon-font text pinned dark gets raised), `pseudoRaise`
+  (::before/::after glyphs).
+- The contrast rescue: after the walk, any ≤64px media still dark is
+  MEASURED — SVG stroke/fill luminance, or a same-origin 24×24 canvas
+  downsample for imgs — and flipped with `.__boltIC` (capped 60 rescues /
+  160 looked per page).
+- The census: the walk publishes `small ic=N ni=N rescue=N` into
+  `window.__boltDarkCount`; 2.5 s after the inject BrowserActivity reads
+  it back and Diag-logs `dark icons <host> <result>` — the next dark-mode
+  field report ships real numbers, not guesses.
+
+### Changed — SEARCH ENGINE LOGOS ARE NOW RASTER PNGs (the raster turn)
+- The five official marks shipped as vector drawables, which every device
+  rasterized slightly differently (warped / off-color marks on some OEM
+  stacks). They are now fixed 64×64 PNGs in `drawable-nodpi/` — every
+  device draws the identical pixels; the resource IDs are unchanged so
+  `engineLogo()`'s mapping is untouched.
+- The retired vectors are preserved under `scripts/engine_vectors/` with
+  `scripts/rasterize_engine_logos.py` — the reproducible
+  vector→SVG→cairosvg(4× supersample)→LANCZOS pipeline that produced them
+  (google/ddg/brave/startpage regenerate byte-exactly; bing is
+  content-exact through a different palette encoder).
+- Full refresh coverage: the home search pill now carries the active
+  engine's mark, and BOTH engine-selection entry points (the omnibox picker
+  and Settings → Search engine) bump `Fx.homeGen` so the mark flips
+  everywhere the moment you switch — never a browser recreate.
+- The v1.4.21 engine-logo binding Diag breadcrumb is kept.
+
+### Changed — AI SCREEN TRANSLATE GOES HYBRID (OCR first, ONE text call)
+- The old path sent the screenshot to a vision model and asked it to
+  place translations into `box_2d` coordinates — the model invented
+  positions, dropped lines, and drifted terminology across tiles.
+- The hybrid: on-device tesseract OCR reads the text and its EXACT boxes
+  first; then ONE `AiBridge.textTranslate` call translates the whole
+  screen's numbered lines with full context (a JSON-array reply protocol
+  — `hybridPrompt`/`parseHybrid`). The screenshot is only ever sent when
+  OCR cannot read the screen at all.
+- The vision path is demoted to a fallback: full-screen first; ONLY a
+  genuine MAX_TOKENS truncation triggers tiling, and the tiles carry the
+  full-screen transcript as context (`hybrid_ctx`) so seams stay
+  consistent.
+- `thinkingLevel: low` is tried first and dropped cleanly on a 400 (the
+  lite-model field rejection from v1.4.21's ladder); raw reply, merged
+  boxes and coverage all ride to Diag.
+
+### Added — BOLT AI RENDERING: THE FOUR-PACK (emphasis, quotes, tasks, footnotes)
+- HTML emphasis tags render as real spans: `<mark>` (highlight),
+  `<u>`/`<ins>` (underline), `<del>` (strikethrough), `<sub>`/`<sup>`,
+  `<b>`/`<i>`/`<code>`/`<br>` and `<a href>` (tappable link) — unknown
+  tags render their inner text only. A single inline/block tag stack
+  drives it (`htmlTag`/`applyTag`).
+- Nested quotes: each nesting level carries its own `QuoteSpan` + indent
+  (`LeadingMarginSpan` per level).
+- Interactive task checkboxes: `- [ ]` / `- [x]` list items render
+  tappable checkboxes that flip state in place (the commonmark
+  task-list-items extension + `TaskToggleSpan`).
+- Footnotes: `[^1]` citations render as accent superscripts with a
+  `──── Footnotes` definitions section at the end (inlineFootnotes
+  enabled).
+- Three new BSD-2 commonmark extension dependencies: `task-list-items`,
+  `footnotes`, `ins` (all 0.24.0, matching the existing core).
+- Long-press still copies the raw text.
+
+### Meta — THE LOST-COMMIT RECOVERY (maintainer note)
+- The 65-file v1.4.22 commit was wiped by a sandbox recycle before
+  signing; this release was reconstructed against the surviving unsigned
+  APK (dex string-table diff, jadx class deltas, byte-exact PNG
+  extraction) and re-verified: the darkSmartJs payload reassembles to the
+  shipped 10,731 chars byte-for-byte, the hybrid prompts byte-exact, the
+  five engine PNGs byte-exact, 32/32 new screen-translate strings and the
+  full AiRender string set present.
+- The release key survived in the maintainer's offline backup (cert
+  fingerprint unchanged since v1.4.8); the APK is signed with it. The
+  backup protocol and the two-safe-places rule are in the README's
+  Security & signing section.
+
+**APK**: 3,321,910 B (budget 6,000,000 — the reconstruction landed within
++7,764 B of the surviving reference build's 3,314,146 B; the three
+commonmark extensions add ~60 KB; the rasterized logos are within 4 KB of
+the vectors they replaced).
+
 ## [1.4.21] — 2026-11-20
 
 **The corpse-map six-pack: every item arrived root-caused from the v1.4.20

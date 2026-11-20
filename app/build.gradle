@@ -44,8 +44,22 @@ android {
         // classifier, the DDG two-color mark + the engine-logo binding
         // breadcrumb, the AI formatting completion (strikethrough, styled
         // tables, syntax colors, jlatexmath matrices).
-        versionCode 135
-        versionName "1.4.21"
+        // v1.4.22 (2026-11-20): the dark-icon round 4 (small media invert
+        // with the page BY DEFAULT — the uiCtx heuristic retired, the
+        // photoLike/photoContent content line, the raiseCss/fontRescue/
+        // pseudoRaise icon rescue ladder, the rescuePass pixel measurement,
+        // the per-page census Diag), the engine-logo raster turn (five
+        // official marks as fixed 64x64 PNGs in drawable-nodpi + the
+        // homeGen refresh at both engine-selection entry points + the home
+        // search pill binding), the screen-translate hybrid (on-device OCR
+        // first, ONE pure-text AiBridge.textTranslate with full context,
+        // the vision path demoted to a MAX_TOKENS-only fallback with the
+        // transcript as tile context), the AiRender four-pack (HTML
+        // mark/u/del/sub/sup/b/i/code/br/a span stack, nested quotes,
+        // tappable task checkboxes, footnotes + ins — three BSD-2
+        // commonmark extension deps).
+        versionCode 136
+        versionName "1.4.22"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand
@@ -170,6 +184,14 @@ dependencies {
     implementation 'org.commonmark:commonmark:0.24.0'
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
     implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0'
+    // v1.4.22: THE FOUR-PACK — task-list items (tappable [x] checkboxes),
+    // footnotes (superscript refs + the "──── Footnotes" trailer), and ins
+    // (<ins> == underline) join the markdown set behind AiRender.kt. Same
+    // plain -ext-<name> artifact family as the GFM pair, BSD-2 pure Java,
+    // and R8 tree-shakes them to the node classes the visitor walks.
+    implementation 'org.commonmark:commonmark-ext-task-list-items:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-footnotes:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-ins:0.24.0'
     implementation 'ru.noties:jlatexmath-android:0.2.0'
     // v1.3.73: NO ML Kit — the bundled OCR models cost +20.9 MB of APK
     // (17.8 MB native .so across ARM ABIs + 3.5 MB model assets) and the

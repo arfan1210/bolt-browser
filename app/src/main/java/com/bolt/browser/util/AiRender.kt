@@ -5,11 +5,15 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.style.AlignmentSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.BulletSpan
+import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.ImageSpan
+import android.text.style.LeadingMarginSpan
+import android.text.style.QuoteSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -17,12 +21,23 @@ import android.text.style.SubscriptSpan
 import android.text.style.SuperscriptSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
+import android.text.style.UnderlineSpan
+import android.view.View
+import android.widget.TextView
+import org.commonmark.ext.footnotes.FootnoteDefinition
+import org.commonmark.ext.footnotes.FootnoteReference
+import org.commonmark.ext.footnotes.FootnotesExtension
+import org.commonmark.ext.footnotes.InlineFootnote
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.ext.gfm.tables.TableRow
 import org.commonmark.ext.gfm.tables.TablesExtension
+import org.commonmark.ext.ins.Ins
+import org.commonmark.ext.ins.InsExtension
+import org.commonmark.ext.task.list.items.TaskListItemMarker
+import org.commonmark.ext.task.list.items.TaskListItemsExtension
 import org.commonmark.node.BlockQuote
 import org.commonmark.node.BulletList
 import org.commonmark.node.Code
@@ -30,6 +45,8 @@ import org.commonmark.node.Document
 import org.commonmark.node.Emphasis
 import org.commonmark.node.FencedCodeBlock
 import org.commonmark.node.HardLineBreak
+import org.commonmark.node.HtmlBlock
+import org.commonmark.node.HtmlInline
 import org.commonmark.node.Heading
 import org.commonmark.node.Image
 import org.commonmark.node.IndentedCodeBlock
@@ -269,12 +286,23 @@ object AiRender {
             val segs = pendingSegs
             // v1.4.21 — the parser grew the GFM STRIKETHROUGH extension
             // (~~text~~ — the "complete it" ask) beside the tables one.
+            // v1.4.22 — THE FOUR-PACK joins the parser set: task-list
+            // items (the tappable [x] checkboxes), footnotes (inlineFootnotes
+            // ON — [^n] references plus ^[...] inline definitions), and ins
+            // (<ins> == underline). Same plain -ext-<name> artifacts as the
+            // GFM pair — the "no second markup engine" line holds.
             val parser = Parser.builder()
                     .extensions(listOf(TablesExtension.create(),
-                            StrikethroughExtension.create())).build()
+                            StrikethroughExtension.create(),
+                            TaskListItemsExtension.create(),
+                            InsExtension.create(),
+                            FootnotesExtension.builder().inlineFootnotes(true).build())).build()
             val doc = parser.parse(prepared)
             val v = V(c, sb, segs)
             v.children(doc)
+            // v1.4.22 — the footnote trailer prints AFTER the visit (the
+            // definitions were filed while walking the document)
+            v.footnotes()
         } catch (_: Throwable) {
             // the renderer must never eat a reply
             sb.clear()
@@ -330,6 +358,16 @@ object AiRender {
                     val segs: List<MathSeg>) {
 
         var listLevel = 0
+
+        // v1.4.22 — the four-pack's per-render state: footnote numbering
+        // (label → number, first-citation order — references and the
+        // trailer share it), the rendered definition texts (label →
+        // trimmed text), and the OPEN HTML TAG STACK — one HtmlTag per
+        // unclosed inline tag; a matching close pops it and spans the
+        // covered range.
+        val fnNum = LinkedHashMap<String, Int>()
+        val fnText = LinkedHashMap<String, String>()
+        val tags = ArrayList<HtmlTag>()
 
         fun children(parent: Node) {
             var n = parent.firstChild
@@ -392,8 +430,17 @@ object AiRender {
                 is BlockQuote -> {
                     val start = sb.length
                     children(n)
-                    sb.setSpan(StyleSpan(Typeface.ITALIC), start, sb.length, 0)
-                    sb.setSpan(RelativeSizeSpan(0.97f), start, sb.length, 0)
+                    val end = sb.length
+                    // v1.4.22 — nested quotes: EVERY level carries its own
+                    // QuoteSpan bar + leading margin — the spans stack, so a
+                    // quote inside a quote draws two bars and indents past
+                    // the outer one (the four-pack's quote half).
+                    if (end > start) {
+                        sb.setSpan(QuoteSpan(Fx.dim(c)), start, end, 0)
+                        sb.setSpan(LeadingMarginSpan.Standard(Fx.dp(c, 10)), start, end, 0)
+                        sb.setSpan(StyleSpan(Typeface.ITALIC), start, end, 0)
+                        sb.setSpan(RelativeSizeSpan(0.97f), start, end, 0)
+                    }
                     blockGap()
                 }
                 is FencedCodeBlock -> codeBlock(n.literal, n.info)
@@ -453,6 +500,66 @@ object AiRender {
                 }
                 is SoftLineBreak -> sb.append('\n')
                 is HardLineBreak -> sb.append('\n')
+                // v1.4.22 — HTML emphasis: inline tags push/pop the span
+                // stack ([htmlTag]); unknown tags render their inner text
+                // only — the markup never leaks into the bubble.
+                is HtmlInline -> htmlTag(n.literal)
+                // v1.4.22 — block-level raw HTML: the literal rides through
+                // with every <tag> fed to the same stack; tags still open at
+                // the block's end are force-closed here (an HTML block is
+                // its own scope).
+                is HtmlBlock -> {
+                    val lit = n.literal
+                    val blockStart = sb.length
+                    var i = 0
+                    while (i < lit.length) {
+                        val lt = lit.indexOf('<', i)
+                        if (lt < 0) { sb.append(lit.substring(i)); break }
+                        sb.append(lit.substring(i, lt))
+                        val gt = lit.indexOf('>', lt)
+                        if (gt < 0) break
+                        i = gt + 1
+                        htmlTag(lit.substring(lt, i))
+                    }
+                    while (tags.isNotEmpty() && tags.last().start >= blockStart) {
+                        applyTag(tags.removeAt(tags.lastIndex), sb.length)
+                    }
+                    blockGap()
+                }
+                // v1.4.22 — the task checkbox: TAPPABLE in place (the
+                // ClickableSpan flips the glyph in the Spannable — no
+                // re-render, no data round-trip; the chat is display-only,
+                // long-press still copies the raw text).
+                is TaskListItemMarker -> {
+                    val start = sb.length
+                    sb.append(if (n.isChecked) "☑" else "☐").append(' ')
+                    sb.setSpan(TaskToggleSpan(), start, start + 1,
+                            Spanned.SPAN_EXCLUSIVE_INCLUSIVE)
+                }
+                // v1.4.22 — the footnote reference: a superscript number in
+                // the accent color; numbering is first-citation order.
+                is FootnoteReference -> {
+                    val start = sb.length
+                    sb.append(fnNo(n.label).toString())
+                    sb.setSpan(SuperscriptSpan(), start, sb.length, 0)
+                    sb.setSpan(ForegroundColorSpan(Fx.accentText(c)), start, sb.length, 0)
+                }
+                // v1.4.22 — the footnote definition renders into a THROWAWAY
+                // builder (its text reprints in the trailer, not inline) and
+                // is filed under its label, trimmed of the block gap.
+                is FootnoteDefinition -> {
+                    val sub = SpannableStringBuilder()
+                    try { V(c, sub, segs).children(n) } catch (_: Throwable) {}
+                    fnText[n.label] = sub.toString().trim()
+                }
+                is InlineFootnote -> children(n)
+                // v1.4.22 — <ins>…</ins> / ++text++ (the ins extension):
+                // underline, the honest HTML twin.
+                is Ins -> {
+                    val start = sb.length
+                    children(n)
+                    sb.setSpan(UnderlineSpan(), start, sb.length, 0)
+                }
                 is Text -> inlineText(n.literal)
                 is Document -> children(n)
                 else -> children(n)
@@ -602,6 +709,130 @@ object AiRender {
             } else {
                 appendTex(sb, tex)
             }
+        }
+
+        // ---------------- v1.4.22 — the four-pack's helpers ----------------
+
+        /** the footnote trailer: "──── Footnotes" + one "N. text" line per
+         *  definition, small + dim — printed once, after the visit. */
+        fun footnotes() {
+            if (fnText.isEmpty()) return
+            val start = sb.length
+            sb.append("──── Footnotes").append('\n')
+            for ((label, text) in fnText) {
+                val lineStart = sb.length
+                sb.append(fnNo(label).toString()).append(". ").append(text).append('\n')
+                sb.setSpan(RelativeSizeSpan(0.88f), lineStart, sb.length, 0)
+            }
+            sb.setSpan(ForegroundColorSpan(Fx.dim(c)), start, sb.length, 0)
+        }
+
+        /** the footnote number for a label — the first citation assigns the
+         *  next number; references and the trailer share the numbering. */
+        fun fnNo(label: String): Int {
+            val n = fnNum[label]
+            if (n != null) return n
+            val v = fnNum.size + 1
+            fnNum[label] = v
+            return v
+        }
+
+        /** parse one raw tag literal ("<mark>", "</b>", "<a href=…>"): the
+         *  name (lowercased), the href for anchors, open vs close. Opening
+         *  tags push a start-positioned marker (br hard-breaks immediately);
+         *  a closing tag pops the NEAREST matching open and spans the whole
+         *  covered range. */
+        fun htmlTag(lit: String) {
+            var t: HtmlTag? = null
+            if (lit.startsWith("<")) {
+                val closing = lit.length > 1 && lit[1] == '/'
+                val ns = if (closing) 2 else 1
+                var i = ns
+                while (i < lit.length &&
+                        (lit[i].isLetterOrDigit() || lit[i] == '-' || lit[i] == ':')) i++
+                if (i > ns) {
+                    val name = lit.substring(ns, i).lowercase()
+                    var href: String? = null
+                    if (name == "a") {
+                        href = Regex("href\\s*=\\s*[\"']([^\"']*)[\"']").find(lit)?.groupValues?.get(1)
+                    }
+                    t = HtmlTag(-1, name, href, closing)
+                }
+            }
+            val tag = t ?: return
+            if (!tag.closing) {
+                if (tag.name == "br") {
+                    sb.append('\n')
+                    return
+                }
+                tags.add(HtmlTag(sb.length, tag.name, tag.href, false))
+            } else {
+                var i = tags.size - 1
+                while (i >= 0) {
+                    if (tags[i].name == tag.name) {
+                        applyTag(tags.removeAt(i), sb.length)
+                        return
+                    }
+                    i--
+                }
+            }
+        }
+
+        /** the tag → spans table, applied over [tag.start, end). Known
+         *  inline tags map to their Android spans; unknown tags contribute
+         *  nothing — their inner text already rendered (the "inner text
+         *  only" rule). <a> links only when the href regex matched. */
+        fun applyTag(tag: HtmlTag, end: Int) {
+            if (end <= tag.start) return
+            val spans: List<Any> = when (tag.name) {
+                "strong", "b" -> listOf(StyleSpan(Typeface.BOLD))
+                "i", "em" -> listOf(StyleSpan(Typeface.ITALIC))
+                "u", "ins" -> listOf(UnderlineSpan())
+                "s", "strike", "del" -> listOf(StrikethroughSpan())
+                "sub" -> listOf(SubscriptSpan())
+                "sup" -> listOf(SuperscriptSpan())
+                "mark" -> listOf(BackgroundColorSpan(markBg()))
+                "code" -> listOf(TypefaceSpan("monospace"), BackgroundColorSpan(codeBg()))
+                "a" -> {
+                    val href = tag.href
+                    if (href != null) listOf(URLSpan(href)) else emptyList()
+                }
+                else -> emptyList()
+            }
+            for (s in spans) sb.setSpan(s, tag.start, end, 0)
+        }
+
+        /** v1.4.22 — the <mark> highlight: a translucent highlighter wash
+         *  over whichever theme is live (soft blue on dark, marker yellow on
+         *  light) — alpha 0x33 so the text stays readable through it. */
+        fun markBg(): Int {
+            val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
+            return if (dark) 0x3355AAFF else 0x33FFD24D
+        }
+
+        /** v1.4.22 — one OPEN inline tag on the span stack. */
+        private class HtmlTag(val start: Int, val name: String,
+                               val href: String?, val closing: Boolean)
+
+        /** v1.4.22 — the tappable checkbox: a ClickableSpan over the ☑/☐
+         *  glyph that flips it in place (no re-render, no model write-back —
+         *  the chat is display-only). updateDrawState stays empty so the
+         *  glyph does not read as a link; long-press copy stays the bubble's
+         *  raw tag, untouched by the flip. */
+        private class TaskToggleSpan : ClickableSpan() {
+            override fun onClick(widget: View) {
+                try {
+                    val tv = widget as? TextView ?: return
+                    val sb = tv.text as? SpannableStringBuilder ?: return
+                    val start = sb.getSpanStart(this)
+                    if (start in 0 until sb.length) {
+                        sb.replace(start, start + 1,
+                                if (sb[start] == '\u2611') "☐" else "☑")
+                        tv.invalidate()
+                    }
+                } catch (_: Throwable) {}
+            }
+            override fun updateDrawState(ds: TextPaint) {}
         }
     }
 
