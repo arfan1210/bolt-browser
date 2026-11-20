@@ -208,17 +208,46 @@ public class Tab {
      *  rebuild half of the survival law). Returns true when the
      *  back/forward list came back (the current item navigates itself —
      *  do NOT loadUrl on top); false = fall back to loadUrl(t.url). The
-     *  warm Bundle is preferred; a cold start rebuilds it from histBlob. */
+     *  warm Bundle is preferred; a cold start rebuilds it from histBlob.
+     *  v1.4.24 — THE URL GUARD (the stale-snapshot corpse: "old page
+     *  resurrects on new navigation"): restoreState() itself succeeds
+     *  with whatever page the snapshot held — if that page is NOT the
+     *  tab's current t.url, the snapshot is STALE (an explicit new
+     *  navigation moved the tab on; saveHist's snapshot never caught up)
+     *  and restoring it would resurrect the old page on top of the new
+     *  one. On a mismatch return false so the caller falls through to
+     *  loadUrl(t.url); a genuinely slept tab's snapshot always carries
+     *  exactly t.url as its current item, so the survival feature keeps
+     *  working untouched. */
     public boolean restoreHist(WebView w) {
         if (w == null) return false;
         try {
             Bundle st = sleepState != null ? sleepState : blobToHist(histBlob);
             if (st == null) return false;
             android.webkit.WebBackForwardList l = w.restoreState(st);
-            return l != null && l.getSize() > 0;
+            if (l == null || l.getSize() == 0) return false;
+            try {
+                String cur = l.getCurrentItem() != null ? l.getCurrentItem().getUrl() : null;
+                if (cur == null || url == null || url.isEmpty() || !cur.equals(url)) {
+                    return false;   // stale snapshot — the NEW url must load
+                }
+            } catch (Throwable ignored) {}
+            return true;
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** v1.4.24 — retire every held navigation snapshot. Called on every
+     *  EXPLICIT new navigation that sets a new t.url (loadInTab — the
+     *  funnel for the omnibox GO, home search, direct-URL, suggestion and
+     *  bang doors) BEFORE the load: a snapshot left over from an older
+     *  page must never outrank the navigation the user just asked for.
+     *  Sleeping/waking is unaffected — a tab that merely went to the
+     *  background never passes through here. */
+    public void clearHist() {
+        sleepState = null;
+        histBlob = null;
     }
 
     /** v1.4.21 — the number of back/forward entries a restore would bring

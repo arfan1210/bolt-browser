@@ -1591,6 +1591,128 @@ session, 2026-11-20):
 - (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
   candidate; the in-app updater exists but the APK baseline drifts.
 
+**v1.4.24 — THE CORPSE-FIX + SIZE ROUND** (the seventeenth session,
+2026-11-21):
+
+1. *THE STALE-SNAPSHOT NAVIGATION CORPSE (CRITICAL, field-rooted).* The
+   user's diag.log on Realme RMX2020 / Android 10: on facebook.com ->
+   home -> search youtube -> Facebook returns; opening youtube.com
+   directly ALSO returned Facebook; "tab hist restore idx=N warm"
+   fired repeatedly for the same tab. Root cause: the v1.4.21
+   back-history snapshots (`Tab.sleepState` / `Tab.histBlob`, written
+   by `saveHist()`) were never CLEARED — `loadInTab()` set `t.url` to
+   the new page but left the stale snapshot, so the rebuilt WebView
+   `restoreState()`d the OLD page, returned true, and `loadUrl()`
+   never ran; the snapshot then re-restored on every later rebuild
+   (the double-restore loop). THREE guards: (a) `loadInTab` — the
+   funnel every explicit navigation pours through — calls the new
+   `Tab.clearHist()` BEFORE `showTab`/`loadUrl`; (b) `restoreHist`
+   URL-guards the restore (the snapshot's current item must equal
+   `t.url`, else it is stale and restores nothing — the new url
+   loads); (c) `showTab` CONSUMES the warm Bundle after a successful
+   restore (single-use). The v1.4.21 feature is preserved untouched:
+   a genuinely slept tab still restores its back/forward list — sleep
+   never assigns a fresh `t.url`; only an explicit new navigation
+   overrides it. Probe: `scripts/SimHist.java` (compiled+run) — the
+   corpse demonstrated, the fix held, the guard, the consume, and the
+   preserved wake, plus the static pins in `scripts/test_v1424.py`.
+2. *THE HARDCODED OCR LANGUAGE (CRITICAL, field-rooted).* The same
+   diag: a full 720x1353 screen yielded `chars=50 lines=5` from
+   screen-translate. Root cause: `ScreenTranslate.langsOf()` returned
+   the manga-era trio (chi_sim+jpn+eng) for EVERY case and `LANG_OK`
+   served nothing else, so any other source script extracted almost
+   nothing and the hybrid translated a fragment. THE SOURCE-LANGUAGE
+   LAW: the OCR source is a user pick SEPARATE from the translate
+   TARGET, spanning the app's own language list mapped to tesseract
+   packs (en→eng, bn→ben, hi→hin, es→spa, ar→ara, fr→fra, de→deu,
+   pt→por, ru→rus, zh-CN→chi_sim, ja→jpn, ko→kor, id→ind, tr→tur,
+   ur→urd, vi→vie — model sizes read from the pinned tessdata_fast
+   repo itself); the DEFAULT is eng (Latin script); "Auto" keeps the
+   trio for the manga case. THE LOW-YIELD LAW: a full screen that
+   OCRs to fewer than 120 characters was not read — the vision model
+   then reads the WHOLE screenshot (language-agnostic) instead of
+   translating the sparse fragment; the hybrid runs only when OCR
+   read well, and the diag names the yield AND the path
+   (`-> hybrid` / `-> vision`). Probes: the transcribed source
+   mapping + the low-yield decision table (test_v1424.py).
+3. *THE SIZE ROUND (the user asked twice).* v1.4.23 shipped 3,325,166
+   B; ~470 KB of it was jlatexmath-android's bundled font set (30 TTF
+   binaries, 455,768 B raw — TTFs barely deflate). THE FONT-PACK
+   SPLIT: the engine code + XML descriptors stay bundled, the TTFs
+   move OUT of the APK and download ONCE on the first math render into
+   `filesDir/jlmfonts` — the v1.3.73 tesseract pattern. Mechanics:
+   `scripts/thin_jlatexmath.py` builds `app/libs/jlatexmath-thin.aar`
+   from the pinned upstream artifact (same engine classes, same
+   descriptors, MINUS the TTFs and MINUS the `JLatexMathAndroid`
+   seam class); the app's own source tree re-implements that seam
+   class (same FQCN, same public surface) whose two resource doors try
+   APK assets first, then the downloaded pack (`util/MathFonts.kt`);
+   hosts are the UPSTREAM repo's own assets at tag v0.2.0 (jsDelivr +
+   raw.githubusercontent — the same pair tesseract rides,
+   spot-verified byte-identical to the AAR's). FAILURE POSTURE: a
+   failed download (or a metered connection, which skips silently —
+   math is a chat nicety) renders the v1.4.20 LaTeX-subset spans,
+   never a crash; bubbles that carry math are held and re-rendered
+   the moment the pack lands (`AiRender.holdForFonts`/
+   `refreshPendings`). Also: R8 full mode pinned explicitly
+   (`android.enableR8.fullMode=true`) and the asset audit found no
+   other dead weight. The launch smoke ran BEFORE and AFTER the
+   split — the law held. Probe: the thin AAR is unzipped and inspected
+   (0 TTFs, no seam class, 40 descriptor XMLs) + the render decision
+   table (test_v1424.py).
+4. *THE FORCED-DARK OVER-KEEP (minor).* The census line `dark icons
+   auth.meta.com small=7 ic=0 ni=0 rescue=0` — seven small media ALL
+   classed content, none inverted; if those were UI glyphs they stayed
+   dark on the dark page. THE MONOCHROME-GLYPH LOOSEN: a small element
+   that paints only grays (SVG fill/stroke with channel spread <= 32
+   or extreme luminance; an IMG with tiny INTRINSIC dimensions is an
+   icon asset) rides the page inversion BY DEFAULT even inside
+   article/main/p/figure context, even banner-shaped; colorful small
+   media keep the v1.4.23 content verdict, and large photos/
+   banner-shaped images stay content either way. The census grew a
+   `mono=N` field (`darkCountJs`) so the next field report reads the
+   verdicts back. Probe: the mock-DOM mono walk (test_v1424.py — the
+   auth.meta.com corpse shape inverts now; colorful content does not).
+5. *The gate-sweep mechanics, v1.4.24 edition.* 41 gate files repinned
+   to 138/1.4.24 (repin_gates_1424.py — now with the BARE
+   `entries[N]` slide the v1.4.23 session recorded as law), four dated
+   re-points where the fixes legitimately moved pinned targets:
+   test_v1421 (the jlatexmath maven coordinates -> the thin-AAR form),
+   test_v1420 (the render call re-pointed for the font-pack re-render),
+   and the sweep's own bare-entries pass. The new test_v1424.py rides
+   the suite; the launch smoke rung stays exactly where it was.
+6. *Known-good numbers (v1.4.24, release build):* APK ~2.87 MB (from
+   3,325,166 B — the reclaim is the font pack, ~456 KB raw); signature
+   verifies against the pinned cert; suite: all gates green INCLUDING
+   the launch smoke and the four v1.4.24 probes.
+
+**Plans / candidates for future versions (v1.4.24 edition):**
+- THE LAUNCH LAW stays forever (carried from every edition since
+  v1.4.23 — it caught the v1.4.22 corpse; this round it verified the
+  font-pack split changed nothing on the launch path).
+- The dark census wants its NEXT field report: with `mono=N` riding
+  the diag line, a repeat of the auth.meta.com shape (small=7,
+  mono>=7, ic=7) proves the loosen; small=N mono=0 means those seven
+  were COLORFUL content all along and the law is working as designed.
+- The OCR source-language law wants one field read-back too: a
+  Bangla/Hindi/Arabic screen with `src=<pack> chars=... -> hybrid`
+  (instead of the corpse's chars=50) proves the picker; `-> vision`
+  on a genuinely textless screen proves the low-yield floor.
+- The font-pack download could grow a metered-ask door (today metered
+  connections skip silently; a "download now?" prompt in the AI panel
+  is the natural follow-up if a user reports it).
+- The jlatexmath pack lands at ~456 KB one-time; if the user ever
+  wants the APK even lighter, the NEXT lever is the two bundled
+  EasyList/EasyPrivacy snapshots (1,987,185 B + 1,512,121 B raw —
+  they deflate well, but they are the biggest assets left) — they
+  would need the same on-demand treatment before removal.
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate.
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

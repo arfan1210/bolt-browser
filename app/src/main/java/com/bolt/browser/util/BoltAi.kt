@@ -590,7 +590,10 @@ object BoltAi {
             t.text = text
         } else {
             try {
-                t.text = AiRender.render(a, text)
+                // v1.4.24 — the view rides along: while the math font pack
+                // is still downloading the bubble is held for the full-TeX
+                // re-render when it lands
+                t.text = AiRender.render(a, text, t)
                 t.movementMethod = android.text.method.LinkMovementMethod.getInstance()
             } catch (_: Throwable) {
                 t.text = text
@@ -703,8 +706,11 @@ object BoltAi {
                         // v1.4.20 — the reply re-renders as it lands (the
                         // stream completion of this non-streaming chat):
                         // markdown + LaTeX through AiRender, raw in the tag
+                        // v1.4.24 — the view rides along: while the math
+                        // font pack is still downloading the bubble is held
+                        // for the full-TeX re-render when it lands
                         try {
-                            thinking.text = AiRender.render(a, reply)
+                            thinking.text = AiRender.render(a, reply, thinking)
                             thinking.movementMethod =
                                     android.text.method.LinkMovementMethod.getInstance()
                         } catch (_: Throwable) {

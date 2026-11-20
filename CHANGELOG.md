@@ -4,6 +4,101 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.24] — 2026-11-21
+
+**The corpse-fix + size round: two field-rooted corpses (a stale navigation
+snapshot resurrecting the OLD page over every new navigation, and a
+manga-era hardcoded OCR language starving screen translate of text) plus
+the twice-requested APK size reduction — the jlatexmath font pack moves to
+an on-demand download. The launch smoke rung stays in the pipeline (it
+caught the v1.4.22 corpse).**
+
+### 1. THE STALE-SNAPSHOT NAVIGATION CORPSE (CRITICAL)
+- Field shape: on facebook.com -> home -> search youtube -> Facebook
+  returns; opening youtube.com directly ALSO returned Facebook; the diag
+  log showed `tab hist restore idx=N warm` firing repeatedly for the same
+  tab.
+- Root cause: `Tab.sleepState` / `Tab.histBlob` (the v1.4.21 back-history
+  snapshots, written by `saveHist()`) were never cleared. `loadInTab()`
+  set `t.url` to the NEW url but left the stale snapshot, so the rebuilt
+  WebView `restoreState()`d the OLD page and returned true — `loadUrl()`
+  never ran, the old page showed, and the snapshot re-restored on every
+  later rebuild.
+- The fix, three guards: (a) `loadInTab` — the funnel every explicit
+  navigation pours through (omnibox GO, home search, direct URL,
+  suggestions, bangs) — now calls `t.clearHist()` BEFORE `showTab`/
+  `loadUrl`: a new navigation retires the old snapshot; (b) `restoreHist`
+  gained the URL guard — a restore whose current-item URL disagrees with
+  `t.url` is stale and returns false, so the new url loads; (c) `showTab`
+  consumes the warm Bundle after a successful restore (single-use), so a
+  spent snapshot can never resurrect a page the tab moved away from.
+- PRESERVED: the v1.4.21 feature itself — returning to a genuinely slept
+  tab still restores its back/forward list (sleep never assigns a fresh
+  `t.url`). Only an explicit new navigation overrides it.
+
+### 2. THE HARDCODED OCR LANGUAGE (CRITICAL)
+- Root cause: `ScreenTranslate.langsOf()` returned
+  `chi_sim + jpn + eng` for every case (the manga-era default) and
+  `LANG_OK` served nothing else. On any other source script tesseract
+  extracted almost nothing — the user's diag: a full 720x1353 screen
+  yielded `chars=50 lines=5` — so the OCR-hybrid translated a tiny
+  fraction and screen translate "looked broken".
+- THE SOURCE-LANGUAGE LAW: the OCR source language is now a user pick,
+  separate from the translate TARGET, spanning the app's own language
+  list (en, bn, hi, es, ar, fr, de, pt, ru, zh-CN, ja, ko, id, tr, ur, vi
+  → their tesseract packs); the default is `eng` (Latin script), NOT
+  chi_sim+jpn; the legacy trio stays available as "Auto" for the manga
+  case. The model downloader + interceptor serve every pack (sizes read
+  from the pinned tessdata_fast repo).
+- THE LOW-YIELD VISION FALLBACK: a full screen that OCRs to fewer than
+  ~120 characters was not read — the vision model then reads the WHOLE
+  screenshot (language-agnostic) instead of translating the sparse
+  fragment. The hybrid (OCR boxes + ONE text request) runs only when OCR
+  read well. The diag line now names the yield AND the path taken
+  (`-> hybrid` / `-> vision`).
+
+### 3. THE SIZE ROUND (the user asked twice)
+- v1.4.23 shipped 3,325,166 B; ~470 KB of it was jlatexmath-android's
+  bundled font set (30 TTF binaries, 455,768 B raw — TTFs barely
+  deflate). v1.4.24 lands ~2.87 MB.
+- THE FONT-PACK SPLIT: the engine code stays bundled; the 30 TTFs move
+  OUT of the APK (`scripts/thin_jlatexmath.py` builds the thin AAR —
+  `app/libs/jlatexmath-thin.aar`; the app's own source tree re-implements
+  the `JLatexMathAndroid` seam class with doors that fall through to
+  the downloaded pack) and download ONCE on the first math render into
+  `filesDir/jlmfonts` — exactly the v1.3.73 tesseract pattern. Hosts are
+  the upstream repo's own assets at the pinned tag (jsDelivr first,
+  raw.githubusercontent fail-over), byte-identical to what the AAR
+  bundled.
+- Failure posture: a failed download (or a metered connection, which
+  skips silently) renders formulas through the v1.4.20 LaTeX-subset
+  spans — never a crash; bubbles that carried math re-render the moment
+  the pack lands. Math renders fully after the one-time download.
+- Also: `shrinkResources` verified ON and R8 full mode pinned explicitly
+  (`android.enableR8.fullMode=true`); the asset audit found no other
+  dead weight (every remaining asset serves a live feature).
+- The launch smoke ran BEFORE and AFTER the split — the law held.
+
+### 4. FORCED-DARK OVER-KEEP (minor)
+- The census diag read `dark icons auth.meta.com small=7 ic=0 ni=0
+  rescue=0` — seven small media ALL classed content, none inverted; if
+  they were UI glyphs they stayed dark on the dark page.
+- THE MONOCHROME-GLYPH LOOSEN: a small element that paints only grays
+  (SVG fill/stroke grayish or extreme luminance; an IMG with tiny
+  intrinsic dimensions is an icon asset) now rides the page inversion
+  BY DEFAULT even inside article/main/p/figure context, even
+  banner-shaped. Large photos and banner-shaped COLORFUL images stay
+  content. The census grew a `mono=N` field so the next field report
+  reads the verdicts back.
+
+### Pipeline
+- Gates: the v1.4.24 round (scripts/test_v1424.py) pins all four fixes
+  with probes (the navigation decision model, the source-language
+  mapping + low-yield law, the font-pack split + fallback law, the
+  monochrome classifier against a mock DOM); ~50 gate files re-pointed
+  to 138/1.4.24 (repin_gates_1424.py); the launch smoke stays the
+  release-pipeline rung it became in v1.4.23.
+
 ## [1.4.23] — 2026-11-20
 
 **The critical rebuild: v1.4.22 CRASHED ON LAUNCH — reconstructed from

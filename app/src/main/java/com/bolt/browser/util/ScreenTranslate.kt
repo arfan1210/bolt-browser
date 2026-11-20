@@ -157,18 +157,78 @@ object ScreenTranslate {
         "AI \u2014 OCR + one text pass (recommended)",
         "Basic OCR \u2014 no AI (works offline of the AI key)")
 
-    private fun langsOf(k: String): Array<String> = when (k) {
-        // "ai" never reaches the OCR engine — the pipeline branches first;
-        // "auto" is THE universal OCR pass: EN+JP+CN in one run
-        else -> arrayOf("chi_sim", "jpn", "eng")
+    private fun langsOf(k: String): Array<String> {
+        // v1.4.24 — THE SOURCE-LANGUAGE LAW (the hardcoded-OCR-language
+        // corpse: "screen translate very inaccurate"): v1.3.78 froze the
+        // universal OCR pass to chi_sim+jpn+eng — the manga-era default —
+        // and LANG_OK served nothing else, so any OTHER source script
+        // (Bangla, Hindi, Arabic, Russian, ...) extracted almost nothing
+        // (the field log: a full 720x1353 screen -> chars=50 lines=5) and
+        // the hybrid then translated a tiny fraction of the screen. The
+        // SOURCE language is now a user pick — SEPARATE from the translate
+        // TARGET — spanning the app's own translate language list, with
+        // "auto" keeping the legacy CN+JP+EN trio for the manga case;
+        // the default is eng (Latin script), NOT chi_sim+jpn. The script
+        // argument stays for call-shape compat; the pack decides.
+        val p = lastSrc ?: "eng"
+        return if (p == "auto") arrayOf("chi_sim", "jpn", "eng") else arrayOf(p)
+    }
+
+    /** v1.4.24 — the memoized source-language choice ("scrSrc" pref;
+     * every pipeline entry resolves it BEFORE any langsOf call). */
+    @Volatile private var lastSrc: String? = null
+    private fun srcPack(a: Context): String {
+        val mem = lastSrc
+        if (mem != null && mem.isNotEmpty()) return mem
+        var p = try { Prefs.get(a).s("scrSrc", "eng") } catch (t: Throwable) { "eng" }
+        if (p != "auto" && p !in LANG_OK) p = "eng"
+        lastSrc = p
+        return p
+    }
+    private fun setSrc(a: Context, pack: String) {
+        lastSrc = pack
+        try { Prefs.get(a).set("scrSrc", pack) } catch (t: Throwable) {}
+    }
+
+    /** v1.4.24 — translate_codes -> the tesseract pack ids (the source
+     * picker serves exactly the languages the app already lists). */
+    private fun tessPackOf(code: String): String? = when (code) {
+        "en" -> "eng"; "bn" -> "ben"; "hi" -> "hin"; "es" -> "spa"
+        "ar" -> "ara"; "fr" -> "fra"; "de" -> "deu"; "pt" -> "por"
+        "ru" -> "rus"; "zh-CN" -> "chi_sim"; "ja" -> "jpn"; "ko" -> "kor"
+        "id" -> "ind"; "tr" -> "tur"; "ur" -> "urd"; "vi" -> "vie"
+        else -> null
     }
 
     private fun scriptLabel(k: String): String = if (k == "ai") "AI" else "Basic"
 
-    /** the only langs the downloader + interceptor will ever serve
-     *  (v1.3.78: jpn_vert + jpn_vertb left with the manga scripts they
-     *  existed for — the on-disk diet deletes their files too) */
-    private val LANG_OK = setOf("eng", "jpn", "chi_sim")
+    /** v1.4.24 — the label the OCR-language door shows for a pack. */
+    private fun srcLabelOf(a: Context, pack: String): String {
+        if (pack == "auto") return "Auto (CN+JP+EN)"
+        try {
+            val codes = a.resources.getStringArray(com.bolt.browser.R.array.translate_codes)
+            val langs = a.resources.getStringArray(com.bolt.browser.R.array.translate_langs)
+            for (i in codes.indices) if (tessPackOf(codes[i]) == pack) return langs[i]
+        } catch (t: Throwable) {}
+        return pack
+    }
+
+    /** v1.4.24 — THE LOW-YIELD LAW: fewer non-whitespace characters than
+     *  this on a full-screen capture means the OCR pass read only UI
+     *  chrome or failed on the script entirely (the field log's 720x1353
+     *  screen -> chars=50) — translating that sparse fragment looks
+     *  broken. The vision model then reads the whole screen instead —
+     *  language-agnostic, the accuracy safety net. The hybrid (OCR
+     *  boxes + ONE textTranslate) runs only when OCR read WELL. */
+    private const val YIELD_FLOOR = 120
+
+    /** the langs the downloader + interceptor will ever serve
+     *  (v1.4.24: the source-law expansion — every language the app's
+     *  translate list names; jpn_vert + jpn_vertb stay dead, their manga
+     *  scripts died in v1.3.78) */
+    private val LANG_OK = setOf(
+        "eng", "jpn", "chi_sim", "ben", "hin", "spa", "ara", "fra",
+        "deu", "por", "rus", "kor", "ind", "tur", "urd", "vie")
 
     /** pinned model sources (https, GET, no redirects — the relay discipline).
      *  v1.3.74: tessdata_best for the HD alias, with its own fail-over. */
@@ -176,9 +236,16 @@ object ScreenTranslate {
         "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@main/",
         "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/")
     /** known sizes (bytes) — drives the metered-connection estimate
-     *  (v1.3.78: the vertical/best models left with their scripts) */
+     *  (v1.3.78: the vertical/best models left with their scripts;
+     *  v1.4.24: the source-law expansion adds every pack the picker
+     *  serves, sizes read from the pinned tessdata_fast repo itself) */
     private val MODEL_BYTES = mapOf(
-        "eng" to 4113088L, "jpn" to 2471260L, "chi_sim" to 2469156L)
+        "eng" to 4113088L, "jpn" to 2471260L, "chi_sim" to 2469156L,
+        "ben" to 855841L, "hin" to 1122751L, "spa" to 2294433L,
+        "ara" to 1432056L, "fra" to 1130365L, "deu" to 1525436L,
+        "por" to 1982756L, "rus" to 3861738L, "kor" to 1677415L,
+        "ind" to 1122661L, "tur" to 4550554L, "urd" to 1398718L,
+        "vie" to 531275L)
 
     /** v1.3.78 — THE MODEL DIET: the manga scripts are gone, so their
      *  models (jpn_vert fast 3.0 MB + jpn_vertb best 14.3 MB) are dead
@@ -383,6 +450,7 @@ object ScreenTranslate {
     private fun pipeline(a: Activity, bmp: Bitmap, g: Int) {
         if (gen.get() != g) return
         try { modelDiet(a) } catch (_: Throwable) {}
+        srcPack(a)   // v1.4.24: resolve the OCR source choice before any langs use
         val k = lastScript
         if (k == "ai") { runAiStage(a, bmp, g); return }
         val enc = encodeFor(bmp, k)
@@ -550,7 +618,7 @@ object ScreenTranslate {
         h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
         val t0 = System.currentTimeMillis()
         h.run(langs, enc.b64,
-            { json -> POOL.execute { ocrDone(a, bmp, enc, json, g, t0) } },
+            { json -> POOL.execute { ocrDone(a, bmp, enc, langs, json, g, t0) } },
             { msg -> failOcr(a, bmp, g, msg, null) })
     }
 
@@ -564,13 +632,14 @@ object ScreenTranslate {
 
     /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay
      *  (the BASIC script path; the AI hybrid shares [ocrBlocks]). */
-    private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int, t0: Long) {
+    private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>,
+                        json: String, g: Int, t0: Long) {
         if (gen.get() != g) return
         try {
             val parsed = ocrBlocks(json, bmp, enc)
             val blocks = parsed.first
             try {
-                Diag.log(a, "scr ocr langs=" + langsOf(lastScript).joinToString("+") +
+                Diag.log(a, "scr ocr langs=" + langs.joinToString("+") +
                         " chars=" + parsed.second + " lines=" + blocks.size +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
@@ -823,15 +892,18 @@ object ScreenTranslate {
             aiConfirmed = true
         }
         if (gen.get() != g) return
+        srcPack(a)   // v1.4.24: resolve the OCR source choice before any langs use
         try {
             val tl = lastTl ?: PageTranslate.deviceTl()
             try {
                 Diag.log(a, "scr ai hybrid ask prov=" + AiBridge.providerName(a) +
-                        " model=" + aiModelForDiag(a) + " tl=" + tl)
+                        " model=" + aiModelForDiag(a) + " tl=" + tl +
+                        " src=" + srcPack(a))
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
             // (1) THE OCR STAGE — the same encoder + models the basic script
-            // rides (chi_sim+jpn+eng in one pass); the models download on
+            // rides (the CHOSEN source pack since v1.4.24 — "auto" keeps
+            // the legacy chi_sim+jpn+eng trio); the models download on
             // demand exactly as before (metered confirm + progress)
             val enc = encodeFor(bmp, "auto")
             if (gen.get() != g) return
@@ -880,20 +952,31 @@ object ScreenTranslate {
     }
 
     /** POOL. (1)+(2): the OCR json -> blocks (the shared parser), then ONE
-     *  pure-text translate over the numbered lines; empty OCR -> the vision
-     *  model is the only reader (fallback). */
+     *  pure-text translate over the numbered lines; empty OR LOW-YIELD OCR
+     *  -> the vision model reads the screen instead (fallback). */
     private fun aiOcrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int,
                            tl: String, t0: Long) {
         if (gen.get() != g) return
         try {
             val parsed = ocrBlocks(json, bmp, enc)
             val blocks = parsed.first
+            val chars = parsed.second
+            // v1.4.24 — THE LOW-YIELD LAW: a full screen that OCRs to fewer
+            // than YIELD_FLOOR non-whitespace characters was NOT read —
+            // the pass caught only stray chrome glyphs or failed on the
+            // script entirely (the field log: 720x1353 -> chars=50
+            // lines=5) — and translating that sparse fragment "looks
+            // broken". The vision model then reads the WHOLE screen,
+            // language-agnostic; the hybrid (OCR boxes + one text pass)
+            // runs only when OCR read WELL.
+            val low = chars < YIELD_FLOOR
             try {
                 Diag.log(a, "scr ai ocr langs=" + langsOf("auto").joinToString("+") +
-                        " chars=" + parsed.second + " lines=" + blocks.size +
+                        " chars=" + chars + " lines=" + blocks.size +
+                        (if (low) " px=" + bmp.width + "x" + bmp.height + " -> vision" else " -> hybrid") +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
-            if (blocks.isEmpty()) {
+            if (blocks.isEmpty() || low) {
                 visionFallback(a, bmp, g, tl, null)
                 return
             }
@@ -1467,6 +1550,50 @@ object ScreenTranslate {
                         // clearly setting up (the capture follows normally)
                         onPick("ai")
                     }
+                }
+                // v1.4.24 — THE SOURCE-LANGUAGE DOOR (the hardcoded-OCR
+                // corpse): the OCR pass's language is now a pick,
+                // SEPARATE from the translate TARGET — this button opens
+                // the source picker, then returns HERE so the mode choice
+                // still completes. Back-dismiss still cancels.
+                .setNegativeButton("OCR language: " + srcLabelOf(a, srcPack(a))) { d, _ ->
+                    try { d.dismiss() } catch (_: Throwable) {}
+                    try { Diag.log(a, "scr srcpick") } catch (_: Throwable) {}
+                    pickSrcLanguage(a) { pickScript(a, onPick) }
+                }
+                .show()
+        } catch (t: Throwable) {
+            Fx.toast(a, "Could not open the language picker")
+        }
+    }
+
+    /** v1.4.24 — the OCR SOURCE picker (the hardcoded-OCR-language
+     *  corpse): the translate language list the target picker already
+     *  uses — mapped to tesseract packs — plus the legacy Auto
+     *  CN+JP+EN row for the manga case. The choice persists
+     *  ("scrSrc"); every later OCR pass, hybrid or basic, rides it. */
+    private fun pickSrcLanguage(a: Activity, then: () -> Unit) {
+        try {
+            val langs = a.resources.getStringArray(com.bolt.browser.R.array.translate_langs)
+            val codes = a.resources.getStringArray(com.bolt.browser.R.array.translate_codes)
+            val labels = ArrayList<String>(langs.size + 1)
+            val packs = ArrayList<String>(langs.size + 1)
+            for (i in codes.indices) {
+                val p = tessPackOf(codes[i]) ?: continue
+                labels.add(if (i < langs.size) langs[i] else codes[i])
+                packs.add(p)
+            }
+            labels.add("Auto \u2014 CN+JP+EN (manga)")
+            packs.add("auto")
+            var def = packs.indexOf(srcPack(a))
+            if (def < 0) def = 0
+            AlertDialog.Builder(a)
+                .setTitle("OCR reads which language?")
+                .setSingleChoiceItems(labels.toTypedArray(), def) { d, w ->
+                    try { d.dismiss() } catch (_: Throwable) {}
+                    setSrc(a, packs[w])
+                    try { Diag.log(a, "scr src " + packs[w]) } catch (_: Throwable) {}
+                    then()
                 }
                 .setNegativeButton(com.bolt.browser.R.string.cancel, null)
                 .show()

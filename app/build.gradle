@@ -63,8 +63,20 @@ android {
         // THE LAUNCH LAW rides below too: the release pipeline now runs a
         // real launch smoke test (Robolectric: Application.onCreate -> the
         // launcher activity -> buildHomeView) before any publish.
-        versionCode 137
-        versionName "1.4.23"
+        // v1.4.24 (2026-11-21) — THE CORPSE-FIX + SIZE ROUND: the
+        // stale-snapshot navigation kill (clearHist on every explicit
+        // new navigation; restoreHist's URL guard; the warm-restore
+        // consume — an old page can never resurrect over a new one),
+        // the OCR source-language law (the hardcoded chi_sim+jpn+eng
+        // default dies; a picker spanning the app's own language list,
+        // default eng; the low-yield vision fallback), THE FONT-PACK
+        // SPLIT (jlatexmath's 30 TTFs, 455,768 B, out of the APK and into
+        // an on-demand download on first math render — the tesseract
+        // pattern; target ~2.8-2.9 MB), and the dark classifier's
+        // monochrome-glyph law (small MONOCHROME media inverts even
+        // inside photo context; the census counts mono now).
+        versionCode 138
+        versionName "1.4.24"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand
@@ -214,7 +226,19 @@ dependencies {
     // Application -> launcher activity -> buildHomeView for real.
     testImplementation 'org.robolectric:robolectric:4.13'
     testImplementation 'junit:junit:4.13.2'
-    implementation 'ru.noties:jlatexmath-android:0.2.0'
+    // v1.4.24 — THE FONT-PACK SPLIT (the size law, take two; the user
+    // asked twice): the maven AAR is REPLACED by the THIN AAR checked in
+    // at app/libs/jlatexmath-thin.aar (scripts/thin_jlatexmath.py builds
+    // it from the pinned upstream ru.noties:jlatexmath-android:0.2.0 —
+    // same engine classes, same XML descriptors, MINUS the 30 bundled
+    // TTF binaries (455,768 B, ~470 KB of the shipped APK) and MINUS the
+    // JLatexMathAndroid seam class, which the app's own source tree
+    // re-implements (ru/noties/jlatexmath/JLatexMathAndroid.java) with
+    // doors that fall through to the ON-DEMAND pack in filesDir
+    // (util/MathFonts.kt, the v1.3.73 tesseract law: download on first
+    // math render, metered-skip, span-subset fallback, never a crash).
+    // Provenance + byte-identity notes live in THIRDPARTY.md.
+    implementation files('libs/jlatexmath-thin.aar')
     // v1.3.73: NO ML Kit — the bundled OCR models cost +20.9 MB of APK
     // (17.8 MB native .so across ARM ABIs + 3.5 MB model assets) and the
     // budget law is ≤ 6 MB. Translate screen now OCRs through tesseract.js

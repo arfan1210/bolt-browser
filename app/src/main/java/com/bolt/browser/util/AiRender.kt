@@ -278,10 +278,16 @@ object AiRender {
     // ---------------- the markdown visitor ----------------
 
     /** render one reply: markdown + math → Spanned (assistant bubbles).
-     *  NEVER throws — worst case the raw text rides out unchanged. */
-    fun render(c: Context, md: String): Spanned {
+     *  NEVER throws — worst case the raw text rides out unchanged.
+     *  v1.4.24 — [view] (the bubble TextView) rides along when the caller
+     *  can hand it over: while the math FONT PACK is still downloading,
+     *  the reply renders through the v1.4.20 subset and the bubble is
+     *  held for a full re-render the moment the pack lands (the raw text
+     *  rides the view's tag). */
+    fun render(c: Context, md: String, view: android.widget.TextView? = null): Spanned {
         val sb = SpannableStringBuilder()
         try {
+            if (view != null) holdForFonts(c, md, view)
             val prepared = codeProtect(md)
             val segs = pendingSegs
             // v1.4.23 — THE FOUR-PACK joins the parser set: task-list items
@@ -334,6 +340,19 @@ object AiRender {
      */
     fun mathDrawable(c: Context, tex: String, block: Boolean): android.graphics.drawable.Drawable? {
         return try {
+            // v1.4.24 — THE FONT-PACK LAW: the engine CODE rides the APK
+            // but its 30 TTF binaries (455,768 B — ~470 KB of the v1.4.23
+            // APK) download ON DEMAND on first math use (filesDir/jlmfonts,
+            // the v1.3.73 tesseract pattern). While the pack is absent the
+            // drawable declines — the caller renders the v1.4.20 LaTeX-
+            // subset spans (an honest shape, never a crash) and the bubble
+            // is re-rendered the moment the pack lands (holdForFonts).
+            if (!com.bolt.browser.util.MathFonts.present(c)) {
+                com.bolt.browser.util.MathFonts.ensureAsync(c) {
+                    try { refreshPendings() } catch (t: Throwable) {}
+                }
+                return null
+            }
             jlmInit(c)
             val d = ru.noties.jlatexmath.JLatexMathDrawable.builder(tex)
                     .textSize(if (block) Fx.dp(c, 19).toFloat() else Fx.dp(c, 15).toFloat())
@@ -346,6 +365,45 @@ object AiRender {
         } catch (_: Throwable) {
             null
         }
+    }
+
+    // ---------------- v1.4.24 — the on-demand font pack's re-render ----------------
+
+    /** bubbles that rendered math through the subset fallback while the
+     *  pack was still downloading (weak — a dismissed bubble dies) */
+    private val fontPending = java.util.concurrent.CopyOnWriteArrayList<
+            java.lang.ref.WeakReference<android.widget.TextView>>()
+
+    /** the [render] half: a reply that CARRIES math, rendered while the
+     *  font pack is absent, is held for a re-render on pack-ready. */
+    private fun holdForFonts(c: Context, md: String, view: android.widget.TextView) {
+        try {
+            if (com.bolt.browser.util.MathFonts.present(c)) return
+            val mathPossible = md.contains('$') || md.contains("\\[") || md.contains("\\(")
+            if (!mathPossible) return
+            for (w in fontPending) {
+                if (w.get() === view) return   // already held (stream refreshes)
+            }
+            fontPending.add(java.lang.ref.WeakReference(view))
+            com.bolt.browser.util.MathFonts.ensureAsync(c) {
+                try { refreshPendings() } catch (t: Throwable) {}
+            }
+        } catch (t: Throwable) {}
+    }
+
+    /** MAIN thread (the MathFonts completion posts here): re-render every
+     *  held bubble through the now-complete font pack — the raw source
+     *  rides each bubble's tag (long-press copy already relies on it). */
+    @JvmStatic
+    fun refreshPendings() {
+        for (w in fontPending) {
+            val v = w.get() ?: continue
+            try {
+                val raw = v.tag as? String ?: continue
+                v.text = render(v.context, raw)
+            } catch (t: Throwable) {}
+        }
+        fontPending.clear()
     }
 
     /** the visitor — one branch per node kind, spans applied as the

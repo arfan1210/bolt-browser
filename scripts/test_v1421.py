@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 137" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.23"' in gradle, 'versionName "1.4.23"')
+need("versionCode 138" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.24"' in gradle, 'versionName "1.4.24"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -290,8 +290,11 @@ need('"engine logo set engine="' in ba,
 
 print("F — fix 6: AI formatting completed")
 need("implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0'" in gradle
-     and "implementation 'ru.noties:jlatexmath-android:0.2.0'" in gradle,
-     "the strikethrough extension + jlatexmath-android ride the build")
+     # v1.4.24 re-point (2026-11-21): the maven coordinates moved to the
+     # THIN AAR (the font-pack split) — the engine rides
+     # files('libs/jlatexmath-thin.aar') + the app's own seam class
+     and "implementation files('libs/jlatexmath-thin.aar')" in gradle,
+     "the strikethrough extension + jlatexmath ride the build (the v1.4.24 thin-AAR form)")
 need("StrikethroughExtension.create()" in ar_code
      and "is Strikethrough -> {" in ar_code
      and "StrikethroughSpan()" in ar_code,
@@ -328,7 +331,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 137") == 1,
+need(gradle.count("versionCode 138") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

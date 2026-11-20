@@ -555,6 +555,17 @@ python3 scripts/test_v1421.py
 # the launch-law pins themselves — the mock-DOM dark probe, the
 # numbered-parser probe, the compiled commonmark four-pack probe)
 python3 scripts/test_v1423.py
+
+# v1.4.24 gate: THE CORPSE-FIX + SIZE ROUND (the stale-snapshot navigation
+# kill — loadInTab's clearHist, restoreHist's URL guard, the warm-restore
+# consume; the OCR source-language law — the picker + the eng default +
+# the low-yield vision fallback; THE FONT-PACK SPLIT — the thin AAR, the
+# seam replacement, MathFonts' on-demand pack + the never-a-crash
+# fallback; the dark classifier's monochrome-glyph law + the mono census
+# field) — probes: the compiled SimHist navigation decision model, the
+# transcribed source/low-yield tables, the thin-AAR content inspection,
+# the mock-DOM mono walk
+python3 scripts/test_v1424.py
 mark gates
 fi
 

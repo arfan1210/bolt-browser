@@ -2725,12 +2725,14 @@ public class BrowserActivity extends AppCompatActivity {
                     // v1.4.23 — THE SMALL-ICON CENSUS (the round-4 evidence):
                     // the fresh walk publishes its decision counts into
                     // window.__boltDarkCount (small media seen / IC flips /
-                    // NI pins / rescue adds); this reads them back after the
-                    // late re-probe settles and logs the per-page verdict —
-                    // "dark icons <host> small=N ic=N ni=N rescue=N" — so the
-                    // next dark-mode field report carries the classifier's
+                    // NI pins / rescue adds / v1.4.24 monochrome glyphs);
+                    // this reads them back after the late re-probe settles
+                    // and logs the per-page verdict — "dark icons <host>
+                    // small=N ic=N ni=N rescue=N mono=N" — so the next
+                    // dark-mode field report carries the classifier's
                     // actual numbers, not guesses (the DIU Moodle bare
-                    // hamburger ships real counts).
+                    // hamburger ships real counts; the v1.4.24 auth.meta.com
+                    // small=7 ic=0 corpse reads mono back).
                     w.evaluateJavascript(MediaHook.darkCountJs(), res3 -> {
                         try {
                             String cnt = res3 == null ? "" : res3.replace("\"", "");
@@ -4297,16 +4299,29 @@ public class BrowserActivity extends AppCompatActivity {
                     // back/forward list AND the current item come back, so
                     // Back goes to the previous page instead of out of the
                     // tab to the home screen. restoreHist false (nothing
-                    // captured / stale blob / provider mismatch) falls back
-                    // to exactly the old loadUrl shape.
+                    // captured / stale blob / provider mismatch / the
+                    // v1.4.24 URL guard's mismatch) falls back to exactly
+                    // the old loadUrl shape.
+                    boolean warm = t.sleepState != null;   // v1.4.24: capture before the consume
                     boolean restored = false;
                     try { restored = t.restoreHist(w); } catch (Throwable ignored) {}
                     if (!restored) {
                         w.loadUrl(t.url);
                     } else {
+                        // v1.4.24 — THE WARM CONSUME (the double-restore
+                        // loop: "tab hist restore idx=N warm" firing
+                        // REPEATEDLY for the same tab): the warm Bundle is
+                        // single-use — after a successful restore it is
+                        // spent, so the NEXT rebuild (another trim, another
+                        // renderer death) can not restoreState() a page
+                        // this tab has already moved away from. histBlob
+                        // stays as the cold-start fallback; the URL guard
+                        // already vetoes any blob whose current item
+                        // disagrees with t.url.
+                        if (t.sleepState != null) t.sleepState = null;
                         try {
                             com.bolt.browser.util.Diag.log(this, "tab hist restore idx=" + idx
-                                    + (t.sleepState != null ? " warm" : " cold"));
+                                    + (warm ? " warm" : " cold"));
                         } catch (Throwable ignored) {}
                     }
                 }
@@ -5546,7 +5561,18 @@ public class BrowserActivity extends AppCompatActivity {
         }
         t.isHome = false;
         t.url = url;
-        String host = Fx.hostOf(url);
+        // v1.4.24 — THE STALE-SNAPSHOT KILL (the navigation corpse: "on
+        // facebook.com -> home -> search youtube -> Facebook returns").
+        // loadInTab is the funnel EVERY explicit navigation pours through
+        // (omnibox GO, home search, direct URL, suggestion rows, bangs).
+        // The v1.4.21 back-history snapshot of the OLD page (sleepState +
+        // histBlob, captured at sleep/trim/render-death) used to survive
+        // this assignment, so the rebuilt WebView restoreState()d the OLD
+        // page and the NEW url never loaded. A new navigation RETIRES the
+        // old snapshot — before showTab/loadUrl, so neither door can see
+        // it. Returning to a genuinely slept tab still restores history:
+        // that path never assigns a fresh t.url.
+        t.clearHist();
         t.applyUa(this, t.web);
         if (t.web == null) {
             showTab(tm.active); // builds web and loads

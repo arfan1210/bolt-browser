@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 137" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
-need('versionName "1.4.23"' in gradle, 'versionName "1.4.23"')
+need("versionCode 138" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.24"' in gradle, 'versionName "1.4.24"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -333,13 +333,15 @@ need("TablesExtension.create()" in ar_code,
      "the tables extension is wired into the parser")
 need("if (user || !AiRender.looksMarkdown(text)) {" in bai,
      "ASSISTANT bubbles only — user input stays plain by design")
-need("AiRender.render(a, reply)" in bai and "thinking.tag = reply" in bai,
+need("AiRender.render(a, reply, thinking)" in bai and "thinking.tag = reply" in bai,
+     # v1.4.24 re-point (2026-11-21): the view rides along — the font-pack
+     # split re-renders the bubble when the on-demand fonts land
      "the reply re-renders on arrival; the raw source rides the tag")
 need("(t.tag as? String) ?: t.text.toString()" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 137") == 1,
+need(gradle.count("versionCode 138") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

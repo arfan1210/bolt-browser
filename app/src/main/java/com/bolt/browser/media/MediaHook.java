@@ -1508,6 +1508,16 @@ public class MediaHook {
      *      DEFAULT; it stays un-inverted ONLY when it is clearly CONTENT:
      *      larger than 64 px, banner-shaped (aspect ratio >= 2.5), or
      *      photo-classed inside article/main/p/figure.
+     *      v1.4.24 — THE MONOCHROME-GLYPH LOOSEN (the over-keep corpse:
+     *      the census line dark icons auth.meta.com small=7 ic=0 ni=0
+     *      rescue=0 — seven small media ALL classed content, none
+     *      inverted; when they are UI glyphs they stay dark on the dark
+     *      page): a small element that paints only GRAYS (monoOf — SVG
+     *      fill/stroke grayish or extreme-luminance, IMG with tiny
+     *      intrinsic dimensions) is a UI GLYPH and rides the inversion
+     *      even inside photo context, even banner-shaped. Large photos
+     *      and banner-shaped COLORFUL images stay content. The census
+     *      counts mono now (the next field report reads it back).
      *  (B) FONT-ICON GUARANTEE — icon-font glyphs (FontAwesome and the
      *      family) and their ::before/::after pseudos ride the inversion
      *      like every other text; a site that pins a glyph to a fixed DARK
@@ -1532,7 +1542,7 @@ public class MediaHook {
                 + "var DK='__boltDK',NI='__boltNI',SV='__boltSV',IC='__boltIC';var n=0;"
                 // the census object (v1.4.23): per-page decision counts the
                 // BrowserActivity diag reads back 2.5 s after the commit
-                + "var cnt={small:0,ic:0,ni:0,rescue:0};"
+                + "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0};"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
@@ -1609,7 +1619,41 @@ public class MediaHook {
                 + "while(p&&lvl<6){var t=p.tagName;"
                 + "if(t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE')return true;"
                 + "p=p.parentElement;lvl++;}return false;}catch(e){return false}}"
-                + "function ridesFlip(el){return smallOf(el)&&!bannerish(el)&&!photoCtx(el)}"
+                // v1.4.24 — THE MONOCHROME-GLYPH LAW (the over-keep corpse:
+                // small=7 ic=0 ni=0 rescue=0 on auth.meta.com — every small
+                // medium classed content). monoOf: SVG paint colors are all
+                // grayish (channel spread <= 32) or extreme luminance
+                // (dark ink / white knockout); an IMG whose INTRINSIC size
+                // is tiny is an icon asset (photos in content ship hundreds
+                // of pixels intrinsically). A monochrome small element is a
+                // UI glyph — invert it by default (no double quotes in body
+                // comments — check_dark_js reads them)
+                + "function spreadOf(c){try{"
+                + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)/);"
+                + "if(!m)return null;"
+                + "var r=parseFloat(m[1]),g=parseFloat(m[2]),b=parseFloat(m[3]);"
+                + "return Math.max(r,g,b)-Math.min(r,g,b);}catch(e){return null}}"
+                + "function gray(c){try{if(!c||c==='transparent')return false;"
+                + "var sp=spreadOf(c);if(sp===null)return false;"
+                + "if(sp<=32)return true;var l=lumOf(c);"
+                + "return (l!==null)&&(l<=0.25||l>=0.75);}catch(e){return false}}"
+                + "function monoOf(el,cs){try{var t=el.tagName;"
+                + "if(t==='SVG'){var f=(cs.fill&&cs.fill!=='none')?cs.fill:null;"
+                + "var s=(cs.stroke&&cs.stroke!=='none')?cs.stroke:null;"
+                + "if(!f&&!s)return gray(cs.color);"
+                + "if(f&&!s)return gray(f);"
+                + "if(!f&&s)return gray(s);"
+                + "return gray(f)&&gray(s);}"
+                + "try{if(t==='IMG'&&el.complete&&el.naturalWidth>0"
+                + "&&el.naturalWidth<=128&&el.naturalHeight<=128)return true;}catch(x){}"
+                + "return false;}catch(e){return false}}"
+                // ridesFlip — v1.4.24: the content veto (bannerish or
+                // photoCtx) only holds for COLORFUL media; a monochrome
+                // small glyph inverts by default wherever it sits
+                + "function ridesFlip(el){try{"
+                + "return smallOf(el)&&!((bannerish(el)||photoCtx(el))"
+                + "&&!monoOf(el,getComputedStyle(el)));"
+                + "}catch(e){return false}}"
                 // v1.4.20 — the icon-font detector: glyphs drawn by an icon
                 // FONT ride the text-color floors; the matcher only decides
                 // whether the glyph-thickening / raise is safe to apply
@@ -1730,7 +1774,9 @@ public class MediaHook {
                 // carries the IC class and inverts with the page (a dark
                 // hamburger glyph flips to light on the dark ground).
                 // Content media (bigger than 64 px, banner-shaped, or
-                // photo-classed) keeps the un-inverted media family.
+                // photo-classed AND colorful — v1.4.24: a monochrome small
+                // glyph inverts even in photo context) keeps the
+                // un-inverted media family.
                 + "function isMedia(el){var t=el.tagName;"
                 + "if((t==='IMG'||t==='SVG')&&ridesFlip(el))return false;"
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
@@ -1741,9 +1787,11 @@ public class MediaHook {
                 + "var t=el.tagName;var rides=false;"
                 // v1.4.23 — the census small count: every IMG/SVG whose
                 // longest edge lands in (0, 64] is counted, then the
-                // default-flip decides its class
+                // default-flip decides its class; v1.4.24 adds the mono
+                // count (the over-keep census field)
                 + "if(t==='IMG'||t==='SVG'){try{if(smallOf(el)){cnt.small++;"
-                + "rides=!bannerish(el)&&!photoCtx(el);}}catch(x){}}"
+                + "try{if(monoOf(el,getComputedStyle(el)))cnt.mono++;}catch(x){}"
+                + "rides=ridesFlip(el);}}catch(x){}}"
                 + "if(!rides&&isMedia(el))return inv;"
                 // an IC-pinned element is a LEAF like media: the walk never
                 // adds DK on top of the IC filter (one class, one meaning)
@@ -1868,14 +1916,17 @@ public class MediaHook {
 
     /** v1.4.23 — THE CENSUS READER: darkSmartJs publishes its per-page
      *  decision counts into window.__boltDarkCount ({small, ic, ni,
-     *  rescue}); this reader returns them as the display string the
+     *  rescue, mono}); this reader returns them as the display string the
      *  BrowserActivity diag line logs after the 2.5 s late re-probe
-     *  (dark icons <host> small=N ic=N ni=N rescue=N). Empty string when
-     *  the walk has not published yet (no inversion ran / not yet). */
+     *  (dark icons <host> small=N ic=N ni=N rescue=N mono=N). Empty
+     *  string when the walk has not published yet (no inversion ran / not
+     *  yet). v1.4.24: mono counts the small media classed monochrome
+     *  glyphs — the over-keep corpse read-back field. */
     public static String darkCountJs() {
         return "(function(){try{var o=window.__boltDarkCount;"
                 + "if(!o)return '';"
-                + "return 'small='+o.small+' ic='+o.ic+' ni='+o.ni+' rescue='+o.rescue;"
+                + "return 'small='+o.small+' ic='+o.ic+' ni='+o.ni"
+                + "+' rescue='+o.rescue+' mono='+(o.mono||0);"
                 + "}catch(e){return ''}})()";
     }
 
