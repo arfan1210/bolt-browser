@@ -1636,10 +1636,11 @@ session, 2026-11-20):
    (`-> hybrid` / `-> vision`). Probes: the transcribed source
    mapping + the low-yield decision table (test_v1424.py).
 3. *THE SIZE ROUND (the user asked twice).* v1.4.23 shipped 3,325,166
-   B; ~470 KB of it was jlatexmath-android's bundled font set (30 TTF
-   binaries, 455,768 B raw — TTFs barely deflate). THE FONT-PACK
-   SPLIT: the engine code + XML descriptors stay bundled, the TTFs
-   move OUT of the APK and download ONCE on the first math render into
+   B; the jlatexmath-android bundled font set was 30 TTF binaries —
+   455,768 B raw, 286,982 B stored-compressed in the APK (the user's
+   "~470 KB" was the raw-asset measure). THE FONT-PACK SPLIT: the
+   engine code + XML descriptors stay bundled, the TTFs move OUT of
+   the APK and download ONCE on the first math render into
    `filesDir/jlmfonts` — the v1.3.73 tesseract pattern. Mechanics:
    `scripts/thin_jlatexmath.py` builds `app/libs/jlatexmath-thin.aar`
    from the pinned upstream artifact (same engine classes, same
@@ -1681,10 +1682,16 @@ session, 2026-11-20):
    test_v1420 (the render call re-pointed for the font-pack re-render),
    and the sweep's own bare-entries pass. The new test_v1424.py rides
    the suite; the launch smoke rung stays exactly where it was.
-6. *Known-good numbers (v1.4.24, release build):* APK ~2.87 MB (from
-   3,325,166 B — the reclaim is the font pack, ~456 KB raw); signature
-   verifies against the pinned cert; suite: all gates green INCLUDING
-   the launch smoke and the four v1.4.24 probes.
+6. *Known-good numbers (v1.4.24, release build):* APK 3,037,761 B
+   (from v1.4.23's 3,325,166 B — the 287,405 B reclaim is the font
+   pack: 30 TTFs, 455,768 B raw / 286,982 B stored-compressed; 2.90 MB,
+   inside the ~2.8-2.9 MB target); signature verifies against the
+   pinned cert bcd57eb4...; suite: all gates green INCLUDING the launch
+   smoke (2 Robolectric tests, 0 failures) and the four v1.4.24 probes.
+   Post-release note: the SHIPPED APK's own About line says "~470 KB
+   smaller" (the raw-asset framing) — main carries the corrected
+   "~280 KB smaller" for the next build; the repo-side docs and both
+   release bodies state the exact byte numbers.
 
 **Plans / candidates for future versions (v1.4.24 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since

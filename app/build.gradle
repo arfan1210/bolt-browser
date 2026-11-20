@@ -231,7 +231,8 @@ dependencies {
     // at app/libs/jlatexmath-thin.aar (scripts/thin_jlatexmath.py builds
     // it from the pinned upstream ru.noties:jlatexmath-android:0.2.0 —
     // same engine classes, same XML descriptors, MINUS the 30 bundled
-    // TTF binaries (455,768 B, ~470 KB of the shipped APK) and MINUS the
+    // TTF binaries (455,768 B raw — 286,982 B stored-compressed in the
+    // v1.4.23 APK; the 287,405 B size reclaim) and MINUS the
     // JLatexMathAndroid seam class, which the app's own source tree
     // re-implements (ru/noties/jlatexmath/JLatexMathAndroid.java) with
     // doors that fall through to the ON-DEMAND pack in filesDir

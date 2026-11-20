@@ -24,7 +24,7 @@ size cut. This gate pins the four fixes with probes:
       falls back to the vision model reading the whole screenshot.
       Probe: the source mapping + the low-yield decision, transcribed.
   3 — THE SIZE ROUND (the user asked twice): jlatexmath's 30 TTF binaries
-      (455,768 B, ~470 KB of the 3,325,166 B APK) move OUT of the APK and
+      (455,768 B raw — 286,982 B of the 3,325,166 B v1.4.23 APK) move OUT of the APK and
       into an ON-DEMAND download on first math render (the v1.3.73
       tesseract law). Probe: the thin AAR's actual contents (0 TTFs, no
       seam class, descriptors kept), the seam replacement, MathFonts'
@@ -250,7 +250,7 @@ if os.path.isfile(AAR):
     root_xmls = [n for n in names
                  if n.startswith("assets/org/scilab/forge/jlatexmath/")
                  and n.count("/") == 5 and n.endswith(".xml")]
-    need(len(ttfs) == 0, "the thin AAR bundles ZERO TTF binaries (the 470 KB)")
+    need(len(ttfs) == 0, "the thin AAR bundles ZERO TTF binaries (the 287,405 B reclaim)")
     need(seam == [] and len(cj.namelist()) > 200,
          "the AAR's JLatexMathAndroid seam class is stripped (the engine "
          "classes ride)")

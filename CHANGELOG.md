@@ -58,9 +58,11 @@ caught the v1.4.22 corpse).**
   (`-> hybrid` / `-> vision`).
 
 ### 3. THE SIZE ROUND (the user asked twice)
-- v1.4.23 shipped 3,325,166 B; ~470 KB of it was jlatexmath-android's
-  bundled font set (30 TTF binaries, 455,768 B raw — TTFs barely
-  deflate). v1.4.24 lands ~2.87 MB.
+- v1.4.23 shipped 3,325,166 B; the jlatexmath-android bundled font set
+  was 30 TTF binaries — 455,768 B raw, 286,982 B stored-compressed in
+  the APK (the user's "~470 KB" was the raw-asset measure). v1.4.24
+  lands at 3,037,761 B (2.90 MB — a 287,405 B reclaim, inside the
+  ~2.8-2.9 MB target).
 - THE FONT-PACK SPLIT: the engine code stays bundled; the 30 TTFs move
   OUT of the APK (`scripts/thin_jlatexmath.py` builds the thin AAR —
   `app/libs/jlatexmath-thin.aar`; the app's own source tree re-implements
@@ -76,7 +78,8 @@ caught the v1.4.22 corpse).**
   the pack lands. Math renders fully after the one-time download.
 - Also: `shrinkResources` verified ON and R8 full mode pinned explicitly
   (`android.enableR8.fullMode=true`); the asset audit found no other
-  dead weight (every remaining asset serves a live feature).
+  dead weight (every remaining asset serves a live feature — the next
+  lever is the 1.99 MB + 1.51 MB EasyList/EasyPrivacy snapshots).
 - The launch smoke ran BEFORE and AFTER the split — the law held.
 
 ### 4. FORCED-DARK OVER-KEEP (minor)

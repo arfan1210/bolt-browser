@@ -341,8 +341,8 @@ object AiRender {
     fun mathDrawable(c: Context, tex: String, block: Boolean): android.graphics.drawable.Drawable? {
         return try {
             // v1.4.24 — THE FONT-PACK LAW: the engine CODE rides the APK
-            // but its 30 TTF binaries (455,768 B — ~470 KB of the v1.4.23
-            // APK) download ON DEMAND on first math use (filesDir/jlmfonts,
+            // but its 30 TTF binaries (455,768 B raw, 286,982 B of the
+            // v1.4.23 APK) download ON DEMAND on first math use (filesDir/jlmfonts,
             // the v1.3.73 tesseract pattern). While the pack is absent the
             // drawable declines — the caller renders the v1.4.20 LaTeX-
             // subset spans (an honest shape, never a crash) and the bubble

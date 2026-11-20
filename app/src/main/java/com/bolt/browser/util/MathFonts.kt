@@ -18,8 +18,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * The user has asked twice for a smaller APK. v1.4.21 shipped
  * jlatexmath-android with its whole bundled font set: 30 TTF binaries,
- * 455,768 B raw — about 470 KB of the 3,325,166 B v1.4.23 APK (TTFs barely
- * deflate). The ENGINE CODE stays bundled (the thin AAR,
+ * 455,768 B raw — 286,982 B of the 3,325,166 B v1.4.23 APK (stored
+ * compressed; the user's "~470 KB" was the raw-asset measure). The
+ * ENGINE CODE stays bundled (the thin AAR,
  * scripts/thin_jlatexmath.py); the FONT PACK downloads ONCE on the first
  * math render — exactly the v1.3.73 tesseract.js law — into
  * filesDir/jlmfonts, and every later render reads it locally.

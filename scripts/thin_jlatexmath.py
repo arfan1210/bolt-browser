@@ -2,11 +2,12 @@
 """v1.4.24 — THE FONT-PACK SPLIT (the size law, take two; scripts/thin_jlatexmath.py).
 
 The user has asked twice for a smaller APK. v1.4.21 brought jlatexmath-android
-in with its whole bundled font set: 30 TTF binaries, 455,768 B raw (~470 KB in
-the shipped APK — TTFs barely deflate), out of a 3,325,166 B APK. The engine
-CODE stays bundled; the FONT PACK becomes an on-demand download (the v1.3.73
-tesseract.js pattern: fetch on first math render, cache in filesDir, fall back
-to the v1.4.20 LaTeX-subset spans when the download fails — never a crash).
+in with its whole bundled font set: 30 TTF binaries, 455,768 B raw, stored at
+286,982 B compressed in the 3,325,166 B v1.4.23 APK (the user's "~470 KB" was
+the raw-asset measure). The engine CODE stays bundled; the FONT PACK becomes
+an on-demand download (the v1.3.73 tesseract.js pattern: fetch on first math
+render, cache in filesDir, fall back to the v1.4.20 LaTeX-subset spans when
+the download fails — never a crash).
 
 WHAT THIS SCRIPT DOES (offline-reproducible, the rasterize_engine_logos.py
 precedent for script-generated binary artifacts):
