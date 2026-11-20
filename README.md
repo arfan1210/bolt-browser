@@ -1802,6 +1802,17 @@ session, 2026-11-20):
    grid hybrid, test_screen's grid vision call, test_blobdl's
    deliberate pwFillResult bridge — 28 -> 29). The new test_v1425.py
    rides the suite; the launch smoke rung stays exactly where it was.
+7. *Known-good numbers (v1.4.25, release build):* APK 3,140,403 B
+   (from v1.4.24's 3,037,761 B — the +102 KB is the CORE FONT REBUY:
+   7 TTFs, 166,720 B raw / ~102 KB stored-compressed; 3.0 MB, well
+   under v1.4.23's 3,325,166 B, the reliability price the round chose
+   deliberately); signature verifies against the pinned cert
+   bcd57eb4...; suite: all gates green INCLUDING the launch smoke
+   (Robolectric, 2 tests, 0 failures) and the five v1.4.25 probes (the
+   thin-AAR core-font inspection, the retry/metered/status + colour +
+   grid tables, the mock-DOM fill relay — 10 verdicts — and the
+   FA-glyph walk); dual-published on both repos with md5-verified
+   assets.
 
 **Plans / candidates for future versions (v1.4.25 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
