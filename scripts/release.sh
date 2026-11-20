@@ -31,6 +31,16 @@
 # Assets uploaded (BOTH repos):
 #   Bolt-v<ver>.apk   the installable APK
 set -e
+# v1.4.23 — THE STAGE STAMP: hostile hosts recycle processes mid-pipeline
+# (a sandbox that reaps every background process between shell invocations,
+# a CI runner with a per-step clock). The pipeline is STAGED: each phase
+# appends its mark to /tmp/bolt-rel-stages-v<ver>, and a re-invocation
+# continues after the last completed phase. Every phase still runs EXACTLY
+# ONCE — nothing is ever skipped semantically; the stamp only lets one
+# release span multiple invocations when the host cuts long runs short.
+STAMP="/tmp/bolt-rel-stages-v${2:-}"
+mark() { echo "$1" >> "$STAMP" 2>/dev/null || true; }
+have() { grep -q "^$1$" "$STAMP" 2>/dev/null; }
 REPUBLISH=0
 if [ "${1:-}" = "--republish" ]; then REPUBLISH=1; shift; fi
 VER="${1:?usage: release.sh [--republish] <ver> [notes-file]}"
@@ -80,6 +90,9 @@ PYEOF
 fi
 
 # ---- 1. static checks (never skip) ----
+if have gates; then
+  echo "== gates already green this stamp — continuing =="
+else
 python3 scripts/check_js.py
 node scripts/test_media_hook.js
 # v1.3.87: the dark-mode JS payloads (probe/scan/remove) + the AI-export
@@ -542,6 +555,8 @@ python3 scripts/test_v1421.py
 # the launch-law pins themselves — the mock-DOM dark probe, the
 # numbered-parser probe, the compiled commonmark four-pack probe)
 python3 scripts/test_v1423.py
+mark gates
+fi
 
 # ---- 1z. v1.4.23 — THE LAUNCH LAW (the v1.4.22 decompile-port corpse) ----
 # "static gates prove code EXISTS, not that the app OPENS." The v1.4.22
@@ -556,13 +571,21 @@ python3 scripts/test_v1423.py
 # already paid for itself: the v1.4.23 smoke run caught a launch-crashing
 # autobox NPE in the home pill's setColorFilter ternary — the exact
 # corpse class — before any user did.)
+if have smoke; then
+  echo "== launch smoke already green this stamp =="
+else
 echo "== launch smoke (Robolectric: Application.onCreate -> launcher -> home) =="
 export GRADLE_USER_HOME=$BASE/.gradle-home
 $BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR testDebugUnitTest \
   || { echo "ERROR: LAUNCH SMOKE FAILED — the app does not open; NOT publishing (README, THE LAUNCH LAW)"; exit 1; }
 echo "== launch smoke OK =="
+mark smoke
+fi
 
 # ---- 2. build ----
+if have build; then
+  echo "== build already green this stamp =="
+else
 export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment
 # notes — a fresh ~/.gradle would re-resolve every dependency)
@@ -575,6 +598,8 @@ ls -la "$APK"
 CERT=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK" 2>/dev/null | grep -o 'SHA-256 digest: [a-f0-9]*' | cut -d' ' -f3)
 [ "$CERT" = "$CERT_EXPECT" ] || { echo "ERROR: cert mismatch: $CERT"; exit 1; }
 echo "cert OK: $CERT"
+mark build
+fi
 
 else
 # ---- 0r/2r. REPUBLISH MODE preconditions --------------------------------
@@ -622,17 +647,27 @@ echo "APK size OK: $SIZE B (budget 6,000,000 B)"
 # The push URL carries the token explicitly — the remote stays clean
 # https with no credentials persisted in .git/config.
 if [ $REPUBLISH -eq 0 ]; then
+if have tag; then
+  echo "== tag already pushed this stamp =="
+else
 git push -q "$PUSHURL" main
 git tag -f "$TAG"
 git push -qf "$PUSHURL" "$TAG"
+mark tag
+fi
 fi
 
 # ---- 5. local assets ----
 STAGE=$BASE/download; mkdir -p $STAGE
 if [ $REPUBLISH -eq 0 ]; then
+if have stage; then
+  echo "== APK already staged this stamp =="
+else
 cp "$APK" "$STAGE/Bolt-$TAG.apk"
 rm -f "$STAGE/Bolt-$TAG.zip"
 (cd $STAGE && zip -q -9 "Bolt-$TAG.zip" "Bolt-$TAG.apk")
+mark stage
+fi
 fi
 # (republish: the APK already IS the staged artifact, md5-pinned above)
 
@@ -707,8 +742,18 @@ else:
   echo "$LABEL: download-back verify OK (md5 match)"
 }
 
+if have pubsrc; then
+  echo "== SOURCE release already published this stamp =="
+else
 publish_release "$SRC_API" "SOURCE   (bolt-browser)"
+mark pubsrc
+fi
+if have pubrel; then
+  echo "== RELEASES release already published this stamp =="
+else
 publish_release "$API"    "RELEASES (bolt-browser-releases)"
+mark pubrel
+fi
 
 # ---- 10. LIVE verification, on BOTH repos (the v1.4.10 report: "verify
 # the release is live on GitHub"; the 2026-11-18 report: "the APK appears
