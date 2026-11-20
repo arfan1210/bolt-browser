@@ -395,6 +395,11 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+<!-- v1.4.25 (2026-11-21): the reliability + coverage round — the core
+         math-font rebuy (offline/metered math + the retry law + the
+         manual chip), the AiRender colour law, the screen-translate
+         grid, the per-frame password fill, the dark font-icon ride -->
+<item>1.4.25|Math formulas now render reliably even on mobile data (the seven core math fonts ship inside the app — fractions, matrices, Greek and symbol formulas work offline immediately; the advanced-font download retries automatically instead of giving up, and a Math fonts chip in the AI panel shows the live status and forces a download even on metered data); colored text in AI replies now shows its real color (explicit span/font colors, and code blocks keep distinct keyword/string/comment/number colors); screen translate now covers the WHOLE page instead of one strip (the screen is read cell by cell at full resolution, each cell the OCR cannot read gets an AI pass placed on that exact cell, and all translations merge into one overlay); the saved-password fill now reaches login forms embedded from other sites (the SSO-iframe case) and reports its result with a toast instead of failing silently; and forced dark mode lifts font icons like the Moodle hamburger to a clearly visible light instead of a faint gray.</item>
 <!-- v1.4.24 (2026-11-21): the corpse-fix + size round — the stale-snapshot
          navigation kill, the OCR source-language law, the jlatexmath
          font-pack split (on-demand, the tesseract pattern), the dark

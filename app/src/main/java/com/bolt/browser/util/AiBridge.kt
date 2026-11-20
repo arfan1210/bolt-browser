@@ -355,6 +355,174 @@ object AiBridge {
         }
     }
 
+    /** v1.4.25 — THE GRID VISION CALL (text-only, NO box_2d — the thin-strip
+     *  corpse: "vision ok lines=1", ONE hallucinated box painted a right-
+     *  edge strip while the rest of the page stayed untranslated). The
+     *  model reads the TILE image and answers with ONLY the translation as
+     *  plain text; the FIXED GRID CELL places it (ScreenTranslate never
+     *  trusts the model's coordinates again). [iw]/[ih] ride the prompt
+     *  only for grounding; [screenCtx] is the OCR transcript when one
+     *  exists (terminology + continuity). Returns null with [lastError]
+     *  set on failure. */
+    @JvmStatic
+    fun visionTileTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int,
+                            screenCtx: String?): String? {
+        lastError = ""
+        val p = tilePrompt(tl, screenCtx)
+        return if (prov(ctx) == "gemini") {
+            val m = translateModel(ctx)
+            val chain = buildChain(m)
+            for (name in chain) {
+                val r = geminiTileText(ctx, name, p, b64)
+                if (r != null) {
+                    noteAnsweredModel(ctx, m, name)
+                    return r
+                }
+                if (!advanceChain(lastError)) return null
+            }
+            null
+        } else {
+            openaiTileText(ctx, p, b64)
+        }
+    }
+
+    /** v1.4.25 — PURE (probe-pinned): the TEXT-ONLY tile prompt — read every
+     *  piece of text in the image (small, stylised, any script, UI labels
+     *  included) and answer with ONLY the natural [tlName] translation as
+     *  plain text; no coordinates, no JSON, no commentary, no quotes. */
+    internal fun tilePrompt(tl: String, screenCtx: String?): String {
+        val tlName = langName(tl)
+        var p = ("You are an expert OCR translator. Read EVERY piece of text " +
+                "in this image — small, stylised, any language or script, " +
+                "including UI labels, menus, headings and captions. Reply " +
+                "with ONLY the natural $tlName translation of ALL that text, " +
+                "as plain text with line breaks roughly where the source lines " +
+                "were. No coordinates, no JSON, no markdown, no commentary. " +
+                "If the image contains no text at all, reply with nothing.")
+        if (!screenCtx.isNullOrEmpty()) {
+            p += "\nContext: OCR already read this text elsewhere on the same " +
+                    "screen: " + screenCtx.take(4000) +
+                    " — use it for terminology; report ONLY the text visible " +
+                    "in THIS image."
+        }
+        return p
+    }
+
+    /** v1.4.25 — the Gemini text-only tile call: the vision body WITHOUT
+     *  responseMimeType (the reply is PLAIN TEXT, not a JSON array — a JSON
+     *  mime would force fences/quotes onto the translation), an 8192 output
+     *  cap (a tile is a sixth of a screen; the 400 ladder-down for
+     *  low-ceiling models rides), a MAX_TOKENS retry at 16384 whose partial
+     *  text is accepted (a sixth of a screen cannot need more). Returns
+     *  the trimmed text, or null with lastError set. */
+    private fun geminiTileText(ctx: Context, mdl: String, p: String, b64: String): String? {
+        for (cap in intArrayOf(8192, 16384)) {
+            var c = cap
+            var r = geminiPostRetry(ctx, mdl, tileBody(p, b64, c))
+            while (r.first == 400) {
+                val nxt = cap400Next(c)
+                if (nxt <= 0) break
+                c = nxt
+                r = geminiPostRetry(ctx, mdl, tileBody(p, b64, c))
+            }
+            if (r.first != 200) {
+                lastError = shortErr(r.first, r.second)
+                return null
+            }
+            val fr = finishReason(r.second)
+            val txt = stripFences(geminiText(r.second))
+            try {
+                Diag.log(ctx, usageDiag(fr,
+                        usageInt(r.second, "thoughtsTokenCount"),
+                        usageInt(r.second, "candidatesTokenCount"), txt.length) + " tile")
+            } catch (_: Throwable) {}
+            if (txt.isBlank()) {
+                if (fr == "MAX_TOKENS" && cap < 16384) continue
+                lastError = "the model read no text in this region"
+                return null
+            }
+            return txt
+        }
+        return null
+    }
+
+    /** v1.4.25 — the tile request body: [visionBody] WITHOUT the JSON
+     *  responseMimeType (plain text out) — the ONLY difference. */
+    private fun tileBody(p: String, b64: String, cap: Int): JSONObject {
+        val body = JSONObject()
+        val parts = JSONArray()
+        parts.put(JSONObject().put("text", p))
+        parts.put(JSONObject().put("inline_data",
+            JSONObject().put("mime_type", "image/jpeg").put("data", b64)))
+        body.put("contents", JSONArray().put(
+            JSONObject().put("role", "user").put("parts", parts)))
+        body.put("generationConfig", JSONObject()
+                .put("temperature", 0.1).put("maxOutputTokens", cap))
+        return body
+    }
+
+    /** v1.4.25 — PURE: strip stray markdown fences a model may still wrap a
+     *  plain-text reply in (the prompt forbids them; some models add them
+     *  anyway). */
+    internal fun stripFences(s: String): String {
+        var t = s.trim()
+        while (t.startsWith("```")) {
+            t = t.removePrefix("```").trim()
+            if (t.startsWith("text") || t.startsWith("plain")) {
+                t = t.substringAfter('\n', t)
+            }
+            t = t.removeSuffix("```").trim()
+            if (t.length > 2) break
+        }
+        return t.trim()
+    }
+
+    /** v1.4.25 — the OpenAI-compatible text-only tile call (the same shape
+     *  as [openaiCall] minus the box parsing: the content string IS the
+     *  translation). */
+    private fun openaiTileText(ctx: Context, p: String, b64: String): String? {
+        var c: HttpURLConnection? = null
+        return try {
+            val mdl = translateModel(ctx)
+            if (mdl.isBlank()) { lastError = "set a model in the AI settings"; return null }
+            val content = JSONArray()
+            content.put(JSONObject().put("type", "text").put("text", p))
+            content.put(JSONObject().put("type", "image_url").put("image_url",
+                JSONObject().put("url", "data:image/jpeg;base64," + b64)))
+            val body = JSONObject()
+                .put("model", mdl)
+                .put("messages", JSONArray().put(
+                    JSONObject().put("role", "user").put("content", content)))
+                .put("max_tokens", 6000)
+                .put("temperature", 0.1)
+            val base = baseUrl(ctx).trimEnd('/')
+            c = URL(base + "/chat/completions").openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.connectTimeout = 15000
+            c.readTimeout = 120000
+            c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.setRequestProperty("Authorization", "Bearer " + key(ctx))
+            val out = body.toString().toByteArray(Charsets.UTF_8)
+            c.setFixedLengthStreamingMode(out.size)
+            c.outputStream.use { it.write(out) }
+            val code = try { c.responseCode } catch (_: Throwable) { -1 }
+            val txt = readText(if (code in 200..299) c.inputStream else c.errorStream)
+            if (code != 200) { lastError = shortErr(code, txt); return null }
+            val o = JSONObject(txt)
+            val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                ?: run { lastError = "empty reply"; return null }
+            val t = stripFences(msg.optString("content", ""))
+            if (t.isBlank()) { lastError = "the model read no text in this region"; return null }
+            t
+        } catch (t: Throwable) {
+            lastError = (t.message ?: t.javaClass.simpleName).take(80)
+            null
+        } finally {
+            try { c?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
     /** Gemini native: POST v1beta/models/{model}:generateContent.
      * v1.3.76 — thinkingLevel minimal: the 3.x flash models think by
      * default and the field called Bolt AI "kind of slow and performance

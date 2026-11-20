@@ -1096,24 +1096,35 @@ public class MediaHook {
                 + "if(!el||!el.getBoundingClientRect)return null;"
                 + "var r=el.getBoundingClientRect();"
                 + "return {t:Math.round(r.top),b:Math.round(r.bottom)};}catch(e){return null;}};\n"
-                // v1.3.79 — fill honours the username-first flow: focused
-                // field is the username -> fill it (the password lands when
-                // screen 2's field takes focus and re-arms the chip);
-                // focused field (or any) is a password -> user + password.
+                // v1.4.25 — THE ROBUST FILL (the silent-guard corpse: the
+                // DIU login lives in a cross-origin SSO iframe
+                // (auth1.diu.edu.bd) the main frame never reaches — the old
+                // guard `__boltFillPw&&…` in the MAIN frame alone found
+                // nothing and failed SILENTLY). The fill now rides the
+                // NATIVE value setter (React/Vue-controlled inputs notice)
+                // with input/change events, the username hunt widens
+                // (autocomplete/name/id/mail/phone), and the PER-FRAME
+                // FrameHooks relay routes the tap to the frame that
+                // actually holds the password field (util/FrameHooks.kt
+                // section 5 — __boltFillPwAll); the outcome is reported
+                // through Bolt.pwFillResult, never silent.
+                + "function __boltSetVal(el,v){try{var d=null;"
+                + "try{d=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');}catch(x){}"
+                + "try{if(d&&d.set){d.set.call(el,v);}else{el.value=v;}}catch(x){try{el.value=v;}catch(y){}}"
+                + "try{el.dispatchEvent(new Event('input',{bubbles:true}));}catch(x){}"
+                + "try{el.dispatchEvent(new Event('change',{bubbles:true}));}catch(x){}}catch(e){}}\n"
                 + "window.__boltFillPw=function(u,p){try{var el=null;"
                 + "var ins=document.querySelectorAll('input[type=password]');"
                 + "if(window.__boltPwFocused)el=window.__boltPwFocused;else if(ins.length)el=ins[0];"
                 + "if(!el)return false;"
                 + "var ty=(el.type||'').toLowerCase();"
                 + "if(ty!=='password'){"
-                + "el.value=u;el.dispatchEvent(new Event('input',{bubbles:true}));"
-                + "el.dispatchEvent(new Event('change',{bubbles:true}));"
+                + "__boltSetVal(el,u);"
                 + "if(ins.length){el=ins[0];}else{return true;}}"
                 + "var f=el.form?el.form:(el.closest?el.closest('form'):null);"
                 + "var us=f?__boltUserField(f):__boltUserField(document);"
-                + "if(us&&u&&us!==el){us.value=u;us.dispatchEvent(new Event('input',{bubbles:true}));us.dispatchEvent(new Event('change',{bubbles:true}));}"
-                + "el.value=p;el.dispatchEvent(new Event('input',{bubbles:true}));"
-                + "el.dispatchEvent(new Event('change',{bubbles:true}));"
+                + "if(us&&u&&us!==el){__boltSetVal(us,u);}"
+                + "__boltSetVal(el,p);"
                 + "return true;}catch(e){return false;}};\n"
                 // ---- v1.3.39 PROFILES (menu-3 #13): address/card autofill ----
                 // Focusing a form-ish field (autocomplete/name/id heuristics)
@@ -1518,11 +1529,21 @@ public class MediaHook {
      *      even inside photo context, even banner-shaped. Large photos
      *      and banner-shaped COLORFUL images stay content. The census
      *      counts mono now (the next field report reads it back).
-     *  (B) FONT-ICON GUARANTEE — icon-font glyphs (FontAwesome and the
-     *      family) and their ::before/::after pseudos ride the inversion
-     *      like every other text; a site that pins a glyph to a fixed DARK
-     *      color inside a preserved dark subtree gets the upward clamp
-     *      (raiseCss lifts it to a visible mid-gray on the dark ground).
+     *  (B) FONT-ICON GUARANTEE — v1.4.25 — THE RIDE + LIGHT LAW (the
+     *      faint-hamburger corpse: the Moodle menu glyph is a Font Awesome
+     *      <i class="fa fa-bars"> — not IMG/SVG, so the v1.4.24 icon
+     *      classifier skipped it, the census read mono-detected but
+     *      ic=0, and the old font-rescue only lifted lum < 0.25 to a
+     *      153 mid-gray). Icon-font glyph elements and their
+     *      ::before/::after pseudos RIDE THE PAGE INVERSION like text
+     *      (dark -> light): never un-inverted, never clamped to a faint
+     *      gray — the inv===1 clamp SKIPS icon-font glyphs entirely. A
+     *      glyph pinned dark OR MID (lum < 0.55) inside a preserved dark
+     *      subtree lifts to the VISIBLE light (rgb(232,232,232)) — inline
+     *      on the element (svSave-restorable), and via an !important
+     *      pseudo rule (sufficient specificity over any site-pinned
+     *      glyph color). The census counts fi so the next field report
+     *      reads the glyphs back.
      *  (C) CONTRAST RESCUE — after the walk, one bounded pass over small
      *      un-inverted media that is dark-on-dark (SVG fill/stroke
      *      luminance; same-origin IMG via canvas sample) adds the IC class
@@ -1542,7 +1563,7 @@ public class MediaHook {
                 + "var DK='__boltDK',NI='__boltNI',SV='__boltSV',IC='__boltIC';var n=0;"
                 // the census object (v1.4.23): per-page decision counts the
                 // BrowserActivity diag reads back 2.5 s after the commit
-                + "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0};"
+                + "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
@@ -1567,11 +1588,19 @@ public class MediaHook {
                 + "var f=153/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
                 + "return a<1?('rgba('+r+','+g+','+b+','+a+')'):('rgb('+r+','+g+','+b+')');"
                 + "}catch(e){return null}}"
+                // v1.4.25 — THE VISIBLE LIGHT (the faint-glyph corpse): a
+                // font-icon glyph pinned dark/mid on a preserved dark ground
+                // lifts to THIS, not the old 153 mid-gray raise (the Moodle
+                // hamburger read as a faint smudge; 232/255 rides clearly on
+                // any dark card). PURE — the constant is the gate probe.
+                + "function lightCss(){return 'rgb(232,232,232)';}"
                 // v1.4.23 — THE UPWARD CLAMP (the font-icon guarantee half):
                 // a glyph PINNED to a dark color (lum < 0.4, y < 102) on a
                 // dark ground is lifted to the same 153 mid-gray floor the
                 // downward clamp uses — a pinned-dark icon glyph becomes a
                 // visible gray instead of vanishing into the dark ground.
+                // (v1.4.25: fontFloor itself now lifts to lightCss — the
+                // VISIBLE light, not this mid-gray.)
                 + "function raiseCss(c){try{"
                 + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
                 + "if(!m)return null;"
@@ -1674,12 +1703,18 @@ public class MediaHook {
                 // border colors (the thin-strokes/icons/text surfaces),
                 // never backgrounds, never the media family. v1.4.20 added
                 // the thickness bump + the icon-font glyph stroke.
+                // v1.4.25 — THE RIDE LAW: an icon-font glyph element RIDES
+                // the page inversion like text (dark flips to light; a
+                // pinned light glyph flips to dark exactly like text does)
+                // — never clamped to the faint 153 gray. The clamp only
+                // touches NON-icon-font text/pseudo colors.
                 + "function strokeFloor(el,cs){try{"
                 + "var l=lumOf(cs.color);"
                 + "var fontIc=iconFont(cs);"
-                + "if(l!==null&&l>0.8){var nc=clampCss(cs.color);"
-                + "if(nc){svSave(el);el.style.color=nc;"
-                + "if(fontIc){try{el.style.webkitTextStroke='0.45px currentColor';}catch(x){}}}}"
+                + "if(l!==null&&l>0.8){"
+                + "var nc=fontIc?null:clampCss(cs.color);"
+                + "if(nc){svSave(el);el.style.color=nc;}"
+                + "if(fontIc){try{svSave(el);el.style.webkitTextStroke='0.45px currentColor';}catch(x){}}}"
                 + "if(parseFloat(cs.borderTopWidth)>0||parseFloat(cs.borderBottomWidth)>0"
                 + "||parseFloat(cs.borderLeftWidth)>0||parseFloat(cs.borderRightWidth)>0){"
                 + "var bl=lumOf(cs.borderTopColor);"
@@ -1714,9 +1749,14 @@ public class MediaHook {
                 // rule keyed on a numeric data attribute clamps them (the
                 // inv===1 half). v1.4.23 adds the RAISE half: a pseudo glyph
                 // of an ICON-FONT element pinned DARK inside a preserved
-                // dark subtree (inv===0) gets lifted to the same mid-gray
-                // through the same rule channel. Only LEAVES are probed,
-                // lookups capped (600) and rules capped (150).
+                // dark subtree (inv===0) gets lifted through the same rule
+                // channel. v1.4.25 — THE RIDE + LIGHT LAW (the faint FA
+                // hamburger corpse): an ICON-FONT pseudo glyph RIDES the
+                // inversion like text — the inv===1 clamp SKIPS it (no
+                // faint 153 gray) — and the inv===0 lift goes to the
+                // VISIBLE light (232) with !important specificity so any
+                // site-pinned dark/mid glyph color loses. Only LEAVES are
+                // probed, lookups capped (600) and rules capped (150).
                 + "var psLook=0,psN=0;"
                 + "function psRule(r){try{"
                 + "var s=document.getElementById('bolt-psfl');"
@@ -1731,43 +1771,45 @@ public class MediaHook {
                 + "&&pb.color&&pb.color!==cs.color){"
                 + "var pl=lumOf(pb.color);"
                 + "if(inv===1){"
-                + "if(pl!==null&&pl>0.8){var nc=clampCss(pb.color);"
+                // v1.4.25 — the RIDE law: icon-font pseudos are never
+                // clamped to the faint gray (they ride: dark->light)
+                + "if(!iconFont(cs)&&pl!==null&&pl>0.8){var nc=clampCss(pb.color);"
                 + "if(nc){psN++;var k=el.getAttribute('data-boltpb');"
                 + "if(!k){k=''+psN;el.setAttribute('data-boltpb',k);}"
                 + "psRule('[data-boltpb='+k+']::before{color:'+nc+'}');}}}"
-                + "else if(inv===0&&iconFont(cs)&&pl!==null&&pl<0.25){"
-                + "var nr=raiseCss(pb.color);"
-                + "if(nr){psN++;var k2=el.getAttribute('data-boltpb');"
+                + "else if(inv===0&&iconFont(cs)&&pl!==null&&pl<0.55){"
+                + "psN++;var k2=el.getAttribute('data-boltpb');"
                 + "if(!k2){k2=''+psN;el.setAttribute('data-boltpb',k2);}"
-                + "psRule('[data-boltpb='+k2+']::before{color:'+nr+'}');}}}"
+                + "psRule('[data-boltpb='+k2+']::before{color:'+lightCss()+'!important}');}}"
                 + "var pa=null;try{pa=getComputedStyle(el,'::after');}catch(x){}"
                 + "if(pa&&pa.content&&pa.content!=='none'&&pa.content!=='normal'"
                 + "&&pa.color&&pa.color!==cs.color){"
                 + "var al=lumOf(pa.color);"
                 + "if(inv===1){"
-                + "if(al!==null&&al>0.8){var na=clampCss(pa.color);"
+                + "if(!iconFont(cs)&&al!==null&&al>0.8){var na=clampCss(pa.color);"
                 + "if(na){psN++;var j=el.getAttribute('data-boltpa');"
                 + "if(!j){j=''+psN;el.setAttribute('data-boltpa',j);}"
                 + "psRule('[data-boltpa='+j+']::after{color:'+na+'}');}}}"
-                + "else if(inv===0&&iconFont(cs)&&al!==null&&al<0.25){"
-                + "var nrr=raiseCss(pa.color);"
-                + "if(nrr){psN++;var j2=el.getAttribute('data-boltpa');"
+                + "else if(inv===0&&iconFont(cs)&&al!==null&&al<0.55){"
+                + "psN++;var j2=el.getAttribute('data-boltpa');"
                 + "if(!j2){j2=''+psN;el.setAttribute('data-boltpa',j2);}"
-                + "psRule('[data-boltpa='+j2+']::after{color:'+nrr+'}');}}}"
+                + "psRule('[data-boltpa='+j2+']::after{color:'+lightCss()+'!important}');}}"
                 + "}catch(e){}}"
                 // v1.4.23 — THE FONT-ICON RAISE (the element half of the
-                // guarantee): an icon-font glyph element PINNED to a dark
-                // color (lum < 0.25) inside a PRESERVED dark subtree
-                // (inv===0 — the walk kept the site card dark) is lifted to
-                // the 153 mid-gray by raiseCss. Under the inversion a dark
-                // glyph flips light by itself, so the raise only ever fires
-                // on the un-inverted side; body text never matches
-                // iconFont.
+                // guarantee), v1.4.25 — THE VISIBLE LIGHT + WIDER NET (the
+                // Moodle FA hamburger corpse: a fa-bars glyph pinned to a
+                // MID gray on a preserved dark header sat there faint — the
+                // old raise only caught lum < 0.25 and lifted to a 153
+                // mid-gray besides). The net now catches any glyph below
+                // 0.55 luminance on the preserved dark side and lifts to
+                // the VISIBLE light (232). Under the inversion a dark
+                // glyph flips light by itself — the floor never fires on
+                // the inverted side; body text never matches iconFont.
                 + "function fontFloor(el,cs){try{"
                 + "if(!iconFont(cs))return;"
                 + "var l=lumOf(cs.color);"
-                + "if(l!==null&&l<0.25){var nc=raiseCss(cs.color);"
-                + "if(nc){svSave(el);el.style.color=nc;}}"
+                + "if(l!==null&&l<0.55){svSave(el);el.style.color=lightCss();"
+                + "cnt.fi++;}"
                 + "}catch(e){}}"
                 // v1.4.23 — the media family law with the DEFAULT-FLIP: a
                 // small IMG/SVG that RIDES the flip is NOT media — it
@@ -1797,6 +1839,7 @@ public class MediaHook {
                 // adds DK on top of the IC filter (one class, one meaning)
                 + "try{if(el.classList&&el.classList.contains(IC))return inv;}catch(x){}"
                 + "var cs;try{cs=getComputedStyle(el);}catch(x){return inv;}"
+                + "try{if(iconFont(cs))cnt.fi++;}catch(x){}"
                 + "try{if(cs.filter&&cs.filter!=='none')return inv;}catch(x){}"   // never clobber a site's own filter
                 + "var want=inv;"
                 + "try{var bi=cs.backgroundImage;"
@@ -1916,17 +1959,21 @@ public class MediaHook {
 
     /** v1.4.23 — THE CENSUS READER: darkSmartJs publishes its per-page
      *  decision counts into window.__boltDarkCount ({small, ic, ni,
-     *  rescue, mono}); this reader returns them as the display string the
+     *  rescue, mono, fi}); this reader returns them as the display string the
      *  BrowserActivity diag line logs after the 2.5 s late re-probe
-     *  (dark icons <host> small=N ic=N ni=N rescue=N mono=N). Empty
+     *  (dark icons <host> small=N ic=N ni=N rescue=N mono=N fi=N). Empty
      *  string when the walk has not published yet (no inversion ran / not
      *  yet). v1.4.24: mono counts the small media classed monochrome
-     *  glyphs — the over-keep corpse read-back field. */
+     *  glyphs — the over-keep corpse read-back field. v1.4.25: fi counts
+     *  the font-icon glyph elements the walk saw (and lifted to the
+     *  visible light where pinned dark/mid on a preserved dark ground) —
+     *  the FA-hamburger read-back (the glyph should count as INVERTED/
+     *  lifted, not mono-only). */
     public static String darkCountJs() {
         return "(function(){try{var o=window.__boltDarkCount;"
                 + "if(!o)return '';"
                 + "return 'small='+o.small+' ic='+o.ic+' ni='+o.ni"
-                + "+' rescue='+o.rescue+' mono='+(o.mono||0);"
+                + "+' rescue='+o.rescue+' mono='+(o.mono||0)+' fi='+(o.fi||0);"
                 + "}catch(e){return ''}})()";
     }
 

@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 138" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
-need('versionName "1.4.24"' in gradle, 'versionName "1.4.24"')
+need("versionCode 139" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.25"' in gradle, 'versionName "1.4.25"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -230,12 +230,17 @@ need("lastParseSalvaged" in ab_code and 'fr == "MAX_TOKENS" && lastParseSalvaged
 need("internal fun shouldTile(err: String): Boolean" in ab_code
      and "const val CUT_OFF_ERR" in ab_code,
      "the tile contract is PURE (the error string IS the contract)")
-need("internal fun tilePlace(" in st_code and "internal fun iou(" in st_code,
-     "the tile mapping + seam dedup are PURE (probe-pinned)")
-need("translateRegion(a, bmp, tl, g" in st_code  # v1.4.23 re-point (2026-11-20): the tile road rides translateRegion now (translateTiled is the ctx-carrying wrapper; visionFallback calls the region form)
-     and "AiBridge.shouldTile(AiBridge.lastError)" in st_code,
-     "ScreenTranslate tiles the 2x2 grid when the ladder exhausts (the "
-     "caller owns the bitmap)")
+# v1.4.25 re-point (2026-11-21): THE GRID LAW retired the box_2d road
+# entirely — tilePlace/iou (the v1.4.20 pure pair) and translateRegion
+# (the v1.4.23 region form) left with it: every grid cell places its
+# translation on FIXED cell geometry (gridOf/gridCardRect, PURE) and the
+# vision fallback asks for TEXT ONLY (visionTileTranslate). The shouldTile
+# hand-off pin below still rides the MAX_TOKENS cut.
+need("internal fun gridOf(w: Int, h: Int): Array<IntArray>" in st_code
+     and "internal fun gridCardRect(w: Int, h: Int, rect: IntArray): Rect" in st_code,
+     "the grid geometry + card rects are PURE (probe-pinned)")
+need("AiBridge.shouldTile(AiBridge.lastError)" in st_code,
+     "the MAX_TOKENS cut still hands off to the vision grid")
 need('"scr ai tile' in st,
      "the tile Diag breadcrumbs (enter + per-tile failure)")
 
@@ -341,7 +346,7 @@ need("(t.tag as? String) ?: t.text.toString()" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 138") == 1,
+need(gradle.count("versionCode 139") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

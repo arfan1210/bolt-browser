@@ -3853,16 +3853,64 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
-    /** tap on the chip: push the saved login into the page's form. */
+    /** tap on the chip: push the saved login into the page's form.
+     *  v1.4.25 — THE SILENT-GUARD KILL: the old body called
+     *  evalMedia("window.__boltFillPw&&window.__boltFillPw(u,p)") — the &&
+     *  guard failed silently when the function was absent or could not
+     *  reach the form (the DIU login lives in a CROSS-ORIGIN SSO iframe,
+     *  auth1.diu.edu.bd, unreachable from the main frame), and evalMedia
+     *  could even target a BACKGROUND media tab. Now: the ACTIVE tab's
+     *  main frame runs __boltFillPwAll (the FrameHooks per-frame relay
+     *  fills locally AND routes fillPw to every frame that reported a
+     *  login field — the SSO iframe included), the outcome ALWAYS comes
+     *  back through Bolt.pwFillResult (toast + Diag — a miss is visible),
+     *  and a relay that never answers falls to the visible timeout. */
     protected void fillPwFromChip(com.bolt.browser.util.PasswordVault.Entry e) {
         try {
             if (e == null) { hidePwChip(); return; }
             String u = e.user.replace("\\", "\\\\").replace("'", "\\'");
             String p = e.pass.replace("\\", "\\\\").replace("'", "\\'");
-            evalMedia("window.__boltFillPw&&window.__boltFillPw('" + u + "','" + p + "')");
+            Tab t = activeTab();
+            if (t == null || t.web == null) {
+                try {
+                    com.bolt.browser.util.Diag.log(getApplicationContext(), "pw fill fail no-tab");
+                    Fx.toast(this, "No page to fill");
+                } catch (Throwable ignored) {}
+                hidePwChip();
+                return;
+            }
+            pwFillAnswered = false;
+            try {
+                t.web.evaluateJavascript(
+                        "window.__boltFillPwAll&&window.__boltFillPwAll('" + u + "','" + p + "')", null);
+            } catch (Throwable ignored) {}
+            ui.removeCallbacks(pwFillTimeout);
+            ui.postDelayed(pwFillTimeout, 1500);
             hidePwChip();
         } catch (Throwable ignored) {}
     }
+
+    /** v1.4.25 — did a fill answer arrive (bridge or timeout races it off). */
+    protected volatile boolean pwFillAnswered = false;
+
+    /** v1.4.25 — THE VISIBLE MISS: no fillPw/fillRes answer within 1.5 s
+     *  means no frame claimed the login — toast + Diag, never silence. */
+    protected final Runnable pwFillTimeout = new Runnable() {
+        @Override public void run() {
+            try {
+                if (pwFillAnswered) return;
+                pwFillAnswered = true;
+                String host = "";
+                try {
+                    Tab t = activeTab();
+                    host = Fx.hostOf(t == null || t.url == null ? "" : t.url);
+                } catch (Throwable ignored) {}
+                com.bolt.browser.util.Diag.log(getApplicationContext(),
+                        "pw fill fail host=" + host + " (no frame answered)");
+                Fx.toast(BrowserActivity.this, "Couldn't find a login field on this page");
+            } catch (Throwable ignored) {}
+        }
+    };
 
     protected void hidePwChip() {
         ui.removeCallbacks(pwChipRetire);
@@ -7970,6 +8018,28 @@ public class BrowserActivity extends AppCompatActivity {
             ui.post(() -> {
                 try {
                     if (focused) showPwChip(host); else hidePwChip();
+                } catch (Throwable ignored) {}
+            });
+        }
+
+        /** v1.4.25 — THE FILL OUTCOME (the silent-guard kill): the
+         *  per-frame relay (FrameHooks section 5) answers every fill
+         *  attempt — the frame that actually holds the login field
+         *  (a cross-origin SSO iframe included) reports ok/fail with its
+         *  own host; a fill that never answers falls to the Java-side
+         *  timeout. Toast + Diag, so a miss is VISIBLE, never silent. */
+        @JavascriptInterface
+        public void pwFillResult(final boolean ok, final String host) {
+            ui.post(() -> {
+                try {
+                    pwFillAnswered = true;
+                    ui.removeCallbacks(pwFillTimeout);
+                    String h = host == null ? "" : host;
+                    com.bolt.browser.util.Diag.log(getApplicationContext(),
+                            (ok ? "pw fill ok host=" : "pw fill fail host=") + h);
+                    Fx.toast(BrowserActivity.this, ok
+                            ? "Login filled for " + (h.isEmpty() ? "this page" : h)
+                            : "No login field found on " + (h.isEmpty() ? "this page" : h));
                 } catch (Throwable ignored) {}
             });
         }

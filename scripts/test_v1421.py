@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 138" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.24"' in gradle, 'versionName "1.4.24"')
+need("versionCode 139" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.25"' in gradle, 'versionName "1.4.25"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -235,9 +235,9 @@ need("AiBridge.textTranslate(a, lines, tl)" in st_code  # v1.4.23 re-point (2026
      "OCR FIRST, ONE pure-text request, the vision path demoted to the "
      "genuine-cut / OCR-blind fallback (the hybrid; the old proactive-"
      "tiles pin retired)")
-need("scr ai tile split" in st,
-     "the per-tile escalation breadcrumb: a quadrant that still exhausts "
-     "the cap splits once more (shouldTile stays live as its contract; RAW)")
+need("scr ai tile $i chars=" in st,  # v1.4.25 re-point (2026-11-21): the grid law's per-tile char-yield breadcrumb (the 2x2 split-ladder left with the box_2d road)
+     "the per-tile yield breadcrumb: every grid cell's OCR yield rides "
+     "the diag (shouldTile stays live as the MAX_TOKENS cut's contract; RAW)")
 need('getString("translateModel", "")' in ab,
      "the translate-model picker: a dedicated model for screen translate, "
      "the shared chat model otherwise (RAW)")
@@ -331,7 +331,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 138") == 1,
+need(gradle.count("versionCode 139") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

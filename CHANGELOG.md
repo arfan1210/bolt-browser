@@ -4,6 +4,116 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.25] — 2026-11-21
+
+**The reliability + coverage round: five field-rooted fixes — math fonts that
+work on metered mobile data, colored AI chat text, screen translate that
+covers the whole page, the password fill that reaches cross-origin SSO
+iframes and reports its outcome, and forced-dark font icons that read
+clearly. The launch smoke rung stays in the pipeline (it caught the v1.4.22
+corpse).**
+
+### 1. MATH WORKS RELIABLY (fractions/matrices) — the on-demand cut backfired
+- Field shape: `math dl fail dl base/jlm_cmex10.ttf` on Realme RMX2020 /
+  Android 10, often on METERED mobile data — the pack never landed, so every
+  formula rendered through the weak v1.4.20 LaTeX-subset spans.
+- Root cause: `MathFonts.kt` (a) skipped metered connections entirely, (b)
+  set `failedProc` after ONE failure (no retry until restart), (c) had no
+  manual retry. The URL was valid; the policy was the corpse.
+- The fix, reliability over the last ~100 KB:
+  - THE CORE-FONT REBUY: the 7 CORE fonts (base/jlm_cmex10, base/jlm_cmmi10,
+    base/jlm_cmmib10, latin/jlm_cmr10, maths/jlm_cmsy10, maths/jlm_msam10,
+    maths/jlm_msbm10 — 166,720 B raw) ride the APK again via
+    `scripts/thin_jlatexmath.py`'s CORE set. Fractions, matrices, Greek,
+    integrals, sums and AMS symbols work OFFLINE and ON METERED data
+    immediately. The engine loads typefaces LAZILY (FontInfo.getFont,
+    verified against upstream v0.2.0), so the 23 missing optional fonts
+    cannot break engine init.
+  - The remaining 23 optional fonts (euler/fraktur, optional CM shapes,
+    special/stmary/dsrom, rsfs — 289,048 B raw) stay ON-DEMAND for advanced
+    TeX.
+  - THE RETRY LAW: `failedProc` is dead — a failed attempt stamps a
+    20-second back-off and the NEXT math render retries; the MANUAL door
+    ("Download full math fonts" chip in the Bolt AI panel, with live status
+    downloading/ready/failed-retry) forces an attempt that ignores both the
+    back-off AND the metered skip. Core math never depends on the network.
+  - APK lands at ~3.15 MB (still below v1.4.23's 3,325,166 B).
+
+### 2. COLOURED TEXT in Bolt AI chat
+- Root cause: AiRender's HTML handler ignored explicit color entirely.
+- The fix: `<span style="color:…">` and `<font color="…">` paint their
+  range through a ForegroundColorSpan — hex (#rgb/#rrggbb/#rrggbbaa),
+  rgb()/rgba() (percent channels included) and the common named colors,
+  parsed SAFELY (`AiRender.parseHtmlColor`, PURE: an unparseable colour
+  colours nothing; translucent alpha below 0.4 declines rather than wash
+  out). The code-block syntax colorizer (tokenizeCode/codeColors) is
+  verified to emit distinct keyword/string/comment/number colors.
+
+### 3. SCREEN TRANSLATE COVERS THE WHOLE PAGE (not a thin right strip)
+- Field shape: `OCR chars=54 lines=5` -> vision fallback ->
+  `vision ok lines=1` (one hallucinated box_2d) — two failures: OCR
+  under-reads, vision trusts invented boxes.
+- The fix, THE GRID LAW: the screen is cut into a 2x3 (portrait) / 3x2
+  (landscape) grid; every cell is OCR'd at NATIVE resolution (the retired
+  whole-screen ≤1600-px encode halved a modern 1440x3088 screenshot — the
+  small-text under-read's other half), with a MILD 2/98 percentile contrast
+  stretch (the old manga-era hard stretch hurt general text; PSM 3 auto
+  layout stays). A cell that under-reads (< 20 chars) gets a per-cell
+  VISION text-only pass OVERLAID ON THAT CELL — the fixed grid region
+  places it, NEVER the model's box_2d. Merge: well-read cells ride the ONE
+  numbered-lines textTranslate; under-read cells ride their vision cards;
+  the whole-screen low-yield floor still guards the aggregate. The
+  OCR-blind worst case is the same grid of text-only cards — full-page
+  coverage is geometric, not hallucination-dependent. The source-language
+  picker stays; per-tile char yield rides the Diag.
+
+### 4. PASSWORD AUTOFILL does something on tap — and says so
+- Field shape: `fillPwFromChip` called
+  `window.__boltFillPw && window.__boltFillPw(u,p)` — the && guard failed
+  SILENTLY when the function was absent or could not reach the form; the
+  DIU login lives on auth1.diu.edu.bd, a cross-origin SSO iframe
+  unreachable from the main frame (and `evalMedia` could even target a
+  background media tab).
+- The fix: `__boltFillPw` is injected into EVERY frame (FrameHooks'
+  document-start script, the v1.3.58 relay), a login field in ANY frame
+  arms the chip with ITS OWN host (the v1.3.91 SSO law, finally per-frame),
+  and the fill is ROUTED: the tap runs `__boltFillPwAll` in the top frame,
+  which fills locally and posts `fillPw` ONLY to the child frames that
+  reported a login field (recorded by window identity — the password is
+  never broadcast). The fill JS is robust: the native value setter + input/
+  change events (React/Vue-controlled inputs notice), the username hunt by
+  autocomplete/name/id/mail/phone. The outcome ALWAYS reports
+  (Bolt.pwFillResult: toast + Diag `pw fill ok/fail host=…`); a relay that
+  never answers falls to the visible 1.5 s timeout.
+
+### 5. THE HAMBURGER / FONT-ICON reads clearly in forced dark
+- Field shape: the Moodle hamburger is a Font Awesome glyph
+  (`<i class="fa fa-bars">`) — not IMG/SVG, so the icon classifier skipped
+  it and the census read mono-detected but ic=0; a mid-gray glyph on a
+  preserved dark header sat FAINT (the old raise only caught lum < 0.25
+  and lifted to a 153 mid-gray besides).
+- The fix, THE RIDE + LIGHT LAW: icon-font glyph elements and their
+  ::before/::after pseudos RIDE THE PAGE INVERSION like text (dark ->
+  light) — the inv===1 clamp SKIPS them (never a faint gray); a glyph
+  pinned dark OR MID (lum < 0.55) inside a preserved dark subtree lifts to
+  the VISIBLE light (rgb(232,232,232)) — inline on the element
+  (svSave-restorable) and via !important pseudo rules (sufficient
+  specificity over any site-pinned glyph color). The census counts fi=N so
+  the next field report reads the glyphs back.
+
+### Gates
+- The v1.4.25 round (scripts/test_v1425.py) pins all five fixes: the
+  core-font AAR inspection + the retry/status decision tables, the
+  colour-parser + code-colorizer probes, the grid geometry + per-tile
+  decision + the mock-DOM fill relay, and the font-icon mock walk. Dated
+  re-points: test_v1412 (the grid OCR encoder), test_v1420 (the box-mapping
+  retirement), test_v1418 (the 4th chain walk site), test_v1423/v1424 (the
+  census fi field, the visible-light lift, the grid hybrid), test_screen
+  (the grid vision call), test_blobdl (the deliberate pwFillResult bridge
+  addition); the standing sweep repinned every gate to 139/1.4.25
+  (repin_gates_1425.py); the launch smoke stays the release-pipeline rung
+  it became in v1.4.23.
+
 ## [1.4.24] — 2026-11-21
 
 **The corpse-fix + size round: two field-rooted corpses (a stale navigation

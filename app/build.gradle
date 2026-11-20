@@ -75,8 +75,25 @@ android {
         // pattern; target ~2.8-2.9 MB), and the dark classifier's
         // monochrome-glyph law (small MONOCHROME media inverts even
         // inside photo context; the census counts mono now).
-        versionCode 138
-        versionName "1.4.24"
+        // v1.4.25 (2026-11-21) — THE RELIABILITY + COVERAGE ROUND: THE
+        // CORE-FONT REBUY (the 7 core math fonts back IN the APK —
+        // fractions/matrices/greek/AMS work offline & on metered data;
+        // the 23 optional fonts stay on-demand with the RETRY law + the
+        // manual Math-fonts chip + live status), the AiRender COLOUR law
+        // (span/font color -> ForegroundColorSpan, safely parsed hex/rgb/
+        // named; the code colorizer verified multi-color), THE SCREEN-
+        // TRANSLATE GRID (2x3 cells, per-tile native-resolution OCR,
+        // per-tile text-only vision for under-read cells — coverage is
+        // geometric, box_2d never trusted again), THE PER-FRAME PASSWORD
+        // FILL (the FrameHooks relay routes the fill to the frame that
+        // holds the login field — the cross-origin SSO iframe case —
+        // native value setters + input/change events, the outcome
+        // toasted/Diag'd, never silent), and the dark FONT-ICON RIDE +
+        // LIGHT law (icon-font glyphs ride the inversion, never the
+        // faint mid-gray; pinned dark/mid lifts to the visible light;
+        // the census counts fi).
+        versionCode 139
+        versionName "1.4.25"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

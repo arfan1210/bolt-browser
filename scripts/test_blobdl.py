@@ -276,7 +276,9 @@ if gm < 0:
 # v1.4.20 note: the ask-every-time door deliberately did NOT add a bridge
 # — gmSaveBlob itself consults the pref (one delivery contract for every
 # rescue caller), so the count stays 28
-if ba.count("@JavascriptInterface") != 28:
+# v1.4.25 (2026-11-21): 28 -> 29 — pwFillResult (the password fill
+# outcome: toast + Diag, never silent — the deliberate bridge addition)
+if ba.count("@JavascriptInterface") != 29:
     failures.append("BrowserActivity @JavascriptInterface count changed "
                     f"(expected 28, found {ba.count('@JavascriptInterface')}) — "
                     "the bridge surface must change only deliberately")

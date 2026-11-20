@@ -319,12 +319,12 @@ def main():
         return 1
     for probe in ('if (k == "ai") { runAiStage(a, bmp, g); return }',
                   "AiBridge.configured(a)",
-                  "AiBridge.visionTranslate",
+                  "AiBridge.visionTileTranslate",  # v1.4.25 re-point (2026-11-21): the grid text-only call (box_2d retired)
                   "openOverlay(a, bmp, blocks, true)",
                   'if (!ai) translateAll(a, view, tl)',
                   'scr ai hybrid ask prov=',  # v1.4.23 re-point (2026-11-20): the hybrid's ask diag (provider+model+tl)
                   'scr ai hybrid ok lines=',  # v1.4.23 re-point (2026-11-20): the hybrid's delivery diag
-                  'scr ai vision ok lines='):
+                  'scr ai vision ok cells='):  # v1.4.25 re-point (2026-11-21): grid cells, not box lines
         if probe not in scr:
             print(f"FAIL: ScreenTranslate's AI branch lacks {probe}")
             return 1
@@ -409,7 +409,7 @@ def main():
                   'private fun analyze(bmp: Bitmap, box: Rect)',
                   'val an = analyze(bmp, rect)',
                   'sb.bg = an.bg',
-                  'sb.thPx = if (an.linePx > 0f) an.linePx else b.th * bmp.height',
+                  'sb.thPx = if (an.linePx > 0f) an.linePx else rect[3] / 10f',  # v1.4.25 re-point (2026-11-21): gridCard sizing (b.th * bmp.height left with the box_2d deliverVisionBoxes road)
                   'val linePx = medianBand(rowInk, rowTh, step)',
                   'b.thPx * scaleHint()',
                   'val lum = (Color.red(bgc) * 299 + Color.green(bgc) * 587 + Color.blue(bgc) * 114) / 1000',

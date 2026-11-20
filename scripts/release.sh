@@ -566,6 +566,22 @@ python3 scripts/test_v1423.py
 # transcribed source/low-yield tables, the thin-AAR content inspection,
 # the mock-DOM mono walk
 python3 scripts/test_v1424.py
+
+# v1.4.25 gate: THE RELIABILITY + COVERAGE ROUND (the core-font rebuy —
+# the 7 core math fonts back IN the APK, offline/metered math, the RETRY
+# law + the manual Math-fonts chip + live status; the AiRender COLOUR law
+# — span/font color -> ForegroundColorSpan, hex/rgb/named parsed safely,
+# the code colorizer verified multi-color; THE SCREEN-TRANSLATE GRID —
+# per-tile native-resolution OCR, per-tile text-only vision cards on
+# FIXED cells, box_2d never trusted again; THE PER-FRAME PASSWORD FILL —
+# the FrameHooks relay routes the fill to the SSO iframe that owns the
+# login field, native setters + events, the outcome toasted/Diag'd never
+# silent; the dark FONT-ICON RIDE + LIGHT law — the faint hamburger lifts
+# to the visible light, the census counts fi) — probes: the thin-AAR
+# core-font inspection, the transcribed retry/metered/status + colour +
+# grid tables, the mock-DOM fill relay (two frames, native-setter fill,
+# the climb to pwFillResult) + the FA-glyph walk
+python3 scripts/test_v1425.py
 mark gates
 fi
 

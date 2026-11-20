@@ -320,7 +320,11 @@ object AiRender {
 
     /** v1.4.21 — lazy library init (the AAR ships an auto-init provider;
      *  Bolt removes it from the merged manifest and inits HERE instead so
-     *  a browser start never pays for a chat nicety — the startup law). */
+     *  a browser start never pays for a chat nicety — the startup law).
+     *  v1.4.25: jlmInit moved INTO the builder path below — with the core
+     *  fonts bundled, the first CORE render pays the (cheap, lazy) init
+     *  itself; a lazy Typeface load means the 23 optional fonts cannot
+     *  break it. */
     @Volatile private var jlmInited = false
     private fun jlmInit(c: Context) {
         if (jlmInited) return
@@ -340,20 +344,20 @@ object AiRender {
      */
     fun mathDrawable(c: Context, tex: String, block: Boolean): android.graphics.drawable.Drawable? {
         return try {
-            // v1.4.24 — THE FONT-PACK LAW: the engine CODE rides the APK
-            // but its 30 TTF binaries (455,768 B raw, 286,982 B of the
-            // v1.4.23 APK) download ON DEMAND on first math use (filesDir/jlmfonts,
-            // the v1.3.73 tesseract pattern). While the pack is absent the
-            // drawable declines — the caller renders the v1.4.20 LaTeX-
-            // subset spans (an honest shape, never a crash) and the bubble
-            // is re-rendered the moment the pack lands (holdForFonts).
-            if (!com.bolt.browser.util.MathFonts.present(c)) {
-                com.bolt.browser.util.MathFonts.ensureAsync(c) {
-                    try { refreshPendings() } catch (t: Throwable) {}
-                }
-                return null
-            }
-            jlmInit(c)
+            // v1.4.25 — THE CORE-FONT LAW: the 7 CORE fonts ride the APK
+            // (scripts/thin_jlatexmath.py's CORE set), so fractions,
+            // matrices, Greek, integrals, sums and AMS symbols render
+            // OFFLINE/METERED immediately — the v1.4.24 pack-present gate
+            // is GONE (the metered corpse: "math dl fail dl base/
+            // jlm_cmex10.ttf" meant a plain fraction died waiting for a
+            // download that metered connections skipped entirely). The
+            // engine loads typefaces LAZILY (FontInfo.getFont), so a
+            // formula that needs an OPTIONAL font (\mathfrak, \mathscr,
+            // rare CM variants) THROWS here — caught below: the span
+            // subset shows honestly, the optional pack download is kicked
+            // (retry law — no process lockout), and the held bubble
+            // re-renders the moment it lands (holdForFonts).
+            jlmInit(c)          // cheap, once; the lazy font loads follow
             val d = ru.noties.jlatexmath.JLatexMathDrawable.builder(tex)
                     .textSize(if (block) Fx.dp(c, 19).toFloat() else Fx.dp(c, 15).toFloat())
                     .padding(0)
@@ -362,7 +366,15 @@ object AiRender {
             val w = d.intrinsicWidth
             val h = d.intrinsicHeight
             if (w <= 0 || h <= 0 || w > 4096 || h > 4096) null else d
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            // an optional-font miss (or a parse failure): the subset is
+            // the honest fallback, and the download gets a nudge — the
+            // RETRY LAW makes the next attempt cheap
+            try {
+                com.bolt.browser.util.MathFonts.ensureAsync(c, onReady = {
+                    try { refreshPendings() } catch (t2: Throwable) {}
+                })
+            } catch (t2: Throwable) {}
             null
         }
     }
@@ -385,9 +397,9 @@ object AiRender {
                 if (w.get() === view) return   // already held (stream refreshes)
             }
             fontPending.add(java.lang.ref.WeakReference(view))
-            com.bolt.browser.util.MathFonts.ensureAsync(c) {
+            com.bolt.browser.util.MathFonts.ensureAsync(c, onReady = {
                 try { refreshPendings() } catch (t: Throwable) {}
-            }
+            })
         } catch (t: Throwable) {}
     }
 
@@ -434,6 +446,13 @@ object AiRender {
         // the href extractor inside the attrs
         private val TAG_RE = Regex("</?([a-zA-Z][a-zA-Z0-9]*)((?:\\s[^>]*)?)(/?)>")
         private val ATTR_HREF = Regex("href\\s*=\\s*[\"']([^\"']*)[\"']")
+        // v1.4.25 — THE COLOUR ATTRS: <font color=…> and any tag's
+        // style="color: …" (inline styles commonly carry background-color
+        // too — only the text colour is honoured here, the chat's own
+        // <mark> stays the highlight)
+        private val ATTR_COLOR = Regex("(?:^|\\s)color\\s*=\\s*[\"']([^\"']*)[\"']")
+        private val ATTR_STYLE = Regex("style\\s*=\\s*[\"']([^\"']*)[\"']")
+        private val STYLE_COLOR = Regex("(^|;)\\s*color\\s*:\\s*([^;!}\"]+)")
 
         fun children(parent: Node) {
             var n = parent.firstChild
@@ -647,6 +666,17 @@ object AiRender {
                 "sup" -> { spans.add(SuperscriptSpan()); spans.add(RelativeSizeSpan(0.72f)) }
                 "b", "strong" -> spans.add(StyleSpan(Typeface.BOLD))
                 "i", "em" -> spans.add(StyleSpan(Typeface.ITALIC))
+                // v1.4.25 — THE COLOUR LAW (the "AiRender ignores explicit
+                // color" corpse): <span style="color:…"> and <font
+                // color="…"> paint their range through a
+                // ForegroundColorSpan — hex (#rgb/#rrggbb/#rrggbbaa),
+                // rgb()/rgba() and the common named colours, parsed
+                // SAFELY ([parseHtmlColor] never throws, never guesses:
+                // an unparseable colour colours nothing)
+                "span", "font" -> {
+                    val col = htmlColor(name, m.groupValues[2])
+                    if (col != null) spans.add(ForegroundColorSpan(col))
+                }
                 "code" -> { spans.add(TypefaceSpan("monospace"))
                             spans.add(BackgroundColorSpan(codeBg())) }
                 "a" -> {
@@ -671,6 +701,19 @@ object AiRender {
                     return
                 }
             }
+        }
+
+        /** v1.4.25 — the colour an opening span/font tag carries, or null:
+         *  font -> its color= attribute; span -> the color property of its
+         *  style= attribute (both single- and double-quoted). */
+        fun htmlColor(tag: String, attrs: String): Int? {
+            val raw = if (tag == "font")
+                ATTR_COLOR.find(attrs)?.groupValues?.get(1)
+            else
+                ATTR_STYLE.find(attrs)?.groupValues?.get(1)?.let { st ->
+                    STYLE_COLOR.find(st)?.groupValues?.get(2)
+                }
+            return raw?.let { parseHtmlColor(it.trim()) }
         }
 
         fun applySpans(t: HtmlTag, end: Int) {
@@ -1189,6 +1232,110 @@ object AiRender {
         }
         return out
     }
+
+    // ---------------- v1.4.25 — the HTML colour parser (PURE) ----------------
+
+    /** v1.4.25 — PURE (probe-pinned): a CSS colour literal -> ARGB int, or
+     *  null when it cannot be parsed SAFELY (an unparseable colour colours
+     *  nothing — never a throw, never a guess). Hex (#rgb / #rrggbb /
+     * #rrggbbaa), rgb()/rgba() (0-255 or 0%-100% channels), and the common
+     * named colours (the HTML legacy set + the frequent extended ones —
+     * lowercase-insensitive). Alpha < 0.4 reads as translucent: the text
+     * colour would wash out on either theme, so it returns null (no colour
+     * beats an invisible one). */
+    fun parseHtmlColor(v: String): Int? {
+        if (v.isEmpty() || v.length > 40) return null
+        val s = v.trim().lowercase()
+        try {
+            if (s[0] == '#') {
+                val hex = s.substring(1)
+                return when (hex.length) {
+                    3 -> {
+                        val r = hex2(hex[0], hex[0]); val g = hex2(hex[1], hex[1])
+                        val b = hex2(hex[2], hex[2])
+                        if (r == null || g == null || b == null) null
+                        else 0xFF000000.toInt() or (r shl 16) or (g shl 8) or b
+                    }
+                    6 -> {
+                        val r = hex2(hex[0], hex[1]); val g = hex2(hex[2], hex[3])
+                        val b = hex2(hex[4], hex[5])
+                        if (r == null || g == null || b == null) null
+                        else 0xFF000000.toInt() or (r shl 16) or (g shl 8) or b
+                    }
+                    8 -> {
+                        val a = hex2(hex[0], hex[1]); val r = hex2(hex[2], hex[3])
+                        val g = hex2(hex[4], hex[5]); val b = hex2(hex[6], hex[7])
+                        if (r == null || g == null || b == null || a == null) null
+                        else if (a < 102) null          // alpha < 0.4: wash-out guard
+                        else (a shl 24) or (r shl 16) or (g shl 8) or b
+                    }
+                    else -> null
+                }
+            }
+            val m = Regex("rgba?\\(\\s*([^,)]+)\\s*,\\s*([^,)]+)\\s*,\\s*([^,)]+)\\s*(?:,\\s*([\\d.]+)\\s*)?\\)?").find(s)
+            if (m != null) {
+                val r = chan(m.groupValues[1]) ?: return null
+                val g = chan(m.groupValues[2]) ?: return null
+                val b = chan(m.groupValues[3]) ?: return null
+                var a = 255
+                val av = m.groupValues.getOrNull(4)
+                if (!av.isNullOrEmpty()) {
+                    val fa = av.toFloatOrNull() ?: return null
+                    if (fa < 0f || fa > 1f) return null
+                    a = (fa * 255f).toInt().coerceIn(0, 255)
+                    if (a < 102) return null           // alpha < 0.4: wash-out guard
+                }
+                return (a shl 24) or ((r and 0xFF) shl 16) or
+                        ((g and 0xFF) shl 8) or (b and 0xFF)
+            }
+            return NAMED_COLORS[s]
+        } catch (_: Throwable) {
+            return null
+        }
+    }
+
+    /** one hex digit pair -> 0-255, or null (bad digit). */
+    private fun hex2(c1: Char, c2: Char): Int? {
+        val h1 = Character.digit(c1, 16); val h2 = Character.digit(c2, 16)
+        return if (h1 < 0 || h2 < 0) null else (h1 shl 4) or h2
+    }
+
+    /** one rgb() channel: 0-255 or 0%-100% -> 0-255, or null. */
+    private fun chan(raw: String): Int? {
+        val s = raw.trim()
+        if (s.endsWith("%")) {
+            val f = s.dropLast(1).toFloatOrNull() ?: return null
+            if (f < 0f || f > 100f) return null
+            return (f * 2.55f).toInt().coerceIn(0, 255)
+        }
+        val n = s.toIntOrNull() ?: return null
+        return if (n in 0..255) n else null
+    }
+
+    /** the common named colours (lowercase keys — the CSS legacy set plus
+     *  the frequent extended ones models actually emit). */
+    private val NAMED_COLORS = mapOf(
+            "black" to 0xFF000000.toInt(), "white" to 0xFFFFFFFF.toInt(),
+            "red" to 0xFFFF0000.toInt(), "green" to 0xFF008000.toInt(),
+            "blue" to 0xFF0000FF.toInt(), "yellow" to 0xFFFFFF00.toInt(),
+            "cyan" to 0xFF00FFFF.toInt(), "magenta" to 0xFFFF00FF.toInt(),
+            "gray" to 0xFF808080.toInt(), "grey" to 0xFF808080.toInt(),
+            "silver" to 0xFFC0C0C0.toInt(), "maroon" to 0xFF800000.toInt(),
+            "navy" to 0xFF000080.toInt(), "teal" to 0xFF008080.toInt(),
+            "olive" to 0xFF808000.toInt(), "purple" to 0xFF800080.toInt(),
+            "fuchsia" to 0xFFFF00FF.toInt(), "aqua" to 0xFF00FFFF.toInt(),
+            "lime" to 0xFF00FF00.toInt(), "orange" to 0xFFFFA500.toInt(),
+            "pink" to 0xFFFFC0CB.toInt(), "brown" to 0xFFA52A2A.toInt(),
+            "gold" to 0xFFFFD700.toInt(), "indigo" to 0xFF4B0082.toInt(),
+            "crimson" to 0xFFDC143C.toInt(), "darkred" to 0xFF8B0000.toInt(),
+            "darkblue" to 0xFF00008B.toInt(), "darkgreen" to 0xFF006400.toInt(),
+            "darkgray" to 0xFFA9A9A9.toInt(), "darkgrey" to 0xFFA9A9A9.toInt(),
+            "lightgray" to 0xFFD3D3D3.toInt(), "lightgrey" to 0xFFD3D3D3.toInt(),
+            "lightblue" to 0xFFADD8E6.toInt(), "lightgreen" to 0xFF90EE90.toInt(),
+            "tomato" to 0xFFFF6347.toInt(), "coral" to 0xFFFF7F50.toInt(),
+            "steelblue" to 0xFF4682B4.toInt(), "royalblue" to 0xFF4169E1.toInt(),
+            "whitesmoke" to 0xFFF5F5F5.toInt(), "rebeccapurple" to 0xFF663399.toInt(),
+            "goldenrod" to 0xFFDAA520.toInt(), "firebrick" to 0xFFB22222.toInt())
 
     // ---------------- the assistant-bubble gate ----------------
 

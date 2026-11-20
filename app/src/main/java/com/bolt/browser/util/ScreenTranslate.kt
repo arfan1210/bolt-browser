@@ -219,8 +219,126 @@ object ScreenTranslate {
      *  screen -> chars=50) — translating that sparse fragment looks
      *  broken. The vision model then reads the whole screen instead —
      *  language-agnostic, the accuracy safety net. The hybrid (OCR
-     *  boxes + ONE textTranslate) runs only when OCR read WELL. */
+     *  boxes + ONE textTranslate) runs only when OCR read WELL.
+     *  v1.4.25: the floor now gates the AGGREGATE grid yield (a screen
+     *  whose six tiles together read under this is vision territory);
+     *  the per-tile decision rides [TILE_FLOOR]. */
     private const val YIELD_FLOOR = 120
+
+    /** v1.4.25 — THE GRID LAW (the thin-strip corpse: OCR chars=54
+     *  lines=5 -> the vision fallback -> "vision ok lines=1" — ONE
+     *  hallucinated box_2d painted a right-edge strip and the REST of
+     *  the page stayed untranslated). The screen is GRID-TILED — 2 cols
+     *  x 3 rows portrait / 3 x 2 landscape — for BOTH paths: every cell
+     *  is OCR'd at NATIVE resolution; a cell OCR under-reads (< TILE_FLOOR
+     *  chars) -> a per-tile VISION text-only pass is overlaid on THAT
+     *  CELL. The model's box_2d is NEVER trusted for placement again —
+     *  the FIXED grid regions place everything, so full-page coverage is
+     *  geometric, not hallucination-dependent. */
+    private const val TILE_FLOOR = 20
+
+    /** v1.4.25 — PURE (probe-pinned): the grid geometry — 2 cols x 3 rows
+     *  portrait (h >= w), 3 x 2 landscape; the last row/col absorbs the
+     *  remainder so the cells tile the WHOLE bitmap exactly. */
+    internal fun gridOf(w: Int, h: Int): Array<IntArray> {
+        val cols = if (h >= w) 2 else 3
+        val rows = if (h >= w) 3 else 2
+        val cw = w / cols
+        val ch = h / rows
+        val out = ArrayList<IntArray>(cols * rows)
+        for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                val x = c * cw
+                val y = r * ch
+                val rw = if (c == cols - 1) w - x else cw
+                val rh = if (r == rows - 1) h - y else ch
+                out.add(intArrayOf(x, y, rw, rh))
+            }
+        }
+        return out.toTypedArray()
+    }
+
+    /** v1.4.25 — PURE (probe-pinned): the MILD percentile contrast — a
+     *  2/98 luminance stretch, bounded. The manga-era hard stretch hurt
+     *  general text (the v1.4.24 under-read); this one only lifts faint
+     *  ink so JPEG'd small text survives tesseract. The mapping:
+     *  lum <= p2 -> 0, lum >= p98 -> 255, linear between. */
+    internal fun stretchOf(p2: Int, p98: Int, lum: Int): Int {
+        if (p98 <= p2) return lum
+        val f = (lum - p2) * 255 / (p98 - p2)
+        return f.coerceIn(0, 255)
+    }
+
+    /** in-place mild stretch on a tile bitmap (256-bin histogram of the
+     *  REC-601 luminance — the SAME luminance the stretch maps; grayscale
+     *  output: OCR tiles feed tesseract, color carries nothing for it). */
+    private fun mildContrast(bmp: Bitmap) {
+        try {
+            val w = bmp.width
+            val h = bmp.height
+            if (w <= 0 || h <= 0 || w * h > 4_000_000) return
+            val px = IntArray(w * h)
+            bmp.getPixels(px, 0, w, 0, 0, w, h)
+            val lum = IntArray(px.size)
+            val hist = IntArray(256)
+            for (i in px.indices) {
+                val p = px[i]
+                val y = (299 * (p and 0xFF) + 587 * ((p shr 8) and 0xFF) +
+                        114 * ((p shr 16) and 0xFF)) / 1000
+                lum[i] = y
+                hist[y]++
+            }
+            var p2 = 0
+            var p98 = 255
+            try {
+                val total = w * h
+                var acc = 0
+                for (i in 0 until 256) {
+                    acc += hist[i]
+                    if (acc >= total * 2 / 100) { p2 = i; break }
+                }
+                acc = 0
+                for (i in 255 downTo 0) {
+                    acc += hist[i]
+                    if (acc >= total * 2 / 100) { p98 = i; break }
+                }
+            } catch (_: Throwable) {}
+            if (p98 - p2 < 24) return                 // already contrasty
+            val map = IntArray(256)
+            for (i in 0 until 256) map[i] = stretchOf(p2, p98, i)
+            for (i in px.indices) {
+                val g = map[lum[i]]
+                px[i] = (px[i] and (0xFF shl 24)) or (g shl 16) or (g shl 8) or g
+            }
+            bmp.setPixels(px, 0, w, 0, 0, w, h)
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * v1.4.25 — ONE GRID CELL's OCR encode: the NATIVE-resolution crop +
+     * the mild stretch + JPEG q92 — NEVER downscaled (the <=1600
+     * full-screen encode was the under-read's other half: a modern
+     * 1440x3088 screenshot halved to 753x1600 before tesseract ever
+     * ran, and small text died). Returns null on a bad crop. The tile
+     * bitmap is NOT recycled here — the caller keeps it for the block
+     * parser's ink analysis and recycles after.
+     */
+    private fun cropTile(bmp: Bitmap, rect: IntArray): Bitmap? {
+        return try {
+            val t = Bitmap.createBitmap(bmp, rect[0], rect[1], rect[2], rect[3])
+            mildContrast(t)
+            t
+        } catch (t: Throwable) { null }
+    }
+
+    private fun encodeTile(t: Bitmap): Enc? {
+        return try {
+            val bo = ByteArrayOutputStream()
+            t.compress(Bitmap.CompressFormat.JPEG, 92, bo)
+            Enc(Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP),
+                    t.width, t.height)
+        } catch (t: Throwable) { null }
+    }
 
     /** the langs the downloader + interceptor will ever serve
      *  (v1.4.24: the source-law expansion — every language the app's
@@ -453,9 +571,9 @@ object ScreenTranslate {
         srcPack(a)   // v1.4.24: resolve the OCR source choice before any langs use
         val k = lastScript
         if (k == "ai") { runAiStage(a, bmp, g); return }
-        val enc = encodeFor(bmp, k)
-        if (gen.get() != g) return
-        if (enc == null) { failOcr(a, bmp, g, "encode", "Could not read the screen"); return }
+        // v1.4.25 — THE GRID: the basic path runs the same per-tile native-
+        // resolution OCR (runOcrStage -> runGridOcr); the whole-screen
+        // <=1600 encode is retired here too (coverage + small-text both)
         val langs = langsOf(k)
         if (!ensureModels(a, bmp, g, langs)) {
             if (gen.get() != g) return
@@ -464,12 +582,8 @@ object ScreenTranslate {
             return
         }
         if (gen.get() != g) return
-        main.post { runOcrStage(a, bmp, enc, langs, g) }
-    }
-
-    /** downscale ≤1600 px + JPEG q90 → base64 (binder-safe chunking comes later). */
-    private fun encodeJpeg(bmp: Bitmap): Enc? {
-        return encodeScaled(bmp, 1600, 90)
+        val t0 = System.currentTimeMillis()
+        main.post { runOcrStage(a, bmp, langs, g, t0) }
     }
 
     /**
@@ -482,12 +596,16 @@ object ScreenTranslate {
      * survive 1:1), and it uploads near-instantly even on a weak cell link.
      * (The v1.3.75 "gibberish" report was the OCR FALLBACK being inaccurate,
      * not the AI resolution — the diet does not reopen it.)
+     * v1.4.25: this encoder now serves ONLY the vision tile cards (every
+     * OCR tile rides [cropTile]/[encodeTile] at native resolution instead —
+     * the retired whole-screen <=1600 OCR encode was the small-text
+     * under-read's other half).
      */
     private fun encodeAi(bmp: Bitmap): Enc? {
         return encodeScaled(bmp, 1280, 75)
     }
 
-    /** the shared downscale+JPEG encoder behind [encodeJpeg]/[encodeAi]. */
+    /** the shared downscale+JPEG encoder behind [encodeAi]. */
     private fun encodeScaled(bmp: Bitmap, maxEdge: Int, q: Int): Enc? {
         return try {
             val sc = minOf(1f, maxEdge.toFloat() / maxOf(bmp.width, bmp.height))
@@ -501,9 +619,6 @@ object ScreenTranslate {
         } catch (t: Throwable) { null }
     }
 
-    /** v1.3.78: ONE OCR encoder — the proven JPEG path (the manga PNG
-     *  preprocess left with the manga scripts). */
-    private fun encodeFor(bmp: Bitmap, script: String): Enc? = encodeJpeg(bmp)
     private fun modelFile(a: Context, lang: String): File =
         File(File(a.cacheDir, "ocrfast"), "$lang.traineddata")
 
@@ -603,23 +718,38 @@ object ScreenTranslate {
         return false
     }
 
-    /** runs on MAIN: spin the OCR host (lazily) and fire the recognize job. */
-    private fun runOcrStage(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>, g: Int) {
+    /** v1.4.25 — runs on MAIN: spin the OCR host (lazily) and run the GRID
+     *  recognize pass (every cell at NATIVE resolution; the whole-screen
+     *  <=1600 encode is retired on this path too — the coverage + the
+     *  small-text under-read both demanded it). */
+    private fun runOcrStage(a: Activity, bmp: Bitmap, langs: Array<String>, g: Int, t0: Long) {
         if (gen.get() != g) return
-        if (prog == null) {
-            prog = ScrProgress.show(a, "Translate screen") { cancelOcr(a, bmp, g) }
-        }
-        val h = try {
-            host ?: OcrHost(a).also { host = it }
-        } catch (t: Throwable) {
-            failOcr(a, bmp, g, "host", "Text recognition unavailable")
-            return
-        }
-        h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
-        val t0 = System.currentTimeMillis()
-        h.run(langs, enc.b64,
-            { json -> POOL.execute { ocrDone(a, bmp, enc, langs, json, g, t0) } },
-            { msg -> failOcr(a, bmp, g, msg, null) })
+        val all = ArrayList<SBlock>()
+        runGridOcr(a, bmp, g, langs, "Translate screen",
+                onTile = { _, blocks, _ -> all.addAll(blocks) },
+                onDone = { tileChars ->
+                    if (gen.get() != g) return@runGridOcr
+                    try {
+                        val chars = tileChars.sum()
+                        try {
+                            Diag.log(a, "scr ocr langs=" + langs.joinToString("+") +
+                                    " chars=" + chars + " lines=" + all.size +
+                                    " tiles=" + tileChars.joinToString("/") +
+                                    " ms=" + (System.currentTimeMillis() - t0))
+                        } catch (_: Throwable) {}
+                        if (all.isEmpty()) {
+                            failOcr(a, bmp, g, "empty", "No readable text on this screen")
+                            return@runGridOcr
+                        }
+                        main.post { deliverBlocks(a, bmp, all, g) }
+                    } catch (t: Throwable) {
+                        failOcr(a, bmp, g, "parse", null)
+                    }
+                },
+                onHostFail = { msg ->
+                    failOcr(a, bmp, g, "host " + (msg ?: "").take(40),
+                            "Text recognition unavailable")
+                })
     }
 
     private fun mapStatus(s: String, pct: Int): String = when {
@@ -628,29 +758,6 @@ object ScreenTranslate {
         s.contains("recogniz") -> "Reading text\u2026 $pct%"
         s.contains("language") -> "Loading OCR data\u2026"
         else -> "Reading text\u2026"
-    }
-
-    /** OCR result → SBlocks (bitmap coords, luminance-sampled) → overlay
-     *  (the BASIC script path; the AI hybrid shares [ocrBlocks]). */
-    private fun ocrDone(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>,
-                        json: String, g: Int, t0: Long) {
-        if (gen.get() != g) return
-        try {
-            val parsed = ocrBlocks(json, bmp, enc)
-            val blocks = parsed.first
-            try {
-                Diag.log(a, "scr ocr langs=" + langs.joinToString("+") +
-                        " chars=" + parsed.second + " lines=" + blocks.size +
-                        " ms=" + (System.currentTimeMillis() - t0))
-            } catch (_: Throwable) {}
-            if (blocks.isEmpty()) {
-                failOcr(a, bmp, g, "empty", "No readable text on this screen")
-                return
-            }
-            main.post { deliverBlocks(a, bmp, blocks, g) }
-        } catch (t: Throwable) {
-            failOcr(a, bmp, g, "parse", null)
-        }
     }
 
     /** v1.4.23 — THE SHARED OCR BLOCK PARSER (pure-ish, probe-pinned in
@@ -736,112 +843,154 @@ object ScreenTranslate {
 
     // ---------------- v1.3.74: the AI stage (see AiBridge.kt) ----------------
 
-    /** v1.4.20 — PURE (probe-pinned): re-place a box that arrived as 0-1
-     *  fractions of ONE TILE onto the full image (the tile's pixel rect
-     *  within it — the right/bottom tiles eat the rounding remainder, so
-     *  the mapping is exact per tile, not a uniform 1/cols guess). */
-    internal fun tilePlace(bx: Float, by: Float, bw: Float, bh: Float,
-                           tx: Int, ty: Int, tw: Int, th: Int,
-                           iw: Int, ih: Int): FloatArray {
-        return floatArrayOf((tx + bx * tw) / iw, (ty + by * th) / ih,
-                (bw * tw) / iw, (bh * th) / ih)
-    }
+    // (v1.4.25 — THE BOX-MAPPING RETIREMENT: tilePlace + iou, the v1.4.20
+    // pure pair that re-placed tile-relative box_2d fractions onto the
+    // full screen and seam-deduped them, left with the box_2d road itself —
+    // the grid law places every card on FIXED cell geometry and the
+    // model's coordinates are never consulted again. The pins followed
+    // the code out: scripts/test_v1420.py's dated re-point.)
 
-    /** v1.4.20 — PURE (probe-pinned): intersection-over-union of two 0-1
-     *  fraction boxes — the seam-dedup verdict (a box straddling a tile
-     *  border can come back from both sides; > 0.6 = the same text). */
-    internal fun iou(ax: Float, ay: Float, aw: Float, ah: Float,
-                     bx: Float, by: Float, bw: Float, bh: Float): Float {
-        val x0 = maxOf(ax, bx); val y0 = maxOf(ay, by)
-        val x1 = minOf(ax + aw, bx + bw); val y1 = minOf(ay + ah, by + bh)
-        if (x1 <= x0 || y1 <= y0) return 0f
-        val inter = (x1 - x0) * (y1 - y0)
-        val uni = aw * ah + bw * bh - inter
-        return if (uni <= 0f) 0f else inter / uni
-    }
-
-    /** v1.4.20 — THE TILE ROAD: one 2x2 pass over the capture. Each tile
-     *  reuses the SAME encoder + visionTranslate (its own cap ladder); a
-     *  tile that fails costs its region (logged), the boxes that return
-     *  are re-placed (tilePlace) and seam-deduped (iou > 0.6). Returns
-     *  null only when every region failed.
-     *  v1.4.21 — PROACTIVE (the rung moved to the FRONT): the tile pass is
-     *  now the DEFAULT for every AI screen translate — the dense screen on
-     *  a low-ceiling lite model is the real cut-off case, and waiting for
-     *  a 65536 MAX_TOKENS exhaust to find out costs the user two doomed
-     *  full-screen requests first. Plus ONE recursion rung: a tile that
-     *  STILL exhausts the cap (shouldTile) is split 2x2 again — a dense
-     *  quadrant gets four half-density sub-requests instead of a lost
-     *  region. */
-    private fun translateTiled(a: Activity, bmp: Bitmap, tl: String, g: Int,
-                               ctx: String? = null): ArrayList<AiBridge.AiBox>? =
-            translateRegion(a, bmp, tl, g, 0, 0, bmp.width, bmp.height, 0, ctx)
-
-    /** one (sub)region through the AI; depth caps the recursion at one
-     *  extra level (a 2x2 of 2x2 = 16 sub-requests worst case, bounded). */
-    private fun translateRegion(a: Activity, bmp: Bitmap, tl: String, g: Int,
-                                rx: Int, ry: Int, rw: Int, rh: Int,
-                                depth: Int, ctx: String? = null): ArrayList<AiBridge.AiBox>? {
-        val merged = ArrayList<AiBridge.AiBox>()
-        val cols = 2
-        val rows = 2
-        val tw = rw / cols
-        val th = rh / rows
-        if (tw < 32 || th < 32) return null   // too small to halve further
-        for (row in 0 until rows) {
-            for (col in 0 until cols) {
-                if (gen.get() != g || cancelled) return null
-                val x = rx + col * tw
-                val y = ry + row * th
-                val w = if (col == cols - 1) rx + rw - x else tw
-                val h = if (row == rows - 1) ry + rh - y else th
-                val tile = try {
-                    Bitmap.createBitmap(bmp, x, y, w, h)
-                } catch (_: Throwable) { null } ?: continue
-                val enc = encodeAi(tile)
-                try { tile.recycle() } catch (_: Throwable) {}
-                if (enc == null) continue
-                // v1.4.23 — the tile carries the full-screen transcript as
-                // context (visionTranslateX); null context = the plain call
-                val part = AiBridge.visionTranslateX(a, enc.b64, tl, enc.w, enc.h, ctx)
-                if (part == null) {
-                    // v1.4.21 — the per-tile rung: a region that exhausted
-                    // the cap ladder (shouldTile) splits once more instead
-                    // of losing its text; any other failure costs the region
-                    if (depth < 1 && AiBridge.shouldTile(AiBridge.lastError)) {
-                        try { Diag.log(a, "scr ai tile split r$row c$col depth=$depth") } catch (_: Throwable) {}
-                        val sub = translateRegion(a, bmp, tl, g, x, y, w, h, depth + 1, ctx)
-                        if (sub != null) {
-                            for (b in sub) {
-                                var dup = false
-                                for (m in merged) {
-                                    if (iou(m.x, m.y, m.w, m.h,
-                                            b.x, b.y, b.w, b.h) > 0.6f) { dup = true; break }
-                                }
-                                if (!dup) merged.add(b)
-                            }
-                        }
-                        continue
-                    }
-                    try { Diag.log(a, "scr ai tile r$row c$col fail " +
-                            AiBridge.lastError.take(40)) } catch (_: Throwable) {}
-                    continue
-                }
-                for (b in part) {
-                    val f = tilePlace(b.x, b.y, b.w, b.h, x, y, w, h,
-                            bmp.width, bmp.height)
-                    var dup = false
-                    for (m in merged) {
-                        if (iou(m.x, m.y, m.w, m.h, f[0], f[1], f[2], f[3]) > 0.6f) {
-                            dup = true; break
-                        }
-                    }
-                    if (!dup) merged.add(AiBridge.AiBox(f[0], f[1], f[2], f[3],
-                            b.orig, b.trans, b.th, b.vert))
-                }
-            }
+    /** v1.4.25 — THE TILE-OCR DRIVER (BOTH paths): every grid cell through
+     *  the OCR host at NATIVE resolution ([cropTile] — no downscale, the
+     *  mild stretch), the tile's blocks offset into BITMAP coordinates by
+     *  [onTile] (POOL thread), the per-tile char yield riding the Diag.
+     *  ONE host failure ends the run through [onHostFail] (a host that
+     *  died once stays dead — the AI path lands on the vision grid, the
+     *  BASIC path fails honestly); a per-tile PARSE hiccup only costs that
+     *  cell's lines. [onDone] (POOL thread) carries the per-tile char
+     *  yield array — the per-tile under-read verdicts' raw material. */
+    private fun runGridOcr(a: Activity, bmp: Bitmap, g: Int, langs: Array<String>,
+                           title: String,
+                           onTile: (rect: IntArray, blocks: ArrayList<SBlock>, chars: Int) -> Unit,
+                           onDone: (tileChars: IntArray) -> Unit,
+                           onHostFail: (msg: String?) -> Unit) {
+        if (gen.get() != g) return
+        if (prog == null) {
+            prog = ScrProgress.show(a, title) { cancelOcr(a, bmp, g) }
         }
-        return if (merged.isEmpty()) null else merged
+        val h = try {
+            host ?: OcrHost(a).also { host = it }
+        } catch (t: Throwable) {
+            onHostFail("host")
+            return
+        }
+        h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
+        val tiles = gridOf(bmp.width, bmp.height)
+        val tileChars = IntArray(tiles.size)
+        fun next(i: Int) {
+            if (gen.get() != g || cancelled) return
+            if (i >= tiles.size) {
+                POOL.execute { onDone(tileChars) }
+                return
+            }
+            val rect = tiles[i]
+            val tile = cropTile(bmp, rect)
+            if (tile == null) {
+                tileChars[i] = 0
+                try { Diag.log(a, "scr tile $i crop fail") } catch (_: Throwable) {}
+                next(i + 1)
+                return
+            }
+            val enc = encodeTile(tile)
+            if (enc == null) {
+                try { tile.recycle() } catch (_: Throwable) {}
+                tileChars[i] = 0
+                next(i + 1)
+                return
+            }
+            try { prog?.set("Reading text\u2026 tile " + (i + 1) + "/" + tiles.size, -1) }
+            catch (_: Throwable) {}
+            h.run(langs, enc.b64,
+                { json ->
+                    POOL.execute {
+                        try {
+                            val parsed = ocrBlocks(json, tile, enc)
+                            for (sb in parsed.first) sb.box.offset(rect[0], rect[1])
+                            tileChars[i] = parsed.second
+                            onTile(rect, parsed.first, parsed.second)
+                        } catch (t: Throwable) {
+                            tileChars[i] = 0
+                        } finally {
+                            try { tile.recycle() } catch (_: Throwable) {}
+                        }
+                        next(i + 1)
+                    }
+                },
+                { msg ->
+                    try { tile.recycle() } catch (_: Throwable) {}
+                    try { Diag.log(a, "scr tile $i ocr fail " + (msg ?: "").take(30)) }
+                    catch (_: Throwable) {}
+                    onHostFail(msg)
+                })
+        }
+        next(0)
+    }
+
+    /** v1.4.25 — ONE UNDER-READ CELL's vision card: the cell image through
+     *  [AiBridge.visionTileTranslate] (text-ONLY — the model's box_2d is
+     *  never trusted for placement), the translation overlaid on its OWN
+     *  fixed grid cell ([gridCard]). Null when the cell yields nothing
+     *  (its failure is logged, never silent). POOL thread. */
+    private fun visionTileCard(a: Activity, bmp: Bitmap, rect: IntArray,
+                               tl: String, ctx: String?): SBlock? {
+        val tile = try {
+            Bitmap.createBitmap(bmp, rect[0], rect[1], rect[2], rect[3])
+        } catch (_: Throwable) { null } ?: return null
+        val enc = encodeAi(tile)
+        try { tile.recycle() } catch (_: Throwable) {}
+        if (enc == null) return null
+        val text = try {
+            AiBridge.visionTileTranslate(a, enc.b64, tl, enc.w, enc.h, ctx)
+        } catch (_: Throwable) { null }
+        if (text == null || text.isBlank() || text.length < 3) {
+            try { Diag.log(a, "scr ai cell fail " + AiBridge.lastError.take(40)) }
+            catch (_: Throwable) {}
+            return null
+        }
+        return gridCard(bmp, rect, text)
+    }
+
+    /** v1.4.25 — PURE (probe-pinned): the CARD rect for a grid cell — the
+     *  cell inset by [INSET] px, clamped inside the bitmap and never
+     *  smaller than 8x8: the FIXED geometry that places every vision
+     *  card (a hallucinated box_2d can never place anything again). */
+    internal fun gridCardRect(w: Int, h: Int, rect: IntArray): Rect {
+        var l = rect[0] + INSET
+        var t = rect[1] + INSET
+        var r = rect[0] + rect[2] - INSET
+        var b = rect[1] + rect[3] - INSET
+        if (r < l + 8) { l = rect[0]; r = rect[0] + rect[2] }
+        if (b < t + 8) { t = rect[1]; b = rect[1] + rect[3] }
+        if (l < 0) l = 0
+        if (t < 0) t = 0
+        if (r > w) r = w
+        if (b > h) b = h
+        if (r < l + 8) r = minOf(w, l + 8)
+        if (b < t + 8) b = minOf(h, t + 8)
+        return Rect(l, t, r, b)
+    }
+
+    /** the inset a grid card leaves around its cell (bitmap px). */
+    private const val INSET = 6
+
+    /** one translated text card on its FIXED grid cell: the cell rect
+     *  ([gridCardRect]), the sampled local background + the ink analysis'
+     *  line height (fallback: cell height / 10) for the font sizing.
+     *  NO ROTATION, EVER: the card's text rides HORIZONTAL, wrapped —
+     *  the v1.3.78 law a grid card inherits for free. */
+    private fun gridCard(bmp: Bitmap, rect: IntArray, text: String): SBlock {
+        val cr = gridCardRect(bmp.width, bmp.height, rect)
+        val sb = SBlock(cr, text, regionLight(bmp, cr))
+        sb.trans = text
+        sb.rev = 1
+        try {
+            val an = analyze(bmp, cr)
+            sb.bg = an.bg
+            sb.thPx = if (an.linePx > 0f) an.linePx else rect[3] / 10f
+        } catch (_: Throwable) {
+            sb.thPx = rect[3] / 10f
+        }
+        return sb
     }
 
     /**
@@ -901,16 +1050,12 @@ object ScreenTranslate {
                         " src=" + srcPack(a))
             } catch (_: Throwable) {}
             val t0 = System.currentTimeMillis()
-            // (1) THE OCR STAGE — the same encoder + models the basic script
-            // rides (the CHOSEN source pack since v1.4.24 — "auto" keeps
-            // the legacy chi_sim+jpn+eng trio); the models download on
-            // demand exactly as before (metered confirm + progress)
-            val enc = encodeFor(bmp, "auto")
-            if (gen.get() != g) return
-            if (enc == null) {
-                failOcr(a, bmp, g, "encode", "Could not read the screen")
-                return
-            }
+            // (1) THE OCR STAGE — v1.4.25: THE GRID (the same models the
+            // basic script rides — the CHOSEN source pack since v1.4.24,
+            // "auto" keeping the legacy trio; the models download on
+            // demand exactly as before, metered confirm + progress); every
+            // grid cell OCRs at NATIVE resolution through runGridOcr — the
+            // whole-screen <=1600 encode is retired on this path too
             val langs = langsOf("auto")
             if (!ensureModels(a, bmp, g, langs)) {
                 if (gen.get() != g) return
@@ -919,77 +1064,86 @@ object ScreenTranslate {
                 return
             }
             if (gen.get() != g) return
-            main.post { aiOcrStage(a, bmp, enc, langs, g, tl, t0) }
+            main.post { aiOcrStage(a, bmp, langs, g, tl, t0) }
         } catch (t: Throwable) {
             failOcr(a, bmp, g, "pipe", null)
         }
     }
 
-    /** MAIN. (1) continued — spin the OCR host and fire the recognize job;
-     *  a host that cannot even start (no wasm) falls straight to the vision
-     *  fallback (the old honest failure was a dead end for readable text). */
-    private fun aiOcrStage(a: Activity, bmp: Bitmap, enc: Enc, langs: Array<String>,
+    /** MAIN. (1) continued — spin the OCR host and run the GRID pass: every
+     *  cell at native resolution, per-tile results accumulated, per-tile
+     *  char yield Diag'd; a host that cannot even start (no wasm) or dies
+     *  mid-run falls to the vision grid (every cell covered, never a
+     *  dead end). */
+    private fun aiOcrStage(a: Activity, bmp: Bitmap, langs: Array<String>,
                            g: Int, tl: String, t0: Long) {
         if (gen.get() != g) return
-        if (prog == null) {
-            prog = ScrProgress.show(a, "Translate screen — AI") { cancelOcr(a, bmp, g) }
-        }
-        val h = try {
-            host ?: OcrHost(a).also { host = it }
-        } catch (t: Throwable) {
-            try { Diag.log(a, "scr ai ocr host fail -> vision") } catch (_: Throwable) {}
-            POOL.execute { visionFallback(a, bmp, g, tl, null) }
-            return
-        }
-        h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
-        h.run(langs, enc.b64,
-            { json -> POOL.execute { aiOcrDone(a, bmp, enc, json, g, tl, t0) } },
-            { msg ->
-                try { Diag.log(a, "scr ai ocr fail " + (msg ?: "").take(40) + " -> vision") }
-                catch (_: Throwable) {}
-                POOL.execute { visionFallback(a, bmp, g, tl, null) }
-            })
+        val tiles = ArrayList<Pair<IntArray, ArrayList<SBlock>>>()   // rect -> blocks
+        runGridOcr(a, bmp, g, langs, "Translate screen — AI",
+                onTile = { rect, blocks, _ -> tiles.add(Pair(rect, blocks)) },
+                onDone = { _ ->
+                    if (gen.get() != g) return@runGridOcr
+                    POOL.execute { aiOcrDone(a, bmp, tiles, g, tl, t0) }
+                },
+                onHostFail = { _ ->
+                    try { Diag.log(a, "scr ai ocr host fail -> vision grid") } catch (_: Throwable) {}
+                    POOL.execute { visionFallback(a, bmp, g, tl, null) }
+                })
     }
 
-    /** POOL. (1)+(2): the OCR json -> blocks (the shared parser), then ONE
-     *  pure-text translate over the numbered lines; empty OR LOW-YIELD OCR
-     *  -> the vision model reads the screen instead (fallback). */
-    private fun aiOcrDone(a: Activity, bmp: Bitmap, enc: Enc, json: String, g: Int,
-                           tl: String, t0: Long) {
+    /** POOL. (1)+(2) — v1.4.25 THE GRID HYBRID: the per-tile OCR results
+     *  decide each cell's fate: a cell that read WELL (>= TILE_FLOOR
+     *  chars) joins the numbered-lines ONE textTranslate pass; a cell
+     *  that UNDER-READ goes to the per-tile VISION text-only card on its
+     *  own grid cell (coverage is geometric — never one hallucinated
+     *  box's strip). The whole-screen YIELD_FLOOR still guards the
+     *  aggregate: a screen whose tiles together read under it is vision
+     *  territory entirely. */
+    private fun aiOcrDone(a: Activity, bmp: Bitmap,
+                          tiles: List<Pair<IntArray, ArrayList<SBlock>>>, g: Int,
+                          tl: String, t0: Long) {
         if (gen.get() != g) return
         try {
-            val parsed = ocrBlocks(json, bmp, enc)
-            val blocks = parsed.first
-            val chars = parsed.second
-            // v1.4.24 — THE LOW-YIELD LAW: a full screen that OCRs to fewer
-            // than YIELD_FLOOR non-whitespace characters was NOT read —
-            // the pass caught only stray chrome glyphs or failed on the
-            // script entirely (the field log: 720x1353 -> chars=50
-            // lines=5) — and translating that sparse fragment "looks
-            // broken". The vision model then reads the WHOLE screen,
-            // language-agnostic; the hybrid (OCR boxes + one text pass)
-            // runs only when OCR read WELL.
+            val hybridBlocks = ArrayList<SBlock>()
+            val lines = ArrayList<String>()
+            // per-tile chars recomputed from the blocks' own text (the
+            // parser's own count; the blocks carry the text)
+            var chars = 0
+            for (p in tiles) {
+                for (b in p.second) chars += b.orig.count { !it.isWhitespace() }
+            }
+            var i = -1
+            for (p in tiles) {
+                i++
+                val tchars = p.second.sumOf { it.orig.count { !it.isWhitespace() } }
+                val low = tchars < TILE_FLOOR
+                try {
+                    Diag.log(a, "scr ai tile $i chars=$tchars lines=" + p.second.size +
+                            (if (low) " -> vision cell" else " -> hybrid"))
+                } catch (_: Throwable) {}
+                if (!low) {
+                    hybridBlocks.addAll(p.second)
+                    for (b in p.second) lines.add(b.orig)
+                }
+            }
             val low = chars < YIELD_FLOOR
             try {
                 Diag.log(a, "scr ai ocr langs=" + langsOf("auto").joinToString("+") +
-                        " chars=" + chars + " lines=" + blocks.size +
+                        " chars=" + chars + " lines=" + hybridBlocks.size +
                         (if (low) " px=" + bmp.width + "x" + bmp.height + " -> vision" else " -> hybrid") +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
-            if (blocks.isEmpty() || low) {
+            if (hybridBlocks.isEmpty() || low) {
                 visionFallback(a, bmp, g, tl, null)
                 return
             }
             prog?.set("Translating\u2026", -1)
-            val lines = ArrayList<String>(blocks.size)
-            for (b in blocks) lines.add(b.orig)
             val out = AiBridge.textTranslate(a, lines, tl)
             if (gen.get() != g) return
             if (out == null) {
                 if (AiBridge.shouldTile(AiBridge.lastError)) {
                     // a genuine MAX_TOKENS cut of the ONE text reply: the
-                    // vision fallback, with the OCR transcript as the
-                    // full-screen context the tiles need
+                    // vision grid, with the OCR transcript as context
                     val transcript = lines.joinToString("\n")
                     visionFallback(a, bmp, g, tl, transcript)
                     return
@@ -999,14 +1153,31 @@ object ScreenTranslate {
                 return
             }
             var got = 0
-            for (i in blocks.indices) {
-                val t = if (i < out.size) out[i] else null
-                blocks[i].trans = t
-                blocks[i].rev = 1
+            for (idx in hybridBlocks.indices) {
+                val t = if (idx < out.size) out[idx] else null
+                hybridBlocks[idx].trans = t
+                hybridBlocks[idx].rev = 1
                 if (t != null) got++
             }
+            // v1.4.25 — THE UNDER-READ CELLS: each goes to the per-tile
+            // VISION text-only pass, overlaid on its own grid cell (never
+            // box_2d); the transcript keeps terminology consistent
+            prog?.set("Reading missed regions\u2026", -1)
+            val ctxText = lines.joinToString("\n").take(4000)
+            val visionCards = ArrayList<SBlock>()
+            for (p in tiles) {
+                if (gen.get() != g || cancelled) return
+                val tchars = p.second.sumOf { it.orig.count { !it.isWhitespace() } }
+                if (tchars >= TILE_FLOOR) continue
+                val card = visionTileCard(a, bmp, p.first, tl, ctxText)
+                if (card != null) visionCards.add(card)
+            }
+            val blocks = ArrayList<SBlock>(hybridBlocks.size + visionCards.size)
+            blocks.addAll(hybridBlocks)
+            blocks.addAll(visionCards)
             try {
-                Diag.log(a, "scr ai hybrid ok lines=" + blocks.size + " got=" + got +
+                Diag.log(a, "scr ai hybrid ok lines=" + hybridBlocks.size + " got=" + got +
+                        " cells=" + visionCards.size +
                         " ms=" + (System.currentTimeMillis() - t0))
             } catch (_: Throwable) {}
             main.post { deliverAiBlocks(a, bmp, blocks, g) }
@@ -1015,86 +1186,40 @@ object ScreenTranslate {
         }
     }
 
-    /** POOL. (3) THE VISION FALLBACK (demoted): full-screen first; tiles
-     *  only on a genuine cut (shouldTile), each tile request carrying the
-     *  full-screen transcript as context; the SBlocks ride the same ink
-     *  analysis + matching kit as every other path. */
+    /** POOL. (3) THE VISION FALLBACK (demoted) — v1.4.25 THE GRID REWRITE:
+     *  every grid cell through [visionTileCard] (text-only vision, the
+     *  translation OVERLAID ON THE FIXED CELL — the model's box_2d is
+     *  never consulted for placement; the v1.4.24 corpse painted ONE
+     *  hallucinated box on a thin right strip while the rest of the page
+     *  stayed untranslated). Each tile carries the OCR transcript as
+     *  context when one exists. A cell that fails is logged and costs
+     *  only itself; all-cells-failed is the honest failure. */
     private fun visionFallback(a: Activity, bmp: Bitmap, g: Int, tl: String,
                                transcript: String?) {
         if (gen.get() != g || cancelled) return
         try {
-            Diag.log(a, "scr ai vision fallback" +
+            Diag.log(a, "scr ai vision fallback grid" +
                     (if (transcript != null) " ctx=" + transcript.length + "ch" else ""))
         } catch (_: Throwable) {}
         try {
-            prog?.set("Translating\u2026", -1)
-            val enc = encodeAi(bmp)
-            if (enc == null) {
-                failOcr(a, bmp, g, "encode", "Could not read the screen")
+            prog?.set("Translating in regions\u2026", -1)
+            val tiles = gridOf(bmp.width, bmp.height)
+            val blocks = ArrayList<SBlock>()
+            for ((i, rect) in tiles.withIndex()) {
+                if (gen.get() != g || cancelled) return
+                val card = visionTileCard(a, bmp, rect, tl, transcript)
+                if (card != null) blocks.add(card)
+            }
+            if (blocks.isEmpty()) {
+                failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
+                        "AI translation failed — " + AiBridge.lastError.take(60))
                 return
             }
-            val boxes = AiBridge.visionTranslate(a, enc.b64, tl, enc.w, enc.h)
-            if (boxes != null) {
-                deliverVisionBoxes(a, bmp, boxes, g)
-                return
-            }
-            if (AiBridge.shouldTile(AiBridge.lastError)) {
-                // too dense for one reply: the tile road, every tile
-                // carrying the full-screen transcript as context; boxes
-                // re-placed by absolute coordinates + iou seam dedup
-                prog?.set("Translating in regions\u2026", -1)
-                val tiled = translateRegion(a, bmp, tl, g,
-                        0, 0, bmp.width, bmp.height, 0, transcript)
-                if (tiled != null) {
-                    deliverVisionBoxes(a, bmp, tiled, g)
-                    return
-                }
-            }
-            failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
-                    "AI translation failed — " + AiBridge.lastError.take(60))
+            try { Diag.log(a, "scr ai vision ok cells=" + blocks.size) } catch (_: Throwable) {}
+            main.post { deliverAiBlocks(a, bmp, blocks, g) }
         } catch (t: Throwable) {
             failOcr(a, bmp, g, "vision", null)
         }
-    }
-
-    /** POOL. vision boxes -> SBlocks (fractions of the SENT image -> bitmap
-     *  pixels, the ink analysis, the matching kit) -> the shared AI
-     *  delivery (translations are already in the boxes). */
-    private fun deliverVisionBoxes(a: Activity, bmp: Bitmap,
-                                   boxes: ArrayList<AiBridge.AiBox>, g: Int) {
-        if (gen.get() != g) return
-        val blocks = ArrayList<SBlock>()
-        for (b in boxes) {
-            if (blocks.size >= MAXBLK) break
-            // AiBox arrives in 0-1 fractions of the SENT image — map
-            // straight into bitmap pixels (no 1000-grid detour)
-            val l = (b.x * bmp.width).toInt().coerceIn(0, bmp.width - 2)
-            val t = (b.y * bmp.height).toInt().coerceIn(0, bmp.height - 2)
-            val r = ((b.x + b.w) * bmp.width).toInt().coerceIn(l + 2, bmp.width)
-            val bo = ((b.y + b.h) * bmp.height).toInt().coerceIn(t + 2, bmp.height)
-            val rect = Rect(l, t, r, bo)
-            if (rect.width() < 6 || rect.height() < 6) continue
-            // the ink analysis shrinks the box to the TEXT ITSELF, the ring
-            // gives the local background, the median ink band gives the
-            // original's own line height (the model's th is the fallback).
-            // NO ROTATION, EVER: a vertical original gets HORIZONTAL
-            // multi-line text riding the column.
-            val an = analyze(bmp, rect)
-            val sb = SBlock(an.rect, b.orig, regionLight(bmp, an.rect))
-            sb.trans = b.trans
-            sb.rev = 1
-            sb.bg = an.bg
-            sb.thPx = if (an.linePx > 0f) an.linePx else b.th * bmp.height
-            blocks.add(sb)
-        }
-        try {
-            Diag.log(a, "scr ai vision ok lines=" + blocks.size)
-        } catch (_: Throwable) {}
-        if (blocks.isEmpty()) {
-            failOcr(a, bmp, g, "ai empty", "No readable text on this screen")
-            return
-        }
-        main.post { deliverAiBlocks(a, bmp, blocks, g) }
     }
 
     /** the model name WITHOUT the key ever leaving the diag channel.

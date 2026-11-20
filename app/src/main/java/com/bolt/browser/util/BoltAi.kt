@@ -240,6 +240,33 @@ object BoltAi {
             renderAll(a)
             Fx.toast(a, "Chat cleared")
         }
+        // v1.4.25 — THE MATH FONT DOOR (the metered corpse: "math dl fail
+        // dl base/jlm_cmex10.ttf" — the v1.4.24 pack never landed on
+        // metered data, one failure locked the process out, and no manual
+        // retry existed). CORE math (fractions, matrices, Greek, AMS)
+        // rides the APK now; this chip is the OPTIONAL pack's door: the
+        // label carries the live status (downloading / ready /
+        // failed-retry / core) and a tap FORCES the attempt — metered
+        // included, back-off ignored (the user's own data call), the
+        // outcome never silent.
+        chip(mathFontLabel(a)) {
+            try {
+                com.bolt.browser.util.MathFonts.ensureAsync(a, {
+                    try { Fx.toast(a, "Math fonts ready — full TeX enabled") } catch (_: Throwable) {}
+                    try { AiRender.refreshPendings() } catch (_: Throwable) {}
+                }, true)
+                when (com.bolt.browser.util.MathFonts.status(a)) {
+                    "ready" -> Fx.toast(a, "Math fonts ready — full TeX enabled")
+                    "downloading" -> Fx.toast(a, "Downloading full math fonts…")
+                    "failed-retry" -> Fx.toast(a, "Retrying the math font download…")
+                    else -> Fx.toast(a, "Downloading full math fonts (works on mobile data)")
+                }
+                try { Diag.log(a, "math dl manual state=" +
+                        com.bolt.browser.util.MathFonts.status(a)) } catch (_: Throwable) {}
+            } catch (t: Throwable) {
+                Fx.toast(a, "Math font download could not start")
+            }
+        }
 
         // ---- the message list ----
         val scroller = ScrollView(a)
@@ -340,6 +367,18 @@ object BoltAi {
         renderAttachRow(a)
         // a fresh panel opens on the keyboard-ready field when empty
         if (history.isEmpty()) try { et.requestFocus() } catch (_: Throwable) {}
+    }
+
+    /** v1.4.25 — the Math-fonts chip's LIVE label (the status is first-
+     *  class: downloading / ready / failed-retry / core). */
+    private fun mathFontLabel(a: Context): String {
+        val st = try { com.bolt.browser.util.MathFonts.status(a) } catch (t: Throwable) { "core" }
+        return when (st) {
+            "ready" -> "Math fonts ready"
+            "downloading" -> "Math fonts downloading…"
+            "failed-retry" -> "Math fonts failed — tap to retry"
+            else -> "Download full math fonts"
+        }
     }
 
     @JvmStatic

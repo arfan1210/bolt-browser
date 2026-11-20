@@ -81,9 +81,9 @@ st_code = strip(st)
 ar_code = strip(ar)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+138\b", gradle) is not None, "versionCode 138")
-need(re.search(r'versionName\s+"1\.4\.24"', gradle) is not None,
-     'versionName "1.4.24"')
+need(re.search(r"versionCode\s+139\b", gradle) is not None, "versionCode 139")
+need(re.search(r'versionName\s+"1\.4\.25"', gradle) is not None,
+     'versionName "1.4.25"')
 need("<item>1.4.23|" in strings, "the 1.4.23 About-changelog entry landed")
 need("the release now verifies the app OPENS" in strings,
      "the changelog tells the user the launch-verification law honestly")
@@ -100,19 +100,28 @@ need("t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE'" in mh,
 need("(mx/mn)>=2.5" in mh, "banner-shaped content: aspect ratio >= 2.5 stays un-inverted")
 need("function raiseCss(c)" in mh and "if(y>=102)return null;" in mh,
      "the UPWARD clamp exists: a pinned-dark glyph lifts to the 153 mid-gray")
-need("function fontFloor(el,cs)" in mh and "l<0.25" in mh,
-     "the font-icon guarantee: a dark icon-font glyph inside a preserved "
-     "dark subtree is raised")
-need("function pseudoFloor(el,cs,inv){" in mh and "iconFont(cs)&&pl!==null&&pl<0.25" in mh,
-     "the pseudo raise half: dark ::before/::after glyphs on icon-font "
-     "elements get generated raise rules")
+# v1.4.25 re-point (2026-11-21): the faint-glyph corpse — the raise is
+# now the VISIBLE LIGHT (232), the net widened to lum < 0.55 (a MID gray
+# on a dark header was the Moodle hamburger's faint shape)
+need("function fontFloor(el,cs)" in mh and "l<0.55" in mh
+     and "el.style.color=lightCss()" in mh,
+     "the font-icon guarantee: a dark/mid icon-font glyph inside a "
+     "preserved dark subtree lifts to the VISIBLE light (232)")
+# v1.4.25 re-point (2026-11-21): the pseudo lift goes to the visible
+# light with !important specificity (never the 153 mid-gray); the
+# inv===1 clamp SKIPS icon-font glyphs (the RIDE law)
+need("function pseudoFloor(el,cs,inv){" in mh
+     and "iconFont(cs)&&pl!==null&&pl<0.55" in mh
+     and "color:'+lightCss()+'!important}" in mh,
+     "the pseudo raise half: dark/mid ::before/::after glyphs on "
+     "icon-font elements get generated VISIBLE-LIGHT !important rules")
 need("function rescuePass(){" in mh and "function darkImgEl(el)" in mh
      and "function darkSvgEl(el)" in mh,
      "the bounded contrast rescue: SVG luminance + same-origin IMG canvas sample")
 need("rCand<240&&rSave<80" in mh and "rCanvas>=40" in mh,
      "the rescue is bounded (240 candidates / 80 rescues / 40 canvas samples)")
 need("window.__boltDarkCount=cnt" in mh
-     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)
+     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)  # v1.4.25 re-point (2026-11-21): +fi (the font-icon glyph count — the FA-hamburger read-back)
      "the census publishes window.__boltDarkCount")
 need("function clampCss(c)" in mh and "if(y<=153)return null;" in mh,
      "the v1.4.19 downward clamp survived the rewrite (light -> 0.6 floor)")
@@ -200,7 +209,8 @@ t('D light photo in main stays un-inverted', !imgPhotoLight.classList.contains('
 t('D2 dark photo rescued to IC', imgPhotoDark.classList.contains('__boltIC'));
 t('E small dark svg rides IC', svgE.classList.contains('__boltIC'));
 t('F dark card preserved DK', cardF.classList.contains('__boltDK'));
-t('F pinned-dark glyph raised', /rgb\(153, ?153, ?153\)/.test(String(glyphF.style.color)));
+// v1.4.25 re-point (2026-11-21): the lift is the VISIBLE light (232,232,232) — the 153 mid-gray read faint
+t('F pinned-dark glyph raised', /rgb\(232, ?232, ?232\)/.test(String(glyphF.style.color)));
 const c = window.__boltDarkCount;
 t('census small=5', c && c.small === 5);
 t('census ic=3', c && c.ic === 3);

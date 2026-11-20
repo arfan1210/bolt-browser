@@ -100,9 +100,9 @@ ar_code = strip(ar)
 bai_code = strip(bai)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+138\b", gradle) is not None, "versionCode 138")
-need(re.search(r'versionName\s+"1\.4\.24"', gradle) is not None,
-     'versionName "1.4.24"')
+need(re.search(r"versionCode\s+139\b", gradle) is not None, "versionCode 139")
+need(re.search(r'versionName\s+"1\.4\.25"', gradle) is not None,
+     'versionName "1.4.25"')
 need("<item>1.4.24|" in strings, "the 1.4.24 About-changelog entry landed")
 need("stale navigation snapshot" in strings.lower()
      or "resurrects the OLD page" in strings,
@@ -176,7 +176,7 @@ need('"ben" to 855841L' in st and '"vie" to 531275L' in st,
 need("private const val YIELD_FLOOR = 120" in st_code,
      "THE LOW-YIELD LAW: <120 chars on a full screen = not read")
 need("val low = chars < YIELD_FLOOR" in st_code
-     and "if (blocks.isEmpty() || low) {" in st_code,
+     and "if (hybridBlocks.isEmpty() || low) {" in st_code,  # v1.4.25 re-point (2026-11-21): the grid hybrid's aggregate guard (per-tile verdicts ride TILE_FLOOR)
      "low yield -> the vision fallback (not the sparse-fragment hybrid)")
 need('" -> vision"' in st and '" -> hybrid"' in st,
      "the diag names the OCR yield AND the path that ran (RAW)")
@@ -250,7 +250,9 @@ if os.path.isfile(AAR):
     root_xmls = [n for n in names
                  if n.startswith("assets/org/scilab/forge/jlatexmath/")
                  and n.count("/") == 5 and n.endswith(".xml")]
-    need(len(ttfs) == 0, "the thin AAR bundles ZERO TTF binaries (the 287,405 B reclaim)")
+    need(len(ttfs) == 7, "the thin AAR bundles the 7 CORE TTFs (the "
+         "v1.4.25 rebuy — core math offline/metered; the 23 optional "
+         "TTFs stay on-demand)")
     need(seam == [] and len(cj.namelist()) > 200,
          "the AAR's JLatexMathAndroid seam class is stripped (the engine "
          "classes ride)")
@@ -279,7 +281,8 @@ need('private val PACK = arrayOf(' in mf_code
 PACK_COUNT = len(re.findall(r'"[a-z]+/[\w/]*\.ttf"', mf))
 need(PACK_COUNT == 30,
      "the on-demand pack is the exact 30-file list (mirrors the strip)")
-need("455768" in mf_code, "the pack size rides the source (the size story)")
+need("289048" in mf_code, "the OPTIONAL pack size rides the source "
+     "(the size story; the core 7 moved into the APK)")
 need("cdn.jsdelivr.net/gh/noties/jlatexmath-android@0.2.0" in mf
      and "raw.githubusercontent.com/noties/jlatexmath-android/v0.2.0" in mf,
      "the pinned hosts are the upstream repo's own assets (both mirrors)")
@@ -289,7 +292,7 @@ need('File(c.filesDir, "jlmfonts")' in mf and '".ok"' in mf,
      "the pack lands in filesDir/jlmfonts with a one-stat marker [RAW]")
 need("MathFonts.present(c)" in ar_code and "return null" in ar_code,
      "mathDrawable declines while the pack is absent (span subset shows)")
-need("MathFonts.ensureAsync(c)" in ar_code and "fun refreshPendings()" in ar_code,
+need("MathFonts.ensureAsync(c, onReady = {" in ar_code and "fun refreshPendings()" in ar_code,  # v1.4.25 re-point (2026-11-21): the failure-path nudge (core renders without any pack)
      "the bubbles re-render the moment the pack lands")
 need("holdForFonts(c, md, view)" in ar_code
      and "render(c: Context, md: String, view: android.widget.TextView? = null)" in ar_code,
@@ -349,9 +352,9 @@ need("el.naturalWidth<=128&&el.naturalHeight<=128" in mh_raw,
 need("!((bannerish(el)||photoCtx(el))" in mh_raw
      and "!monoOf(el,getComputedStyle(el))" in mh_raw,
      "ridesFlip: the content veto only holds for COLORFUL media")
-need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0};" in mh_raw,
+need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};" in mh_raw,  # v1.4.25 re-point (2026-11-21): +fi (font-icon glyphs)
      "the census carries the mono field")
-need("mono='+(o.mono||0);" in mh_raw,
+need("mono='+(o.mono||0)+' fi='+(o.fi||0);" in mh_raw,  # v1.4.25 re-point (2026-11-21): the reader grew fi=N
      "the census reader reports mono=N (the read-back)")
 
 # ---- the behavioral probe: the fresh darkSmartJs against a mock DOM ----

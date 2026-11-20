@@ -84,6 +84,22 @@ import java.util.WeakHashMap
  *     blob-URL anchors with the REAL name and clicks them
  *     programmatically, which this listener sees (synthetic clicks
  *     dispatch through capture listeners too).
+ *  5. PER-FRAME PASSWORD FILL (v1.4.25) — THE SILENT-GUARD CORPSE: the
+ *     fill chip called `window.__boltFillPw && window.__boltFillPw(u,p)`
+ *     in the MAIN frame only, so a login form inside a cross-origin SSO
+ *     iframe (the DIU portal: the form lives on auth1.diu.edu.bd, never
+ *     reachable from the main document) filled NOTHING, silently. Now:
+ *     every frame gets the robust fill (native value setter +
+ *     input/change events — React/Vue forms notice; username hunt by
+ *     autocomplete/name/id/mail/phone), a login field in ANY frame arms
+ *     the chip (its own host riding up — the v1.3.91 SSO host law, at
+ *     last per-frame), and the fill is ROUTED: the tap runs
+ *     __boltFillPwAll in the top frame, which fills locally and posts
+ *     `fillPw` ONLY to the child frames that reported a login field
+ *     (recorded by window identity when `pwArm` climbed) — the password
+ *     is never broadcast, and the answer (`fillRes`) climbs back so
+ *     Bolt.pwFillResult can toast + Diag the outcome. A miss is VISIBLE
+ *     (Java-side timeout), never silent.
  *
  * v1.3.86 — BLOB CAPTURE WIDENED TO EVERY TYPE. The image-only filter
  *     was a v1.3.58 scoping decision that turned into the v1.3.85 field
@@ -184,6 +200,10 @@ object FrameHooks {
             "try{" +
             "var TOP=false;" +
             "try{TOP=window.parent===window;}catch(e){TOP=true;}" +
+            // v1.4.25 — the login-field frames that reported up (window
+            // identities; the fill is ROUTED to exactly these, never
+            // broadcast)
+            "window.__boltPwKids=[];" +
             "window.addEventListener('message',function(e){" +
             "var d=e&&e.data;" +
             "if(!d||d.__bolt!==1)return;" +
@@ -218,6 +238,32 @@ object FrameHooks {
             "try{if(window.Bolt&&Bolt.noteDownloadAnchor)Bolt.noteDownloadAnchor(d.u,d.n);}catch(x){}" +
             "}else{" +
             "try{parent.postMessage(d,'*');}catch(x){}" +
+            "}" +
+            // v1.4.25 — THE PASSWORD RELAY: pwArm registers/unregisters the
+            // reporting child (by window identity) and climbs to TOP,
+            // where the SSO host rides Bolt.pwField (chip arming from ANY
+            // frame — the v1.3.91 law finally reaches iframes); fillPw
+            // fills THIS frame and answers; fillRes climbs to TOP ->
+            // Bolt.pwFillResult (toast + Diag — a miss is visible)
+            "}else if(d.t==='pwArm'){" +
+            "var ks=window.__boltPwKids;" +
+            "if(d.on){var have=false;" +
+            "for(var qi=0;qi<ks.length;qi++){if(ks[qi]===e.source){have=true;break;}}" +
+            "if(!have)try{ks.push(e.source);}catch(x){}}" +
+            "else{for(var qj=ks.length-1;qj>=0;qj--){" +
+            "try{if(ks[qj]===e.source)ks.splice(qj,1);}catch(x){}}}" +
+            "if(!TOP){try{parent.postMessage(d,'*');}catch(x){}" +
+            "}else{try{if(window.Bolt&&Bolt.pwField)" +
+            "Bolt.pwField(String(d.host||''),d.on?true:false);}catch(x){}}" +
+            "}else if(d.t==='fillPw'){" +
+            "var rr=null;try{rr=window.__boltFillPw(d.u,d.p);}catch(x){rr=null;}" +
+            "var rok=rr&&rr.ok!==undefined?rr.ok:rr;" +
+            "if(!TOP){try{parent.postMessage({__bolt:1,t:'fillRes'," +
+            "ok:rok?1:0,host:location.host},'*');}catch(x){}}" +
+            "}else if(d.t==='fillRes'){" +
+            "if(TOP){try{if(window.Bolt&&Bolt.pwFillResult)" +
+            "Bolt.pwFillResult(d.ok?true:false,String(d.host||''));}catch(x){}}" +
+            "else{try{parent.postMessage(d,'*');}catch(x){}" +
             "}" +
             "}" +
             "}catch(x){}" +
@@ -300,6 +346,71 @@ object FrameHooks {
             "}" +
             "}catch(x){}" +
             "},true);" +
+            "}catch(e){}" +
+            // ---- 5. per-frame password fill (v1.4.25): the robust fill in
+            // EVERY frame (the native value setter + input/change events so
+            // React/Vue-controlled inputs notice; the username hunt rides
+            // autocomplete/name/id/mail/phone), the login-field focusin
+            // arming with the frame's OWN host climbing to the chip, and
+            // the TOP-side orchestrator that ROUTES the fill to the
+            // reporting frames ----
+            "try{" +
+            "function __boltSetVal(el,v){try{" +
+            "var d=null;try{d=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');}catch(x){}" +
+            "try{if(d&&d.set){d.set.call(el,v);}else{el.value=v;}}catch(x){try{el.value=v;}catch(y){}}" +
+            "try{el.dispatchEvent(new Event('input',{bubbles:true}));}catch(x){}" +
+            "try{el.dispatchEvent(new Event('change',{bubbles:true}));}catch(x){}" +
+            "}catch(e){}}" +
+            "function __boltUserFor(pw){try{" +
+            "var f=null;try{f=pw.form?pw.form:(pw.closest?pw.closest('form'):null);}catch(x){}" +
+            "var root=(f&&f.querySelectorAll)?f:document;" +
+            "var ins=root.querySelectorAll('input');" +
+            "for(var i=0;i<ins.length;i++){var el=ins[i];var ty=(el.type||'').toLowerCase();" +
+            "if(ty==='password'||ty==='hidden'||ty==='submit'||ty==='button'||ty==='checkbox'||ty==='radio'||ty==='file')continue;" +
+            "var ac=(el.getAttribute('autocomplete')||'').toLowerCase();" +
+            "var nm=((el.name||'')+' '+(el.id||'')+' '+ac).toLowerCase();" +
+            "if(ac.indexOf('username')>=0||ty==='email'||nm.indexOf('user')>=0||nm.indexOf('login')>=0||nm.indexOf('account')>=0||nm.indexOf('mail')>=0||nm.indexOf('phone')>=0||nm.indexOf('mobile')>=0)return el;}" +
+            "var all=document.querySelectorAll('input');var last=null;" +
+            "for(var j=0;j<all.length;j++){var e2=all[j];var t2=(e2.type||'').toLowerCase();" +
+            "if(t2==='text'||t2==='email'||t2==='tel')last=e2;if(e2===pw)break;}" +
+            "return last;}catch(e){return null;}}" +
+            "window.__boltFillPw=function(u,p){try{" +
+            "var el=null;var ins=document.querySelectorAll('input[type=password]');" +
+            "if(window.__boltPwFocused&&(window.__boltPwFocused.type||'').toLowerCase()==='password')el=window.__boltPwFocused;" +
+            "else if(ins.length)el=ins[0];" +
+            "if(!el){var fu=window.__boltPwFocused||null;" +
+            "if(fu){__boltSetVal(fu,u);return {ok:1};}return {ok:0};}" +
+            "var us=__boltUserFor(el);if(us&&u&&us!==el){__boltSetVal(us,u);}" +
+            "__boltSetVal(el,p);return {ok:1};}catch(e){return {ok:0};}};" +
+            "function __boltLoginField(el){try{" +
+            "if(!el||el.tagName!=='INPUT')return false;" +
+            "var ty=(el.type||'').toLowerCase();if(ty==='password')return true;" +
+            "if(ty!=='text'&&ty!=='email'&&ty!=='tel')return false;" +
+            "var ac=(el.getAttribute('autocomplete')||'').toLowerCase();" +
+            "if(ac.indexOf('username')>=0)return true;" +
+            "var f=null;try{f=el.form?el.form:(el.closest?el.closest('form'):null);}catch(x){}" +
+            "var root=(f&&f.querySelector)?f:document;" +
+            "return !!(root.querySelector&&root.querySelector('input[type=password]'));" +
+            "}catch(e){return false}}" +
+            "var __boltPWArmed=false;" +
+            "function __boltPwArm(on){try{" +
+            "parent.postMessage({__bolt:1,t:'pwArm',on:on?1:0,host:location.host},'*');" +
+            "}catch(x){}}" +
+            "document.addEventListener('focusin',function(ev){try{" +
+            "var el=ev.target;var is=__boltLoginField(el);" +
+            "if(is&&!__boltPWArmed){__boltPWArmed=true;window.__boltPwFocused=el;" +
+            "if(el.type!=='password'){window.__boltLastUserEl=el;}" +
+            "__boltPwArm(true);}" +
+            "else if(!is&&__boltPWArmed){__boltPWArmed=false;window.__boltPwFocused=null;" +
+            "__boltPwArm(false);}}catch(e){}},true);" +
+            "window.__boltFillPwAll=function(u,p){try{" +
+            "var r=null;try{r=window.__boltFillPw(u,p);}catch(x){r=null;}" +
+            "var ok=r&&r.ok!==undefined?r.ok:r;" +
+            "if(ok){try{if(window.Bolt&&Bolt.pwFillResult)Bolt.pwFillResult(true,location.host);}catch(x){}}" +
+            "var kids=window.__boltPwKids||[];" +
+            "for(var i=0;i<kids.length;i++){try{kids[i].postMessage({__bolt:1,t:'fillPw',u:u,p:p},'*');}catch(x){}}" +
+            "if(!ok&&kids.length===0){try{if(window.Bolt&&Bolt.pwFillResult)Bolt.pwFillResult(false,location.host);}catch(x){}}" +
+            "}catch(e){}};" +
             "}catch(e){}" +
             "}catch(e){}})();"
 
