@@ -346,7 +346,7 @@ for d in ("ic_engine_google", "ic_engine_ddg", "ic_engine_bing",
     need(os.path.isfile(os.path.join(RES, "drawable-nodpi", d + ".png")),  # v1.4.23 re-point (2026-11-20): the raster turn (vectors retired to scripts/engine_vectors, the shipped marks are the drawable-nodpi PNGs)
          f"the {d} mark ships as the raster PNG")
 need("protected void applyEngineLogo(View lay) {" in ba_code
-     and "logo == R.drawable.ic_search ? Fx.tint(this) : null" in ba_code,
+     and "if (logo == R.drawable.ic_search) iv.setColorFilter(Fx.tint(this));" in ba_code,  # v1.4.23 re-point (2026-11-20): the null-safe branches (the old ternary unboxed Integer -> the launch-law NPE)
      "the chip applies the logo; brand marks are NEVER tinted (the fallback keeps the tint)")
 need("applyEngineLogo(lay);" in ba_code[ba_code.find("protected void showOmnibox("):][:5000],
      "the omnibox opens with the ACTIVE engine's logo")
