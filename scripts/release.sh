@@ -38,7 +38,7 @@ set -e
 # continues after the last completed phase. Every phase still runs EXACTLY
 # ONCE — nothing is ever skipped semantically; the stamp only lets one
 # release span multiple invocations when the host cuts long runs short.
-STAMP="/tmp/bolt-rel-stages-v${2:-}"
+STAMP="/tmp/bolt-rel-stages-v${1:-}"
 mark() { echo "$1" >> "$STAMP" 2>/dev/null || true; }
 have() { grep -q "^$1$" "$STAMP" 2>/dev/null; }
 REPUBLISH=0
