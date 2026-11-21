@@ -188,6 +188,21 @@ android {
         unitTests {
             includeAndroidResources = true
         }
+        // v1.4.26 — THE PERSISTENT ROBOLECTRIC CACHE: the android-all jar
+        // (~150 MB, org.robolectric:android-all-instrumented) is fetched
+        // ONCE into a machine-local MAVEN LAYOUT that SURVIVES sandbox
+        // recycles (the default ~/.m2 / ~/.robolectric live outside the
+        // persisted project tree, and mavenCentral 429s this environment —
+        // the Aliyun mirror fetches it into maven.repo.local). The dir is
+        // machine-local config: only applied when it exists, never
+        // committed.
+        def roboDir = new File('/home/z/my-project/robolectric-deps')
+        if (roboDir.isDirectory()) {
+            unitTests.all {
+                systemProperty 'maven.repo.local', roboDir.getAbsolutePath()
+                systemProperty 'robolectric.dependency.repo.dir', roboDir.getAbsolutePath()
+            }
+        }
     }
 }
 
