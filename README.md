@@ -1976,7 +1976,22 @@ session, 2026-11-20):
    numbered-prompt signature. The new test_v1426.py rides the suite;
    the launch smoke rung stays exactly where it was.
 
-**Known-good numbers (v1.4.26, release build):** recorded post-release.
+**Known-good numbers (v1.4.26, release build):** APK 3,147,999 B (from
+   v1.4.25's 3,140,403 B — the +7.6 KB is the four-fix round: the dark
+   engine's deferred-re-evaluation + contrast machinery, the manga stage,
+   the sub/sup delimiter pair and the QR stylized passes; 3.0 MB, well
+   under the 6,000,000 B budget); signature verifies against the pinned
+   cert bcd57eb4...; suite: all gates green INCLUDING the launch smoke
+   (Robolectric, 2 tests, 0 failures — running on the new PERSISTENT
+   ROBOLECTRIC CACHE: the ~150 MB android-all jar fetched ONCE from the
+   Aliyun mirror into the machine-local maven layout under the persisted
+   project tree, wired via maven.repo.local only when the dir exists)
+   and the v1.4.26 probes (the pure targetOf/clampCss/bubblesOf/
+   transform tables, TWO compile-and-run Java probes against the real
+   dependency jars — the commonmark GFM-table/sub/sup/strike coexistence
+   probe and the zxing 12.5%-contrast stylized-QR probe — and the
+   transcribed saved-DOM fixture walk: 24 verdicts, 0 bad); dual-published
+   on both repos with md5-verified anonymous downloads.
 
 **Plans / candidates for future versions (v1.4.26 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
