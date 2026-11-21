@@ -137,15 +137,17 @@ need(re.search(r'versionName "1\.4\.26"', gradle) is not None,  # v1.4.17 re-poi
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
-  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
-                     strs.split('name="about_changelog"')[2]) \
+                     strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
+need(entries and entries[7].startswith("1.4.18|"),  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
      "the newest entry is 1.4.16 (the label law)")
+need(len(entries) > 3 and entries[10].startswith("1.4.15|"),  # v1.4.17 re-point (2026-11-18): every About-changelog pin slid one slot down (1.4.17 landed at [0])  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
      "the second entry is 1.4.15 (the previous live release)")
 for word, why in (("0KB", "the corpse law"),
                   ("JS bridge", "the blob routing"),
                   ("accent rim", "the grouped-active highlight"),
                   ("two rows", "the omnibox redesign")):
+    need(word in entries[9] or word in entries[9].lower(),  # v1.4.18 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.18 landed at [0])  # v1.4.19 re-point (2026-11-19): every About-changelog pin slid one slot down (1.4.19 landed at [0])  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
          f"the 1.4.16 line names {why}")  # v1.4.17 re-point (2026-11-18): the 1.4.16 line slid to [1] when 1.4.17 landed at [0]
 
 print("C — fix 1a: a failed copy leaves no 0KB destination")

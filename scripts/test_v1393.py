@@ -94,7 +94,7 @@ print("P3 — the dark engine composition")
 need(".__boltDK img" in media and ".__boltDK .__boltNI" in media
      and "filter:none!important" in media,
      "media/NI inside .__boltDK contribute NOTHING (no third inversion)")
-need("function ancInv(e)" in media and "parityEl(e,ancInv(e))" in media,
+need("function ancInv(e)" in media and "parityEl(e,ancInv(e),null)" in media,  # v1.4.26 re-point (2026-11-21): the walk threads the ground luminance
      "the observer path starts added nodes at the ANCESTOR parity")
 need("parityEl(e,1);" not in media,
      "the hardcoded parity-1 observer start is gone")

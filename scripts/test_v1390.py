@@ -167,8 +167,8 @@ need("sdOriginX = sdLastX;" in act,
      "the drift test measures from the finger (menu-vs-drag contract)")
 
 print("V1 — version pin")
-need(re.search(r"versionCode 10[3456789]\b|versionCode 1[23][0-9]\b", gradle) is not None,
-     "versionCode 103-129 (v1.4.9: 123 in the class)")
+need(re.search(r"versionCode 10[3456789]\b|versionCode 1[23][0-9]\b|versionCode 14[0-9]\b", gradle) is not None,  # v1.4.26 re-point (2026-11-21): the 140s band joined
+     "versionCode 103-140 (v1.4.9: 123 in the class)")
 need(re.search(r'versionName "1\.(3\.1|4\.[0123456789])', gradle) is not None,
      'versionName 1.3.1xx / 1.4.x (v1.4.9: 1.4.9 in the class)')
 

@@ -149,10 +149,11 @@ need(re.search(r'versionName "1\.4\.26"', gradle) is not None,  # v1.4.20 re-poi
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
-  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
-                     strs.split('name="about_changelog"')[2]) \
+                     strs.split('name="about_changelog"')[1]) \
     if 'name="about_changelog"' in strs else []
+need(entries and entries[6].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
      "the newest entry is 1.4.19 (the label law)")
+need(len(entries) > 1 and entries[7].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
      "the second entry is 1.4.18 (the previous live release)")
 for word, why in (("incognito", "the crash-loop cure"),
                   ("error", "the offline overlay"),
@@ -163,6 +164,7 @@ for word, why in (("incognito", "the crash-loop cure"),
                   ("tooltip", "the icon-only tooltip law"),
                   ("password", "the vault add/edit"),
                   ("attachment", "the temporary AI attachments")):
+    need(word in entries[6] or word in entries[6].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
          f"the 1.4.19 line names {why}")
 
 print("C — fix 1: the suffix-first law (the root-caused crash loop)")
@@ -259,11 +261,14 @@ need(ta_code.count("reloadDragNoVoid(") == 4,
      "the helper is still declared + called at ALL THREE drag drop sites (the v1418 pin, kept)")
 
 print("F — fix 4: the dark stroke visibility floor")
-need("function clampCss(c)" in mh and "if(y<=153)return null;" in mh,
-     "clampCss exists and caps at luminance 153/255 = 0.6 (RAW source — the strip pass eats string literals)")
-need("function strokeFloor(el,cs)" in mh,
+# v1.4.26 re-point (2026-11-21): the clamp now takes the ground luminance
+# (clampCss(c,gl)) and the 153 cap became the >=0.75 post-inversion target
+# (the DIU black-on-black corpse); the stroke floor call threads myGl.
+need("function clampCss(c,gl){" in mh and "if(y<=153)return null;" in mh,
+     "clampCss exists and clamps light colors (now to the >=0.75 target — RAW source)")
+need("function strokeFloor(el,cs,gl){" in mh,
      "the stroke floor application function exists")
-need("if(inv===1){try{strokeFloor(el,cs);}catch(x){}}" in mh,
+need("if(inv===1){try{strokeFloor(el,cs,myGl);}catch(x){}}" in mh,
      "the floor rides ONLY subtrees that stay inverted (the parity law composes — RAW source)")
 need("lumOf(cs.color)" in mh and "cs.borderTopColor" in mh,
      "ONLY text color and border colors are remapped (never backgrounds)")

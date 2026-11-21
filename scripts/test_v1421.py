@@ -295,7 +295,7 @@ need("implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0'" i
      # files('libs/jlatexmath-thin.aar') + the app's own seam class
      and "implementation files('libs/jlatexmath-thin.aar')" in gradle,
      "the strikethrough extension + jlatexmath ride the build (the v1.4.24 thin-AAR form)")
-need("StrikethroughExtension.create()" in ar_code
+need("StrikethroughExtension.builder()" in ar_code and ".requireTwoTildes(true).build()," in ar_code  # v1.4.26 re-point (2026-11-21): the extension re-configured so ~ frees up for the markdown subscript
      and "is Strikethrough -> {" in ar_code
      and "StrikethroughSpan()" in ar_code,
      "GFM strikethrough parses and renders (~~text~~)")

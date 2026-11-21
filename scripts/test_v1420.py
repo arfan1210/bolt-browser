@@ -177,7 +177,7 @@ need("if((t==='IMG'||t==='SVG')&&ridesFlip(el))return false;" in mh,
      "(v1.4.21 re-point 2026-11-20: IMG joined SVG — menu images were "
      "media too and stayed black; context-first classification in "
      "test_v1421 section D)")
-need("function iconClamp(el,cs){" in mh
+need("function iconClamp(el,cs,gl){" in mh   # v1.4.26 re-point (2026-11-21): the clamp kit takes the ground luminance (the contrast-aware target)
      and "el.classList.add(IC);cnt.ic++;" in mh,
      "the icon floor: classed .__boltIC (filter:none — rides the page "
      "inversion) inside inverted subtrees only")
@@ -190,7 +190,7 @@ need("el.style.strokeWidth='2'" in mh and "el.style.borderWidth=bw;" in mh,
      "thin svg strokes AND clamped hairline borders get the bump (RAW source)")
 need("el.style.webkitTextStroke='0.45px currentColor';" in mh,
      "icon-font glyphs thicken too (body text never matches iconFont)")
-need("function pseudoFloor(el,cs,inv){" in mh and "psLook>=600||psN>=150" in mh,
+need("function pseudoFloor(el,cs,inv,gl){" in mh and "psLook>=600||psN>=150" in mh,  # v1.4.26 re-point (2026-11-21): +gl (the contrast-aware target)
      "self-colored pseudo-glyphs get generated rules, bounded (600 looks / "
      "150 rules)")
 need("'data-boltpb'" in mh and "data-boltpa" in mh,

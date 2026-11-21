@@ -7,9 +7,10 @@ About-changelog POSITION pins slide one slot down when a new version lands
 at [0]. This script re-points them for 139/1.4.25 -> 140/1.4.26 with dated
 notes (1.4.26 lands at [0]).
 
-Idempotent: the version literals replace to their final form (a second pass
-finds nothing), and the slide is guarded by the dated note — a line already
-carrying 'v1.4.26 re-point' is never slid again.
+Mechanics copied from repin_gates_1425.py exactly: the version literals
+replace to their final form; the slide bumps entries[N].startswith pins AND
+bare entries[N] pins by +1 with a dated note on the SAME line (guarded —
+a line already carrying 'v1.4.26 re-point' is never slid again).
 """
 import glob
 import re
@@ -44,44 +45,54 @@ def bump_versions(src):
 
 
 def slide_changelog_pins(src):
-    """About [0] pins slide one slot down (the new version lands at [0]).
-    Only lines that do NOT already carry the dated slide note."""
+    """entries[N].startswith("1.4.X|") -> entries[N+1] with a dated note.
+    GUARDED: lines already carrying the v1.4.26 note are left alone."""
+    pat = re.compile(r'entries\[(\d+)\]\.startswith\("1\.4\.(\d+)\|"\)')
     lines = src.split("\n")
-    out = []
-    for ln in lines:
-        if "About-changelog pin" in ln or ("About" in ln and "changelog" in ln.lower()
-                                          and "slot" in ln.lower()):
-            continue   # the note lines themselves stay put
+    for i, ln in enumerate(lines):
         if "v1.4.26 re-point" in ln:
-            out.append(ln)
+            continue                      # already slid by a prior run
+        m = pat.search(ln)
+        if not m:
             continue
-        m = re.search(r"\[0\]", ln)
-        if m and ("About" in ln or "changelog" in ln.lower() or "about_txt" in ln
-                  or "AboutActivity" in ln):
-            out.append(NOTE_SLIDE)
-            out.append(re.sub(r"\[0\]", "[1]", ln).replace("[1] [1]", "[1]"))
-            continue
-        m2 = re.search(r"\[1\]", ln)
-        if m2 and ("About" in ln or "changelog" in ln.lower() or "about_txt" in ln
-                   or "AboutActivity" in ln):
-            out.append(NOTE_SLIDE)
-            out.append(re.sub(r"\[1\]", "[2]", ln).replace("[2] [2]", "[2]"))
-            continue
-        out.append(ln)
-    return "\n".join(out)
+        idx = int(m.group(1)) + 1
+        ver = m.group(2)
+        new = pat.sub(f'entries[{idx}].startswith("1.4.{ver}|")', ln, count=1)
+        lines[i] = new.rstrip() + NOTE_SLIDE
+    return "\n".join(lines)
 
 
-for path in sorted(glob.glob("scripts/test_v*.py")):
-    if path.endswith("test_v1426.py"):
+def slide_bare_entries_pins(src):
+    """the standing sweep law, second half: NON-startswith entries[N]
+    content checks slide too — every entries[N] on an un-noted,
+    non-startswith line becomes entries[N+1]."""
+    bare = re.compile(r'entries\[(\d+)\](?!\.startswith)')
+    lines = src.split("\n")
+    for i, ln in enumerate(lines):
+        if "v1.4.26 re-point" in ln:
+            continue                      # already slid by a prior run
+        if ".startswith" in ln:
+            continue                      # the startswith pass owns those lines
+        if not bare.search(ln):
+            continue
+
+        def bump(m):
+            return f"entries[{int(m.group(1)) + 1}]"
+        lines[i] = bare.sub(bump, ln).rstrip() + NOTE_SLIDE
+    return "\n".join(lines)
+
+
+for f in sorted(glob.glob("scripts/test_v14*.py") +
+                glob.glob("scripts/test_v13*.py") +
+                glob.glob("scripts/test_v1[0-3]*.py")):
+    if f.endswith("test_v1426.py"):
         continue   # this gate ships at 140/1.4.26 already
-    src = open(path, encoding="utf8").read()
+    src = open(f, encoding="utf8").read()
     out = bump_versions(src)
-    if "v1.4.26 re-point" not in out:
-        out = slide_changelog_pins(out)
+    out = slide_changelog_pins(out)
+    out = slide_bare_entries_pins(out)
     if out != src:
-        open(path, "w", encoding="utf8").write(out)
-        changed[path] = True
-
-print("repin_gates_1426: re-pointed %d gate files to 140/1.4.26" % len(changed))
-for p in sorted(changed):
-    print("  " + p)
+        open(f, "w", encoding="utf8").write(out)
+        changed[f] = True
+        print("repinned", f)
+print(len(changed), "gate files repinned to 140/1.4.26")

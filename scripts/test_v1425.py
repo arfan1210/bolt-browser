@@ -741,11 +741,9 @@ need("iconFont(cs)&&pl!==null&&pl<0.55" in mh_raw
 need("if(!iconFont(cs)&&pl!==null&&pl>0.8)" in mh_raw
      and "if(!iconFont(cs)&&al!==null&&al>0.8)" in mh_raw,
      "THE RIDE LAW: the inv===1 clamp SKIPS icon-font glyphs (dark -> light)")
-# v1.4.26 re-point (dated): the contrast-aware clamp takes the ground
-# luminance now (clampCss(c,gl) — the 153-clamp corpse); the census object
-# gained late/keep fields (the race + preserve read-backs) and the reader
-# string gained their tails. The BEHAVIOR pins (the fontIc skip, the fi
-# count, the lightCss lift) are unchanged below.
+# v1.4.26 re-point (2026-11-21): the contrast-aware clamp takes the ground
+# luminance (clampCss(c,gl) — the 153-clamp corpse); the census object
+# gained late/keep fields and the reader string gained their tails.
 need("var nc=fontIc?null:clampCss(cs.color,gl);" in mh_raw,
      "strokeFloor: the element clamp skips icon-font glyphs too")
 need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh_raw,

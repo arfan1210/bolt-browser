@@ -1852,6 +1852,163 @@ session, 2026-11-20):
 - (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
   candidate.
 
+**v1.4.26 — THE BLACK-ON-BLACK + BUBBLE ROUND** (the nineteenth session,
+2026-11-21):
+
+1. *FORCED-DARK BLACK-ON-BLACK (root-caused from the user's SAVED DOM of
+   studentportal.diu.edu.bd, captured with the engine live — the
+   transcribed fixture rides the gate as the mock-DOM walk).* The
+   evidence: the hamburger (a 24x24 data:URI `<img>` inside
+   `div.sidebar_icon d-lg-none`) carried NO `__boltIC` while the eight
+   48x48 sidebar icons did — an image that was 0-rect or `!complete` at
+   the walk's first pass was classed content ONCE and left riding the
+   media un-invert = black glyph on the inverted black header; and
+   btn-success/info/warning/danger/teal + badges carried inline
+   `color:rgb(153,153,153)` (`__boltSV`, the v1.4.19 clamp) over their
+   INVERTED MID-LUMINANCE grounds — 153→102 text on mid read
+   1.4–2.5:1. (btn-primary/dark/purple, lum ≤ 0.35, got `__boltDK` and
+   read fine — the designed-chip path was already proven.) ZERO
+   rgb(232,232,232) existed on the page — the v1.4.25 lightCss law never
+   fired there; not chased. THREE surgical legs:
+   - THE ANCESTOR ICON SIGNAL: `iconNamed` also walks the parent chain
+     (≤ 6 levels) for the icon|menu|toggle|nav|… pattern —
+     `div.sidebar_icon` and `div.line_icon` both match, so an UNCLASSED
+     `<img>` inside them rides the inversion DETERMINISTICALLY,
+     independent of decode timing (`ridesFlip`: m > 64 is content,
+     period; a laid-out small named element rides; a 0-rect element
+     rides on the ancestor signal alone — photoCtx still guards
+     article/figure contexts). Probe: an unclassed `<img>` inside
+     `div.sidebar_icon` gets IC.
+   - THE ONE-SHOT RACE KILLER: any IMG/SVG that was 0-rect/`!complete`/
+     `naturalWidth 0` at the first walk is DEFERRED — a one-shot load
+     listener (armed at defer time, covering observer-added nodes too),
+     delayed re-passes at ~1 s and ~3 s, and resize/orientationchange
+     (the `d-lg-none` class flips with the viewport) re-run `ridesFlip`
+     and apply IC when it NOW passes; `reEval` guards on
+     `__boltDKrun` so a pulled inversion never re-classes. `monoOf`:
+     data:URI images are icon ASSETS; tiny intrinsic size once
+     naturalWidth is KNOWN is the same verdict. The census's
+     `small` recount is marker-guarded (`__boltSc`) so an element never
+     counts twice — the double-count corpse was caught by the v1.4.23
+     gate's own mock. Probe: a 0-rect/undecoded img at commit becomes
+     IC after load.
+   - THE CONTRAST-AWARE PRESERVE + TARGET (the broad black-on-black): a
+     solid background in [0.18, 0.80] whose own/inherited text is LIGHT
+     (lum > 0.7) is a DESIGNED colored chip — PRESERVED (DK) exactly
+     like the btn-primary path; only near-white grounds (> 0.80)
+     invert. For the remaining inverted cases the fixed 153 clamp is
+     REPLACED by a contrast-aware target: the walk threads the RENDERED
+     ground luminance (gl — el's own solid bg renders at el's parity,
+     else the ancestor's gl rides), and the source text scales so the
+     POST-inversion text reads ≥ 0.75 at ≥ 4.5:1; when NO target
+     reaches 4.5:1 (a mid-luminance inverted ground) the element is
+     PRESERVED instead — its designed light text beats every clamp the
+     old law could write. The census gained `late` (the deferred ICs)
+     and `keep` (the preserves) for the field read-back. Probe:
+     btn-warning (yellow + white text) is preserved; a white card's
+     dark text still inverts; the clamp writes rgb(64,64,64) (→ 191
+     post-inv = 0.75) on near-black grounds.
+2. *MANGA TRANSLATION — the bubble-aware mode restored (the v1.4.25 grid
+   ruined it: the fixed 2x3 cards left the speech bubbles, covered the
+   art, and flattened line breaks/style).* The mode picker: AI Page (the
+   grid, full-page coverage) vs Basic OCR vs **Manga / Manga HD**. The
+   manga stage: the v1.3.74 preprocess (x2 nearest upscale capped
+   2600 px / 6.5 MP, grayscale, the HARD 5/95 percentile stretch, PNG —
+   line art hates JPEG ringing, and the host page takes the mime);
+   jpn_vert / jpn_vertb OCR (the vertical models are back in LANG_OK
+   with their exact repo sizes — fast 3,037,480 B, best 14,330,809 B —
+   the model diet no longer deletes them); BUBBLE CLUSTERING
+   (`bubblesOf`, pure: line boxes whose 0.6×height-inflated rects touch
+   merge — stacked lines AND side-by-side vertical columns; distinct
+   bubbles never merge) builds ONE card per bubble at the cluster's own
+   extent (covering ONLY the bubble's text, never a grid cell), with
+   the sampled bubble paper, corner radius, the median original line
+   height, and line breaks preserved — the translation rides the ' ~ '
+   marker through the numbered protocol and the card's StaticLayout
+   stacks the newlines. The OCR-blind path (stylised art, total under
+   YIELD_FLOOR): the GEOMETRIC bright-region detector (interior
+   paper-white blobs on a ~1/8 downscale, border-connected page paper
+   dropped, 1.5–25% of page, aspect ≤ 4, top 8) crops each bubble
+   through the vision text-only pass — its card sits INSIDE the region;
+   box_2d stays retired (the v1.4.25 grid law, kept). Probes: the pure
+   bubblesOf/stretch tables + the mode-law pins.
+3. *BOLT AI TABLES RENDERED EMPTY (definite bug).* commonmark's GFM AST
+   wraps rows in TableHead/TableBody blocks — `table()`'s
+   firstChild-only walk collected ZERO TableRows and every GFM table
+   rendered empty. The walk now descends into BOTH wrappers (document
+   order). Plus the markdown `~sub~` / `^sup^` DELIMITER forms (a
+   custom DelimiterProcessor pair; the strikethrough extension
+   re-configured to `requireTwoTildes(true)` — its own documented knob
+   for single-tilde coexistence, so `~~strike~~` keeps working while a
+   single `~` run falls to the sub processor; `^` had no claimant). The
+   `<sub>`/`<sup>` HTML tags already worked; both forms render the same
+   span kit. Probes: the compile-and-run commonmark probe against the
+   real 0.24.0 jars — a GFM table yields ALL header+body rows through
+   the wrapper traversal (the old walk: ZERO), ~sub~/^sup^ render their
+   nodes, ~~strike~~ coexists.
+4. *QR SCAN — half-screen / 90° mismatch + weak on stylised codes.* The
+   commit-visible surface arrives BEFORE the camera opens, so the first
+   buffer pin is the 640x480 placeholder; openCamera/createSession
+   re-pin to the preview size but the transform only re-ran on
+   view-size changes — a buffer-size change never fires
+   onSurfaceTextureSizeChanged, so the rotate/cover-scale never landed
+   and the landscape sensor buffer rode the view untransformed. THE
+   BUFFER PIN: `bufW/bufH` track what the SurfaceTexture buffer really
+   is; the transform computes against the ACTUAL dims and RE-APPLIES
+   (UI-thread posted) after every re-pin. THE STYLIZED PASSES: after the
+   plain + inverted attempts, a 2/98-percentile CONTRAST STRETCH of the
+   luma plane (tinted/low-contrast codes binarize far better blown
+   out) and a HALF-SCALE pass (the ZXing recommendation for big/blurry
+   codes), each with its own inverted retry. Probes: the transform
+   table (the portrait upright height fills the view exactly, cover
+   + aspect-true; the 640x480 placeholder still transforms) + the
+   compile-and-run zxing probe (a 12.5%-contrast stylized QR decodes).
+5. *The gate-sweep mechanics, v1.4.26 edition.* 43 gate files repinned
+   to 140/1.4.26 (repin_gates_1426.py — the version-bump + the
+   entries[N] slide laws copied from the v1.4.25 sweep verbatim);
+   dated re-points where the fixes legitimately moved pinned targets:
+   v1423/v1424/v1425 the census object + reader tails + the
+   clampCss/strokeFloor/iconClamp/pseudoFloor ground-luminance
+   signatures, v1419 the clamp cap, v1392 the bg-law literal, v1393 the
+   ancInv call's gl arg, v1390 the versionCode band, v1420 the clamp
+   kit signatures, v1421 the strikethrough builder, test_screen the
+   mode law (the Manga pair + the tessdata_best allowlist) + the
+   numbered-prompt signature. The new test_v1426.py rides the suite;
+   the launch smoke rung stays exactly where it was.
+
+**Known-good numbers (v1.4.26, release build):** recorded post-release.
+
+**Plans / candidates for future versions (v1.4.26 edition):**
+- THE LAUNCH LAW stays forever (carried from every edition since
+  v1.4.23).
+- The dark round wants the DIU portal read-back: the census line should
+  carry `late>=1` (the hamburger counted after its decode — or ic
+  counts it at the walk if the ancestor signal fired first) and
+  `keep>=N` (the designed chips kept as designed); the five colored
+  buttons read as DESIGNED (no rgb(153,153,153) in the saved DOM ever
+  again), and NO text/ground pair on an inverted element projects
+  below 4.5:1.
+- The manga round wants its field read-back: `scr manga ocr chars=…
+  bubbles=N` on a clean page (bubbles=the real bubble count — cards
+  INSIDE bubbles, art uncovered), the ' ~ ' markers stacking as line
+  breaks in the cards, and `scr manga vision ok regions=N` on a
+  stylised page (the geometric bright-region path, never a grid
+  cell). Manga HD's 14 MB one-time download rides the metered confirm.
+- The table round wants an AI reply with a real GFM table rendered
+  full-grid (header BOLD + every body row — the empty-table corpse),
+  plus ~sub~/^sup^ in the wild (model markdown now renders both).
+- The QR round wants the live scanner read-back: full-screen upright
+  preview in portrait AND landscape (no half-screen, no 90° mismatch),
+  and a stylised/colored code decoding that v1.4.25 could not.
+- (carried) The jlatexmath optional pack lands at ~289 KB one-time; the
+  EasyList/EasyPrivacy snapshots remain the next APK-size lever.
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate.
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

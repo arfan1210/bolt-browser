@@ -121,9 +121,9 @@ need("function rescuePass(){" in mh and "function darkImgEl(el)" in mh
 need("rCand<240&&rSave<80" in mh and "rCanvas>=40" in mh,
      "the rescue is bounded (240 candidates / 80 rescues / 40 canvas samples)")
 need("window.__boltDarkCount=cnt" in mh
-     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)  # v1.4.25 re-point (2026-11-21): +fi (the font-icon glyph count — the FA-hamburger read-back)  # v1.4.26 re-point (2026-11-21): +late/keep (the deferred-IC and contrast-preserve read-backs)
+     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)  # v1.4.25 re-point (2026-11-21): +fi (the font-icon glyph count — the FA-hamburger read-back)  # v1.4.26 re-point (2026-11-21): +late/keep (the deferred-IC + contrast-preserve read-backs)
      "the census publishes window.__boltDarkCount")
-need("function clampCss(c,gl){" in mh   # v1.4.26 re-point (2026-11-21): the 153 corpse replaced by the contrast-aware target (the ySrc scale against the rendered ground)
+need("function clampCss(c,gl){" in mh   # v1.4.26 re-point (2026-11-21): the 153 corpse replaced by the contrast-aware target
      and "if(y<=153)return null;" in mh
      and "var ySrc=255*(1-T);" in mh,
      "the v1.4.19 downward clamp survived the rewrite (light clamps — now "
@@ -274,7 +274,7 @@ print()
 print("C — fix 3: the screen-translate HYBRID (OCR first, ONE text pass)")
 need("fun textTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>?" in ab_code,
      "the pure-text translate stage exists (BLOCKING, worker-only)")
-need("internal fun textLinesPrompt(tl: String, lines: List<String>, markBreaks: Boolean = false): String" in ab_code,  # v1.4.26 re-point (2026-11-21): the prompt grew the manga markBreaks flag (the ' ~ ' line-break marker)
+need("internal fun textLinesPrompt(tl: String, lines: List<String>, markBreaks: Boolean = false): String" in ab_code,  # v1.4.26 re-point (2026-11-21): the prompt grew the manga markBreaks flag
      "the numbered-lines protocol prompt is PURE (probe-pinned)")
 need("internal fun parseNumberedReply(txt: String, want: Int): Array<String?> {" in ab_code,
      "the numbered-reply parser is PURE (probe-pinned)")

@@ -196,16 +196,17 @@ def main():
         return 1
     print("OK: S6 menu row + action + string wired")
 
-    # S9 — REWRITTEN v1.3.78, then v1.4.26 re-point (2026-11-21): THE MODE
-    # LAW grew the MANGA pair back (the v1.4.25 grid covered the art and
-    # left the speech bubbles — the bubble-aware round restores the
-    # v1.3.74 line): AI Page (the grid) + Basic OCR (the no-AI fallback)
-    # + Manga + Manga HD (jpn_vert / jpn_vertb, tessdata_best for HD, the
-    # model diet NO LONGER deletes the vertical models — they are the
-    # manga mode's own bill again).
+    # S9 — REWRITTEN v1.3.78: THE MODE LAW (the report: "the other modes
+    # are pretty uneffecrive still, so just remove them all, and keep an
+    # unibetsal alternative screen translate non ai option"). TWO modes:
+    # AI (primary) + Basic OCR (universal no-AI fallback); the manga/HD/JP/
+    # CN/EN scripts and their models are GONE, and the on-disk diet deletes
+    # the orphaned jpn_vert/jpn_vertb files (~17 MB of the storage bill).
+    # v1.4.26 re-point (2026-11-21): THE MODE LAW grew the MANGA pair back
+    # (the v1.4.25 grid covered the art and left the speech bubbles — the
+    # bubble-aware round restores the v1.3.74 line); the model diet no
+    # longer deletes the vertical models (the manga mode's own bill again)
     for probe in ('private val SCRIPT_KEYS = arrayOf("ai", "auto", "manga", "mangahd")',
-                  # v1.4.23 re-point (2026-11-20): the label names the hybrid
-                  # (OCR + ONE pure-text pass); v1.4.26: AI Page + the pair
                   '"AI Page \\u2014 grid OCR + one AI text pass (full page)"',
                   '"Basic OCR \\u2014 no AI (works offline of the AI key)"',
                   '"Manga \\u2014 bubble-aware (speech bubbles, vertical JP)"',

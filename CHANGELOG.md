@@ -4,6 +4,114 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.26] — 2026-11-21
+
+**The black-on-black + bubble round: four field-rooted fixes — forced dark
+that keeps designed colored buttons readable and never freezes an icon
+verdict on an undecoded image, the bubble-aware manga mode restored, GFM
+tables that actually render plus markdown sub/superscripts, and a QR
+scanner whose preview is upright in every orientation with stylized-code
+decoding. Root-caused from the user's saved DOM of the DIU student portal
+(captured with the dark engine live). The launch smoke rung stays in the
+pipeline.**
+
+### 1. FORCED DARK: BLACK-ON-BLACK — the saved-DOM root-cause
+- Field shape: on studentportal.diu.edu.bd the hamburger menu was invisible
+  (black on the inverted black header) and the colored action buttons read
+  as dark smudges — the exact evidence: the 24x24 data:URI `<img>` inside
+  `div.sidebar_icon` carried NO `__boltIC` while the eight 48x48 sidebar
+  icons did, and btn-success/info/warning/danger/teal + badges carried
+  inline `rgb(153,153,153)` over inverted mid-luminance grounds
+  (153→102 text reads 1.4–2.5:1).
+- Root causes: (a) the icon walk classified an image ONCE — a 0-rect or
+  not-yet-decoded first pass froze a "content" verdict forever; (b) the
+  fixed v1.4.19 clamp (153) read unreadably on mid-luminance inverted
+  grounds; (c) mid-luminance designed chips with white text were blindly
+  inverted even though the btn-primary/dark/purple path proved preserving
+  them reads perfectly.
+- The fix, three surgical legs:
+  - THE ANCESTOR ICON SIGNAL: `iconNamed` also walks the parent chain
+    (≤ 6 levels) for the icon|menu|toggle|nav|… pattern — an unclassed
+    `<img>` inside `div.sidebar_icon`/`div.line_icon` rides the inversion
+    DETERMINISTICALLY, independent of decode timing.
+  - THE ONE-SHOT RACE KILLER: any IMG/SVG that was 0-rect or undecoded at
+    the first walk is DEFERRED — a one-shot load listener, delayed
+    re-passes (~1 s, ~3 s) and resize/orientationchange (the d-lg-none
+    responsive icons) re-run the classifier and apply the ride when the
+    image is ready; data:URI images are icon assets; a recount guard
+    keeps the census honest. A plain undecoded icon becomes IC after its
+    load — never a frozen verdict again.
+  - THE CONTRAST-AWARE PRESERVE + TARGET: a solid background in
+    [0.18, 0.80] whose own/inherited text is light (> 0.7 luminance) is a
+    DESIGNED chip and is PRESERVED exactly like the dark-button path;
+    only near-white grounds (> 0.80) still invert. For the remaining
+    inverted cases the fixed 153 clamp is replaced by a contrast-aware
+    target — the walk tracks the rendered ground luminance and scales the
+    text so it reads ≥ 0.75 after inversion at ≥ 4.5:1; when no target
+    can reach 4.5:1 the element is PRESERVED instead of clamped (designed
+    light text beats every gray the old law could write).
+- Probes: the pure target/clamp arithmetic tables, the QR-style transform
+  tables, and the transcribed saved-DOM fixture walk — the hamburger +
+  mini toggle ride, the five colored buttons + badge are preserved with
+  NO clamp write, the mid-ground light text is preserved, the census
+  counts ic/late/keep.
+
+### 2. MANGA TRANSLATION — the bubble-aware mode restored
+- Field shape: v1.4.25's fixed 2x3 grid cards left the speech bubbles,
+  covered the art, and flattened line breaks/style on manga pages.
+- The fix: the mode picker gains Manga / Manga HD alongside AI Page (the
+  grid, kept for general pages) and Basic OCR. The manga stage restores
+  the v1.3.74 line: the manga preprocess (x2 nearest upscale capped
+  2600 px/6.5 MP, grayscale, the hard 5/95 percentile stretch, PNG —
+  line art hates JPEG ringing), vertical-Japanese OCR (jpn_vert /
+  jpn_vertb models on demand, exact repo sizes, the model diet no longer
+  deletes them), BUBBLE CLUSTERING of the OCR line boxes (stacked lines
+  and side-by-side vertical columns merge; distinct bubbles never) — ONE
+  matched card per bubble at the bubble's own extent (sampled bubble
+  background, corner radius, the original's line height, line breaks
+  preserved through the ' ~ ' marker), never a grid cell, never the art.
+  The OCR-blind path (stylised art) detects paper-white bubble regions
+  GEOMETRICALLY (interior bright blobs — border-connected page paper
+  dropped) and crops each through the vision text-only pass; the model's
+  box_2d is never trusted (the v1.4.25 grid law, kept).
+
+### 3. BOLT AI: TABLES RENDERED EMPTY + sub/superscripts
+- Root cause: commonmark's GFM AST wraps table rows in TableHead/TableBody
+  blocks — the renderer's firstChild-only walk collected ZERO rows and
+  every GFM table rendered empty. The walk now descends into both
+  wrappers in document order.
+- Plus the markdown delimiter forms: `~sub~` renders a subscript and
+  `^sup^` a superscript (custom delimiter processors; the GFM
+  strikethrough extension re-configured with its own documented
+  requireTwoTildes knob so `~~strike~~` keeps working), matching the
+  `<sub>`/`<sup>` HTML tags that already worked.
+- Probe: a compile-and-run probe against the real commonmark 0.24.0 jars —
+  a GFM table yields all header+body rows through the wrapper traversal
+  (the old walk: ZERO), and all three inline forms render their nodes.
+
+### 4. QR SCAN: half-screen/90° mismatch + stylized codes
+- Root cause: the preview surface arrives before the camera opens, so the
+  buffer is pinned to a 640x480 placeholder first; the later re-pin to
+  the camera preview size never re-applied the rotate/cover-scale
+  transform (a buffer-size change does not fire the view-size callback) —
+  the landscape sensor buffer rode the portrait view untransformed.
+- The fix: the buffer pin is tracked (bufW/bufH — what the SurfaceTexture
+  buffer really is), the transform computes against the ACTUAL buffer
+  dims and RE-APPLIES after every re-pin — upright, full-screen and
+  aspect-true in every orientation.
+- Decoding: after the plain + inverted attempts, a 2/98-percentile
+  contrast stretch of the luma plane and a half-scale pass (the ZXing
+  recommendation for big/blurry codes), each with its own inverted retry
+  — stylized/tinted/low-contrast codes decode far more reliably.
+  Probe: a 12.5%-contrast stylized QR decodes (v1.4.25 could not read it).
+
+### Build / gates
+- versionName 1.4.26, versionCode 140. The Robolectric LAUNCH SMOKE stays
+  a release rung. The full gate suite runs green; the new v1.4.26 gate
+  pins every fix with pure tables, two compile-and-run Java probes on the
+  real dependency jars, and the transcribed saved-DOM fixture walk; 43
+  prior gates re-pinned with dated notes.
+
 ## [1.4.25] — 2026-11-21
 
 **The reliability + coverage round: five field-rooted fixes — math fonts that

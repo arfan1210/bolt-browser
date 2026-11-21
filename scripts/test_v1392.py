@@ -151,7 +151,7 @@ need("var ok = passFor(c, host, user) == pass" in vault and "if (!ok) {" in vaul
 print("D1 — the dark parity engine")
 need(".__boltDK" in media and "contrast(1.111)" in media,
      "the parity class cancels the global inversion EXACTLY (contrast-compensated)")
-need("darkSmartJs" in media and "parityEl" in media and "want=(l<=0.35)?0:1" in media.replace(" ", ""),
+need("darkSmartJs" in media and "parityEl" in media and "if(l<=0.35){want=0;}" in media.replace(" ", ""),  # v1.4.26 re-point (2026-11-21): the bg law grew the preserve band (mid ground + light text = designed), dark grounds still preserve
      "the walk preserves dark subtrees (lum <= 0.35, the dark-grey family)")
 need("cs.filter&&cs.filter!=='none'" in media.replace(" ", "").replace("cs.filter&&cs.filter", "cs.filter&&cs.filter"),
      "an element with its own filter is never clobbered")

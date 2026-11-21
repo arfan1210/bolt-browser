@@ -395,6 +395,7 @@
     <!-- one line per recent version (newest first), "version|summary";
          the About screen parses the pipe — keep entries single-line -->
     <string-array name="about_changelog">
+        <item>1.4.26|Forced dark no longer turns readable buttons into black-on-black (the student-portal round: colored buttons and badges with white text — green, blue, teal, yellow, red — now keep their designed colors exactly like the dark buttons always did, and every remaining inverted text is clamped to a contrast target that stays readable at 4.5:1 or better); the faint hamburger menu is fixed for good (an icon inside a named menu wrapper rides the inversion immediately, and an image that has not decoded yet is re-examined when it loads instead of being classified once and forgotten); manga translation is back with a dedicated bubble-aware mode (one card placed inside each speech bubble with the bubble\'s own background and line height, line breaks kept, vertical Japanese models on demand — while the general full-page mode keeps the cell grid); AI tables that rendered empty now show every row, and ~subscript~ / ^superscript^ markdown works; the QR scanner\'s camera preview is upright, full-screen and aspect-true in every orientation, and stylized or low-contrast QR codes decode far more reliably.</item>
 <!-- v1.4.25 (2026-11-21): the reliability + coverage round — the core
          math-font rebuy (offline/metered math + the retry law + the
          manual chip), the AiRender colour law, the screen-translate
