@@ -108,9 +108,9 @@ mh_code = strip(mh_raw)
 thin_code = strip(thin)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+139\b", gradle) is not None, "versionCode 139")
-need(re.search(r'versionName\s+"1\.4\.25"', gradle) is not None,
-     'versionName "1.4.25"')
+need(re.search(r"versionCode\s+140\b", gradle) is not None, "versionCode 140")
+need(re.search(r'versionName\s+"1\.4\.26"', gradle) is not None,
+     'versionName "1.4.26"')
 need("<item>1.4.25|" in strings, "the 1.4.25 About-changelog entry landed")
 need("Math fonts" in strings, "the changelog tells the math-reliability story")
 need("WHOLE page" in strings, "the changelog tells the grid-coverage story")
@@ -741,12 +741,18 @@ need("iconFont(cs)&&pl!==null&&pl<0.55" in mh_raw
 need("if(!iconFont(cs)&&pl!==null&&pl>0.8)" in mh_raw
      and "if(!iconFont(cs)&&al!==null&&al>0.8)" in mh_raw,
      "THE RIDE LAW: the inv===1 clamp SKIPS icon-font glyphs (dark -> light)")
-need("var nc=fontIc?null:clampCss(cs.color);" in mh_raw,
+# v1.4.26 re-point (dated): the contrast-aware clamp takes the ground
+# luminance now (clampCss(c,gl) — the 153-clamp corpse); the census object
+# gained late/keep fields (the race + preserve read-backs) and the reader
+# string gained their tails. The BEHAVIOR pins (the fontIc skip, the fi
+# count, the lightCss lift) are unchanged below.
+need("var nc=fontIc?null:clampCss(cs.color,gl);" in mh_raw,
      "strokeFloor: the element clamp skips icon-font glyphs too")
-need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};" in mh_raw,
+need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh_raw,
      "the census carries the fi field")
-need("' fi='+(o.fi||0);" in mh_raw,
-     "the census reader reports fi=N")
+need("' fi='+(o.fi||0)" in mh_raw
+     and "' late='+(o.late||0)+' keep='+(o.keep||0);" in mh_raw,
+     "the census reader reports fi=N (and the v1.4.26 late/keep tails)")
 need('try{if(iconFont(cs))cnt.fi++;}catch(x){}' in mh_raw,
      "every icon-font glyph the walk sees counts as fi")
 

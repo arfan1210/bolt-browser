@@ -44,9 +44,12 @@
 
   window.__push = function (s) { chunks.push(s); };
 
-  window.__ocr = function (langs) {
+  window.__ocr = function (langs, mime) {
     var b64 = chunks.join(''); chunks = [];
     if (!window.Tesseract) { try { B().fail('no-lib'); } catch (e) {} return; }
+    // v1.4.26: the mime rides from Kotlin (jpeg default; the manga pass
+    // sends png — line art hates JPEG ringing, the v1.3.74 law)
+    var m = mime || 'jpeg';
     var p;
     if (worker && workerLangs === langs) {
       p = Promise.resolve(worker);
@@ -56,8 +59,8 @@
         langPath: 'https://bolt.ocr/tess',
         gzip: false,
         cacheMethod: 'none',
-        logger: function (m) {
-          try { B().progress(String(m && m.status || ''), Math.round((m && m.progress || 0) * 100)); } catch (e) {}
+        logger: function (m2) {
+          try { B().progress(String(m2 && m2.status || ''), Math.round((m2 && m2.progress || 0) * 100)); } catch (e) {}
         }
       }).then(function (w) { worker = w; workerLangs = langs; return w; });
     }
@@ -67,7 +70,7 @@
       // the jpn_vert model (live-verified: PSM 6 reads manga columns as
       // latin rows; PSM 11 sparse reads garbage) and handles mixed real
       // screen layouts.
-      return w.recognize('data:image/jpeg;base64,' + b64,
+      return w.recognize('data:image/' + m + ';base64,' + b64,
         { tessedit_pageseg_mode: '3' },
         { text: true, blocks: true, hocr: false, tsv: false });
     }).then(function (r) {

@@ -100,9 +100,9 @@ ar_code = strip(ar)
 bai_code = strip(bai)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+139\b", gradle) is not None, "versionCode 139")
-need(re.search(r'versionName\s+"1\.4\.25"', gradle) is not None,
-     'versionName "1.4.25"')
+need(re.search(r"versionCode\s+140\b", gradle) is not None, "versionCode 140")
+need(re.search(r'versionName\s+"1\.4\.26"', gradle) is not None,
+     'versionName "1.4.26"')
 need("<item>1.4.24|" in strings, "the 1.4.24 About-changelog entry landed")
 need("stale navigation snapshot" in strings.lower()
      or "resurrects the OLD page" in strings,
@@ -352,9 +352,10 @@ need("el.naturalWidth<=128&&el.naturalHeight<=128" in mh_raw,
 need("!((bannerish(el)||photoCtx(el))" in mh_raw
      and "!monoOf(el,getComputedStyle(el))" in mh_raw,
      "ridesFlip: the content veto only holds for COLORFUL media")
-need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};" in mh_raw,  # v1.4.25 re-point (2026-11-21): +fi (font-icon glyphs)
+need("var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh_raw,  # v1.4.25 re-point (2026-11-21): +fi (font-icon glyphs)  # v1.4.26 re-point (2026-11-21): +late/keep (the deferred-IC + contrast-preserve read-backs)
      "the census carries the mono field")
-need("mono='+(o.mono||0)+' fi='+(o.fi||0);" in mh_raw,  # v1.4.25 re-point (2026-11-21): the reader grew fi=N
+need("mono='+(o.mono||0)+' fi='+(o.fi||0)" in mh_raw
+     and "' late='+(o.late||0)+' keep='+(o.keep||0);" in mh_raw,  # v1.4.25 re-point (2026-11-21): the reader grew fi=N  # v1.4.26 re-point (2026-11-21): +late/keep tails
      "the census reader reports mono=N (the read-back)")
 
 # ---- the behavioral probe: the fresh darkSmartJs against a mock DOM ----

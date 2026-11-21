@@ -295,13 +295,24 @@ object AiRender {
             // [^n] references plus the appended trailer), and ins (<ins> ==
             // underline == ++text++). Same plain -ext-<name> artifact family
             // as the GFM pair — pure Java, R8 tree-shakes the rest.
+            // v1.4.26 — THE SUB/SUP DELIMITERS: ~text~ is a SUBSCRIPT and
+            // ^text^ a SUPERSCRIPT (the model-markdown forms; the HTML
+            // <sub>/<sup> tags already worked). The strikethrough extension
+            // re-configures to requireTwoTildes — its own documented knob
+            // for single-tilde coexistence — so ~~strike~~ keeps working and
+            // a single ~ run falls to the sub processor (the staggered
+            // resolver dispatches by run length).
             val parser = Parser.builder()
                     .extensions(listOf(TablesExtension.create(),
-                            StrikethroughExtension.create(),
+                            StrikethroughExtension.builder()
+                                    .requireTwoTildes(true).build(),
                             TaskListItemsExtension.create(),
                             InsExtension.create(),
                             FootnotesExtension.builder()
-                                    .inlineFootnotes(true).build())).build()
+                                    .inlineFootnotes(true).build()))
+                    .customDelimiterProcessor(SubSupDelimiterProcessor(false))
+                    .customDelimiterProcessor(SubSupDelimiterProcessor(true))
+                    .build()
             val doc = parser.parse(prepared)
             val v = V(c, sb, segs)
             v.children(doc)
@@ -569,6 +580,21 @@ object AiRender {
                     val start = sb.length
                     children(n)
                     sb.setSpan(UnderlineSpan(), start, sb.length, 0)
+                }
+                // v1.4.26 — the markdown DELIMITER forms: ~sub~ / ^sup^ (the
+                // model-markdown sub/superscripts; the same span kit the
+                // <sub>/<sup> HTML tags ride)
+                is SubMd -> {
+                    val start = sb.length
+                    children(n)
+                    sb.setSpan(SubscriptSpan(), start, sb.length, 0)
+                    sb.setSpan(RelativeSizeSpan(0.72f), start, sb.length, 0)
+                }
+                is SupMd -> {
+                    val start = sb.length
+                    children(n)
+                    sb.setSpan(SuperscriptSpan(), start, sb.length, 0)
+                    sb.setSpan(RelativeSizeSpan(0.72f), start, sb.length, 0)
                 }
                 // v1.4.23 — HTML emphasis: inline tags push/pop the span
                 // stack; unknown tags render their inner text only — the
@@ -855,23 +881,41 @@ object AiRender {
 
         fun table(t: TableBlock) {
             // flatten to an aligned monospace grid (renderTable, pure)
+            // v1.4.26 — THE WRAPPER TRAVERSAL (the empty-table corpse): the
+            // commonmark GFM AST wraps the rows in TableHead/TableBody
+            // blocks — TableBlock's direct children are the WRAPPERS, not
+            // TableRows, so the old firstChild-only walk collected ZERO
+            // rows and every GFM table rendered empty. The walk now descends
+            // one level into BOTH wrappers (in document order) and gathers
+            // every TableRow either way.
             val rows = ArrayList<List<String>>()
-            var row = t.firstChild
-            while (row != null) {
-                if (row is TableRow) {
-                    val cells = ArrayList<String>()
-                    var cell = row.firstChild
-                    while (cell != null) {
-                        if (cell is TableCell) {
-                            val sub = SpannableStringBuilder()
-                            V(c, sub, emptyList()).children(cell)
-                            cells.add(sub.toString())
-                        }
-                        cell = cell.next
+            fun cellsOf(row: TableRow) {
+                val cells = ArrayList<String>()
+                var cell = row.firstChild
+                while (cell != null) {
+                    if (cell is TableCell) {
+                        val sub = SpannableStringBuilder()
+                        V(c, sub, emptyList()).children(cell)
+                        cells.add(sub.toString())
                     }
-                    rows.add(cells)
+                    cell = cell.next
                 }
-                row = row.next
+                rows.add(cells)
+            }
+            var node = t.firstChild
+            while (node != null) {
+                if (node is TableRow) {
+                    cellsOf(node)
+                } else {
+                    // the TableHead/TableBody wrappers (and any other block
+                    // wrapper): descend into their children for TableRows
+                    var kid = node.firstChild
+                    while (kid != null) {
+                        if (kid is TableRow) cellsOf(kid)
+                        kid = kid.next
+                    }
+                }
+                node = node.next
             }
             val start = sb.length
             sb.append(renderTable(rows))
@@ -1349,6 +1393,9 @@ object AiRender {
         return s.contains("##") || s.contains("**") || s.contains("`") ||
                 s.contains("$$") || s.contains("$") || s.contains("\\(") ||
                 s.contains("\\[") || s.contains("~~") || s.contains("++") ||
+                // v1.4.26 — the sub/sup delimiter signals (the fast path
+                // must route ~x~/^x^ through the parser too)
+                s.contains("~") || s.contains("^") ||
                 Regex("(^|\\n)#{1,6} ").containsMatchIn(s) ||
                 Regex("(^|\\n)\\s*[-*] ").containsMatchIn(s) ||
                 Regex("(^|\\n)\\s*\\d+\\. ").containsMatchIn(s) ||
@@ -1359,5 +1406,52 @@ object AiRender {
                 Regex("\\[\\^[^\\]]+\\]").containsMatchIn(s) ||
                 Regex("</?[a-zA-Z][^>]*>").containsMatchIn(s) ||
                 Regex("(^|\\n)\\s*> ").containsMatchIn(s)
+    }
+}
+
+// ---------------- v1.4.26 — the markdown ~sub~ / ^sup^ delimiter nodes ----------------
+
+/** v1.4.26 — the markdown SUBSCRIPT node: `~text~` through
+ *  [SubSupDelimiterProcessor] (the model-markdown form; the `<sub>` HTML
+ *  tag already worked and renders the same span kit). File-private — the
+ *  visitor's `is SubMd` arm lives inside [AiRender]. */
+private class SubMd : org.commonmark.node.CustomNode()
+
+/** v1.4.26 — the markdown SUPERSCRIPT node: `^text^`. */
+private class SupMd : org.commonmark.node.CustomNode()
+
+/**
+ * v1.4.26 — THE SUB/SUP DELIMITER PROCESSOR (the model-markdown
+ * sub/superscript ask): `~text~` wraps a [SubMd], `^text^` a [SupMd].
+ * The GFM strikethrough extension is re-configured with
+ * requireTwoTildes(true) — its own documented coexistence knob — so a
+ * two-tilde run still matches strikethrough while a SINGLE tilde run
+ * falls to this processor (commonmark's staggered resolver dispatches by
+ * run length, largest minimum first). `^` has no other claimant.
+ * Follows the Ins extension's process shape exactly: wrap the nodes
+ * between the delimiter Text nodes, insert after the opener, return the
+ * one delimiter used. Thread-safe (stateless beyond the immutable flag).
+ */
+private class SubSupDelimiterProcessor(private val up: Boolean) :
+        org.commonmark.parser.delimiter.DelimiterProcessor {
+
+    override fun getOpeningCharacter(): Char = if (up) '^' else '~'
+    override fun getClosingCharacter(): Char = if (up) '^' else '~'
+    override fun getMinLength(): Int = 1
+
+    override fun process(openingRun: org.commonmark.parser.delimiter.DelimiterRun,
+                         closingRun: org.commonmark.parser.delimiter.DelimiterRun): Int {
+        if (openingRun.length() < 1 || closingRun.length() < 1) return 0
+        try {
+            val opener = openingRun.opener
+            val node = if (up) SupMd() else SubMd()
+            for (n in org.commonmark.node.Nodes.between(opener, closingRun.closer)) {
+                node.appendChild(n)
+            }
+            opener.insertAfter(node)
+            return 1
+        } catch (t: Throwable) {
+            return 0
+        }
     }
 }

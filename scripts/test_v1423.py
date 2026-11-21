@@ -81,9 +81,9 @@ st_code = strip(st)
 ar_code = strip(ar)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+139\b", gradle) is not None, "versionCode 139")
-need(re.search(r'versionName\s+"1\.4\.25"', gradle) is not None,
-     'versionName "1.4.25"')
+need(re.search(r"versionCode\s+140\b", gradle) is not None, "versionCode 140")
+need(re.search(r'versionName\s+"1\.4\.26"', gradle) is not None,
+     'versionName "1.4.26"')
 need("<item>1.4.23|" in strings, "the 1.4.23 About-changelog entry landed")
 need("the release now verifies the app OPENS" in strings,
      "the changelog tells the user the launch-verification law honestly")
@@ -110,7 +110,7 @@ need("function fontFloor(el,cs)" in mh and "l<0.55" in mh
 # v1.4.25 re-point (2026-11-21): the pseudo lift goes to the visible
 # light with !important specificity (never the 153 mid-gray); the
 # inv===1 clamp SKIPS icon-font glyphs (the RIDE law)
-need("function pseudoFloor(el,cs,inv){" in mh
+need("function pseudoFloor(el,cs,inv,gl){" in mh   # v1.4.26 re-point (2026-11-21): the clamp kit takes the ground luminance (the contrast-aware target)
      and "iconFont(cs)&&pl!==null&&pl<0.55" in mh
      and "color:'+lightCss()+'!important}" in mh,
      "the pseudo raise half: dark/mid ::before/::after glyphs on "
@@ -121,10 +121,13 @@ need("function rescuePass(){" in mh and "function darkImgEl(el)" in mh
 need("rCand<240&&rSave<80" in mh and "rCanvas>=40" in mh,
      "the rescue is bounded (240 candidates / 80 rescues / 40 canvas samples)")
 need("window.__boltDarkCount=cnt" in mh
-     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)  # v1.4.25 re-point (2026-11-21): +fi (the font-icon glyph count — the FA-hamburger read-back)
+     and "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};" in mh,  # v1.4.24 re-point (2026-11-21): the census grew the mono field (the monochrome-glyph law)  # v1.4.25 re-point (2026-11-21): +fi (the font-icon glyph count — the FA-hamburger read-back)  # v1.4.26 re-point (2026-11-21): +late/keep (the deferred-IC and contrast-preserve read-backs)
      "the census publishes window.__boltDarkCount")
-need("function clampCss(c)" in mh and "if(y<=153)return null;" in mh,
-     "the v1.4.19 downward clamp survived the rewrite (light -> 0.6 floor)")
+need("function clampCss(c,gl){" in mh   # v1.4.26 re-point (2026-11-21): the 153 corpse replaced by the contrast-aware target (the ySrc scale against the rendered ground)
+     and "if(y<=153)return null;" in mh
+     and "var ySrc=255*(1-T);" in mh,
+     "the v1.4.19 downward clamp survived the rewrite (light clamps — now "
+     "to the >=0.75 post-inversion target, never the fixed 153 corpse)")
 need("el.style.strokeWidth='2'" in mh and "function bumpW(px)" in mh,
      "the stroke/fill floor + the <1.5px -> 2px thickness bump survived")
 need("try{delete window.__boltDarkCount;}catch(e){}" in mh,
@@ -271,7 +274,7 @@ print()
 print("C — fix 3: the screen-translate HYBRID (OCR first, ONE text pass)")
 need("fun textTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>?" in ab_code,
      "the pure-text translate stage exists (BLOCKING, worker-only)")
-need("internal fun textLinesPrompt(tl: String, lines: List<String>): String" in ab_code,
+need("internal fun textLinesPrompt(tl: String, lines: List<String>, markBreaks: Boolean = false): String" in ab_code,  # v1.4.26 re-point (2026-11-21): the prompt grew the manga markBreaks flag (the ' ~ ' line-break marker)
      "the numbered-lines protocol prompt is PURE (probe-pinned)")
 need("internal fun parseNumberedReply(txt: String, want: Int): Array<String?> {" in ab_code,
      "the numbered-reply parser is PURE (probe-pinned)")
@@ -301,7 +304,7 @@ need('"scr ai hybrid ok lines="' in st, "the hybrid delivery Diag line (RAW)")
 need("If OCR cannot read the screen at all" in st and "sent instead" in st,
      "the privacy confirm tells the truth: the screenshot only rides the "
      "OCR-blind fallback (the sentence spans two literals — both pinned)")
-need("val r = geminiTextTranslate(ctx, name, lines, tl)" in ab_code
+need("val r = geminiTextTranslate(ctx, name, lines, tl, markBreaks)" in ab_code  # v1.4.26 re-point (2026-11-21): the text pass grew the manga markBreaks flag
      and "parseNumberedReply(txt, lines.size)" in ab_code,
      "the gemini text pass parses the numbered reply")
 need('lastError = CUT_OFF_ERR' in ab_code and "got * 10 >= lines.size * 7" in ab_code,

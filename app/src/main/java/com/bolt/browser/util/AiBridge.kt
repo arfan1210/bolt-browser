@@ -826,7 +826,7 @@ object AiBridge {
      *  screen as context — no image, and no box_2d for the model to
      *  hallucinate; the numbers map the reply back onto the OCR boxes 1:1
      * (coordinates never leave the device). */
-    internal fun textLinesPrompt(tl: String, lines: List<String>): String {
+    internal fun textLinesPrompt(tl: String, lines: List<String>, markBreaks: Boolean = false): String {
         val sb = StringBuilder()
         sb.append("You are a precise screen translator. The numbered lines below " +
                 "were read from ONE screen in top-to-bottom, left-to-right order. " +
@@ -839,6 +839,15 @@ object AiBridge {
                 "these lines share one screen. A line that is a URL, an email, a code " +
                 "fragment, a number or pure punctuation stays exactly as it is. " +
                 "A translation must fit the line's on-screen box: concise beats literal.\n")
+        if (markBreaks) {
+            // v1.4.26 — the manga law: bubbles stack 1-3 lines; the marker
+            // survives the numbered protocol (the parser splits on newlines)
+            sb.append("These lines come from SPEECH BUBBLES on a comic page: a " +
+                    "translation that needs 2-3 stacked lines marks every break " +
+                    "with ' ~ ' (tilde with one space on each side) — the overlay " +
+                    "converts the markers into the stacked line breaks. Never use " +
+                    "the marker inside a URL.\n")
+        }
         sb.append("Lines:\n")
         for ((i, l) in lines.withIndex()) sb.append(i + 1).append('|').append(l).append('\n')
         return sb.toString()
@@ -883,13 +892,23 @@ object AiBridge {
      * coverage, which is the caller's key for the vision fallback.
      */
     @JvmStatic
-    fun textTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>? {
+    fun textTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>? =
+            textTranslate(ctx, lines, tl, false)
+
+    /** v1.4.26 — the MANGA variant: [markBreaks] tells the model the lines
+     *  are SPEECH BUBBLES whose translations may stack 1-3 lines — it marks
+     *  the break points with ' ~ ' (tilde with spaces) and the caller
+     *  converts the markers to newlines (the numbered reply protocol
+     *  cannot carry raw newlines — the parser splits on them). */
+    @JvmStatic
+    fun textTranslate(ctx: Context, lines: List<String>, tl: String,
+                     markBreaks: Boolean): List<String?>? {
         lastError = ""
         return if (prov(ctx) == "gemini") {
             val m = translateModel(ctx)
             val chain = buildChain(m)
             for (name in chain) {
-                val r = geminiTextTranslate(ctx, name, lines, tl)
+                val r = geminiTextTranslate(ctx, name, lines, tl, markBreaks)
                 if (r != null) {
                     noteAnsweredModel(ctx, m, name)
                     return r
@@ -900,7 +919,7 @@ object AiBridge {
             }
             null
         } else {
-            openaiTextTranslate(ctx, lines, tl)
+            openaiTextTranslate(ctx, lines, tl, markBreaks)
         }
     }
 
@@ -911,8 +930,8 @@ object AiBridge {
      *  so ONLY a MAX_TOKENS cut under the 70% coverage floor hands off to
      *  the vision fallback (CUT_OFF_ERR). */
     private fun geminiTextTranslate(ctx: Context, mdl: String, lines: List<String>,
-                                    tl: String): List<String?>? {
-        val p = textLinesPrompt(tl, lines)
+                                    tl: String, markBreaks: Boolean): List<String?>? {
+        val p = textLinesPrompt(tl, lines, markBreaks)
         for (cap in intArrayOf(16384, 32768)) {
             val r = postText(ctx, mdl, p, cap)
             if (r.first != 200) {
@@ -994,7 +1013,8 @@ object AiBridge {
     /** v1.4.23 — the OpenAI-compatible text pass (same numbered protocol,
      *  no image part). A length cut with poor coverage is the vision
      *  hand-off; everything else delivers what arrived. */
-    private fun openaiTextTranslate(ctx: Context, lines: List<String>, tl: String): List<String?>? {
+    private fun openaiTextTranslate(ctx: Context, lines: List<String>, tl: String,
+                                    markBreaks: Boolean = false): List<String?>? {
         var c: HttpURLConnection? = null
         return try {
             val mdl = translateModel(ctx)
@@ -1003,7 +1023,7 @@ object AiBridge {
                 .put("model", mdl)
                 .put("messages", JSONArray().put(
                     JSONObject().put("role", "user")
-                        .put("content", textLinesPrompt(tl, lines))))
+                        .put("content", textLinesPrompt(tl, lines, markBreaks))))
                 .put("max_tokens", 6000)
                 .put("temperature", 0.1)
             val base = baseUrl(ctx).trimEnd('/')

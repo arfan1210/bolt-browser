@@ -92,8 +92,8 @@ android {
         // LIGHT law (icon-font glyphs ride the inversion, never the
         // faint mid-gray; pinned dark/mid lifts to the visible light;
         // the census counts fi).
-        versionCode 139
-        versionName "1.4.25"
+        versionCode 140
+        versionName "1.4.26"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

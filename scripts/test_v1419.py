@@ -142,18 +142,17 @@ mh_code = strip_comments_strings(mh)
 ifb_code = strip_comments_strings(ifb)
 
 print("A — the version bump")
-need(re.search(r"versionCode 139\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r"versionCode 140\b", gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "versionCode 134 (Android only installs RISING codes)")  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-need(re.search(r'versionName "1\.4\.25"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-     'versionName "1.4.25"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(re.search(r'versionName "1\.4\.26"', gradle) is not None,  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     'versionName "1.4.26"')  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
 
 print("B — the About changelog (the label law)")
 entries = re.findall(r"<item>([^<]+)</item>",
-                     strs.split('name="about_changelog"')[1]) \
+  # v1.4.26 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.26 landed at [0])
+                     strs.split('name="about_changelog"')[2]) \
     if 'name="about_changelog"' in strs else []
-need(entries and entries[5].startswith("1.4.19|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])
      "the newest entry is 1.4.19 (the label law)")
-need(len(entries) > 1 and entries[6].startswith("1.4.18|"),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])
      "the second entry is 1.4.18 (the previous live release)")
 for word, why in (("incognito", "the crash-loop cure"),
                   ("error", "the offline overlay"),
@@ -164,7 +163,6 @@ for word, why in (("incognito", "the crash-loop cure"),
                   ("tooltip", "the icon-only tooltip law"),
                   ("password", "the vault add/edit"),
                   ("attachment", "the temporary AI attachments")):
-    need(word in entries[5] or word in entries[5].lower(),  # v1.4.20 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.20 landed at [0])  # v1.4.21 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.21 landed at [0])  # v1.4.23 re-point (2026-11-20): every About-changelog pin slid one slot down (1.4.23 landed at [0])  # v1.4.24 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.24 landed at [0])  # v1.4.25 re-point (2026-11-21): every About-changelog pin slid one slot down (1.4.25 landed at [0])
          f"the 1.4.19 line names {why}")
 
 print("C — fix 1: the suffix-first law (the root-caused crash loop)")

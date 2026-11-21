@@ -81,6 +81,18 @@ public class QrScanActivity extends AppCompatActivity {
     private static final int REQ_GALLERY = 300;
 
     private TextureView tvPreview;
+    // v1.4.26 — THE BUFFER PIN (the half-screen / 90-degree mismatch corpse
+    // on the portrait Realme): the dims the SurfaceTexture buffer is ACTUALLY
+    // pinned to. The commit-visible surface arrives BEFORE the camera opens,
+    // so the first pin is the 640x480 placeholder; openCamera/createSession
+    // re-pin to the camera preview size and RE-APPLY the transform against
+    // the ACTUAL buffer dims — the old code computed the matrix against
+    // previewSize but only re-ran it on view-size changes (a buffer-size
+    // change never fired onSurfaceTextureSizeChanged), so the rotate/
+    // cover-scale never landed after the re-pin and the landscape sensor
+    // buffer rode the view untransformed (half-screen + the 90-degree
+    // mismatch). probe-pinned in scripts/test_v1426.py.
+    private int bufW = 640, bufH = 480;
     private ImageButton btnTorch;
     private View scanLine;
     private TextView tvHint;
@@ -120,9 +132,7 @@ public class QrScanActivity extends AppCompatActivity {
         root.addView(tvPreview, new FrameLayout.LayoutParams(-1, -1));
         tvPreview.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int h) {
-                st.setDefaultBufferSize(
-                        previewSize != null ? previewSize.getWidth() : 640,
-                        previewSize != null ? previewSize.getHeight() : 480);
+                pinBuffer();
                 openCamera();
                 applyPreviewTransform(w, h);
             }
@@ -403,8 +413,10 @@ public class QrScanActivity extends AppCompatActivity {
             previewSize = pickLargest(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920);
             Size yuv = pickLargest(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920);
             if (previewSize == null || yuv == null) { cameraFailure(); return; }
-            SurfaceTexture st = tvPreview.getSurfaceTexture();
-            if (st != null) st.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight());
+            // v1.4.26 — pin + re-apply (the surface may already be live with
+            // the 640x480 placeholder buffer)
+            pinBuffer();
+            reapplyTransform();
 
             yuvSize = yuv;
             reader = ImageReader.newInstance(yuv.getWidth(), yuv.getHeight(),
@@ -476,14 +488,19 @@ public class QrScanActivity extends AppCompatActivity {
     private void createSession() {
         if (camera == null || reader == null) return;
         try {
+            // v1.4.26 — THE PIN: the buffer the Surface is about to be built
+            // on is pinned to the ACTUAL camera preview size here (and the
+            // transform re-applied against those dims once the session
+            // configures — never against a stale placeholder)
+            pinBuffer();
             SurfaceTexture st = tvPreview.getSurfaceTexture();
             if (st == null) return;
-            st.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight());
             previewSurface = new Surface(st);
             camera.createCaptureSession(Arrays.asList(previewSurface, reader.getSurface()),
                     new CameraCaptureSession.StateCallback() {
                         @Override public void onConfigured(CameraCaptureSession s) {
                             session = s;
+                            reapplyTransform();
                             startRepeating();
                         }
                         @Override public void onConfigureFailed(CameraCaptureSession s) {
@@ -537,6 +554,35 @@ public class QrScanActivity extends AppCompatActivity {
         runOnUiThread(() -> tvHint.setText(R.string.qr_camera_failed));
     }
 
+    /** v1.4.26 — pin the SurfaceTexture buffer to the camera preview size
+     *  (placeholder 640x480 until the camera opens) and remember the ACTUAL
+     *  dims in bufW/bufH — the transform computes against what the buffer
+     *  really is, never against a null guard. Producer-side call, safe off
+     *  the UI thread. */
+    private void pinBuffer() {
+        try {
+            SurfaceTexture st = tvPreview.getSurfaceTexture();
+            if (st == null) return;
+            bufW = previewSize != null ? previewSize.getWidth() : 640;
+            bufH = previewSize != null ? previewSize.getHeight() : 480;
+            st.setDefaultBufferSize(bufW, bufH);
+        } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.26 — re-apply the transform against the ACTUAL pinned buffer
+     *  dims (a buffer-size change never fires onSurfaceTextureSizeChanged —
+     *  only a view-size change does); posted to the UI thread because
+     *  TextureView.setTransform is a view operation and this is called from
+     *  the camera handler. */
+    private void reapplyTransform() {
+        try {
+            runOnUiThread(() -> {
+                try { applyPreviewTransform(tvPreview.getWidth(), tvPreview.getHeight()); }
+                catch (Throwable ignored) {}
+            });
+        } catch (Throwable ignored) {}
+    }
+
     /** v1.3.88 — the preview transform, FIXED. The v1.3.37 comment believed
      *  "preview streams are display-rotated by the framework" — that is
      *  camera1 setDisplayOrientation behavior; camera2 does NOT rotate, and
@@ -551,15 +597,20 @@ public class QrScanActivity extends AppCompatActivity {
      *  The YUV analysis path is untouched: ZXing infers rotation from the
      *  finder patterns, so raw sensor frames still decode as-is. */
     private void applyPreviewTransform(int viewW, int viewH) {
-        if (previewSize == null || viewW == 0 || viewH == 0) return;
+        if (viewW == 0 || viewH == 0) return;
         try {
             int rotation = getWindowManager().getDefaultDisplay().getRotation();
             int degrees = rotation == Surface.ROTATION_90 ? 90
                     : rotation == Surface.ROTATION_180 ? 180
                     : rotation == Surface.ROTATION_270 ? 270 : 0;
             int theta = (sensorOrientation - degrees + 360) % 360;
-            float bw = previewSize.getWidth();
-            float bh = previewSize.getHeight();
+            // v1.4.26 — the ACTUAL pinned buffer dims (the 640x480 pre-open
+            // placeholder made the old previewSize-null early return leave
+            // the view UNTRANSFORMED forever — the race); the recipe is the
+            // v1.3.88 general one: rotate by the JPEG-orientation angle, then
+            // cover-scale the upright content, centered
+            float bw = bufW;
+            float bh = bufH;
             // upright content dimensions after the rotation
             float uw = (theta % 180 == 0) ? bw : bh;
             float uh = (theta % 180 == 0) ? bh : bw;

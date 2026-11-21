@@ -1563,29 +1563,42 @@ public class MediaHook {
                 + "var DK='__boltDK',NI='__boltNI',SV='__boltSV',IC='__boltIC';var n=0;"
                 // the census object (v1.4.23): per-page decision counts the
                 // BrowserActivity diag reads back 2.5 s after the commit
-                + "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0};"
+                + "var cnt={small:0,ic:0,ni:0,rescue:0,mono:0,fi:0,late:0,keep:0};"
                 // luminance of a css color (mirrors darkProbeJs); null =
                 // transparent / too-transparent / unparseable
                 + "function lumOf(c){try{if(!c||c==='transparent')return null;"
                 + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
                 + "if(!m)return null;var a=m.length>4?parseFloat(m[4]):1;if(a<0.45)return null;"
                 + "return (0.2126*parseFloat(m[1])+0.7152*parseFloat(m[2])+0.0722*parseFloat(m[3]))/255;}catch(e){return null;}}"
-                // v1.4.19 — THE STROKE VISIBILITY FLOOR (the forced-dark
-                // thin-lines/hamburger-icons-too-faint report): clampCss
-                // remaps a LIGHT source color DOWN to luminance 0.6
-                // (153/255) so the post-inversion result is a visible
-                // mid-gray on black. PURE — the arithmetic is the gate's
-                // probe-pinned transcription (scripts/test_v1419.py).
-                // (NOTE: no double quotes in body comments — check_dark_js
-                // extracts every quoted literal as JS.)
-                + "function clampCss(c){try{"
+                // v1.4.26 — THE CONTRAST-AWARE TARGET (the 153-clamp corpse:
+                // the DIU portal field report — btn-success/info/warning/
+                // danger/teal + badges carried inline rgb(153,153,153) while
+                // their mid-luminance grounds inverted to mid: the
+                // 153->102 text read 1.5-2.5:1, the broad black-on-black).
+                // clampCss now takes the RENDERED ground luminance gl (0..1,
+                // null = the default near-black inverted canvas) and picks
+                // the SOURCE text luminance so the POST-inversion text reads
+                // >=0.75 AND (T+0.05)/(gl+0.05) >= 4.5:1; a ground where even
+                // white cannot reach 4.5:1 (gl > 0.183) has NO target —
+                // targetOf returns null and the element is PRESERVED by the
+                // caller instead of clamped. PURE — probe-pinned in
+                // scripts/test_v1426.py.
+                + "function targetOf(gl){try{"
+                + "var L=(gl===null||gl===undefined||gl<0)?0.05:(gl>1?1:gl);"
+                + "var T=4.5*(L+0.05)-0.05;"
+                + "if(T<0.75)T=0.75;"
+                + "return T>1?null:T;}catch(e){return null}}"
+                + "function clampCss(c,gl){try{"
                 + "var m=c.match(/rgba?\\(([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\)/);"
                 + "if(!m)return null;"
                 + "var r=parseFloat(m[1]),g=parseFloat(m[2]),b=parseFloat(m[3]);"
                 + "var a=m.length>4?parseFloat(m[4]):1;"
                 + "var y=0.2126*r+0.7152*g+0.0722*b;"
                 + "if(y<=153)return null;"
-                + "var f=153/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
+                + "var T=targetOf(gl);if(T===null)T=1;"
+                + "var ySrc=255*(1-T);"
+                + "if(y<=ySrc)return null;"
+                + "var f=ySrc/y;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);"
                 + "return a<1?('rgba('+r+','+g+','+b+','+a+')'):('rgb('+r+','+g+','+b+')');"
                 + "}catch(e){return null}}"
                 // v1.4.25 — THE VISIBLE LIGHT (the faint-glyph corpse): a
@@ -1625,16 +1638,18 @@ public class MediaHook {
                 + ",W:el.style.borderWidth||null,t:el.style.webkitTextStroke||null}));"
                 + "}catch(e){}}"
                 // ================= v1.4.23 THE DEFAULT-FLIP CLASSIFIER =================
-                // (fresh; the uiCtx/iconNamed ancestor-guessing for IMG/SVG is
-                // RETIRED). Pure predicates, probe-pinned in
-                // scripts/test_v1423.py:
+                // (fresh; v1.4.26: the ANCESTOR ICON SIGNAL is BACK — but as
+                // a NAMED-WRAPPER signal inside ridesFlip/iconNamed, not the
+                // old uiCtx interactive-context guess). Pure predicates,
+                // probe-pinned in scripts/test_v1423.py + test_v1426.py:
                 //   smallOf — longest edge in (0, 64]
                 //   bannerish — max(w,h)/min(w,h) >= 2.5 (wide strips + tall
                 //     spines are content even when small)
                 //   photoCtx — an article/main/p/figure ancestor within 6
                 //     levels marks photo-classed content
                 //   ridesFlip — small AND neither content marker: the element
-                //     rides the page inversion (the IC class) BY DEFAULT
+                //     rides the page inversion (the IC class) BY DEFAULT;
+                //     v1.4.26 adds the icon-named self-or-ancestor override
                 // (no double quotes in comments — check_dark_js reads them)
                 + "function rectMax(el){try{var r=el.getBoundingClientRect();"
                 + "return Math.max(r.width,r.height);}catch(e){return 0}}"
@@ -1673,15 +1688,40 @@ public class MediaHook {
                 + "if(f&&!s)return gray(f);"
                 + "if(!f&&s)return gray(s);"
                 + "return gray(f)&&gray(s);}"
-                + "try{if(t==='IMG'&&el.complete&&el.naturalWidth>0"
-                + "&&el.naturalWidth<=128&&el.naturalHeight<=128)return true;}catch(x){}"
+                + "try{if(t==='IMG'){"
+                // v1.4.26 — data:URI images are icon ASSETS (the DIU
+                // hamburger + the 48x48 sidebar glyphs are inline base64
+                // PNGs); a tiny INTRINSIC size once naturalWidth is KNOWN is
+                // the same verdict — the decode-unknown case is handled by
+                // the deferred re-evaluation, never by a frozen guess
+                + "var su='';try{su=(el.currentSrc||el.src||'');}catch(x){}"
+                + "if(su.indexOf('data:')===0)return true;"
+                + "if(el.complete&&el.naturalWidth>0"
+                + "&&el.naturalWidth<=128&&el.naturalHeight<=128)return true;}}catch(x){}"
                 + "return false;}catch(e){return false}}"
                 // ridesFlip — v1.4.24: the content veto (bannerish or
                 // photoCtx) only holds for COLORFUL media; a monochrome
-                // small glyph inverts by default wherever it sits
+                // small glyph inverts by default wherever it sits.
+                // v1.4.26 — THE ANCESTOR ICON SIGNAL + THE RECT LAWS: a
+                // laid-out BIG element (>64 px) is content, period; a
+                // laid-out small element rides when the v1.4.24 law says so
+                // OR an icon-named wrapper (self or <=6 ancestors — the
+                // div.sidebar_icon / div.line_icon of the DIU portal) sits
+                // behind it, DETERMINISTICALLY, independent of decode
+                // timing; a 0-rect element (undecoded / not yet laid out /
+                // d-none at this width) lets the ANCESTOR signal alone
+                // decide — photoCtx (pure DOM ancestry) still guards
+                // article/figure contexts (no double quotes in body
+                // comments — check_dark_js reads them)
                 + "function ridesFlip(el){try{"
-                + "return smallOf(el)&&!((bannerish(el)||photoCtx(el))"
-                + "&&!monoOf(el,getComputedStyle(el)));"
+                + "var m=rectMax(el);"
+                + "if(m>64)return false;"
+                + "var named=iconNamed(el);"
+                + "if(m>0){"
+                + "if(named)return true;"
+                + "return !((bannerish(el)||photoCtx(el))"
+                + "&&!monoOf(el,getComputedStyle(el)));}"
+                + "return named&&!photoCtx(el);"
                 + "}catch(e){return false}}"
                 // v1.4.20 — the icon-font detector: glyphs drawn by an icon
                 // FONT ride the text-color floors; the matcher only decides
@@ -1708,17 +1748,17 @@ public class MediaHook {
                 // pinned light glyph flips to dark exactly like text does)
                 // — never clamped to the faint 153 gray. The clamp only
                 // touches NON-icon-font text/pseudo colors.
-                + "function strokeFloor(el,cs){try{"
+                + "function strokeFloor(el,cs,gl){try{"
                 + "var l=lumOf(cs.color);"
                 + "var fontIc=iconFont(cs);"
                 + "if(l!==null&&l>0.8){"
-                + "var nc=fontIc?null:clampCss(cs.color);"
+                + "var nc=fontIc?null:clampCss(cs.color,gl);"
                 + "if(nc){svSave(el);el.style.color=nc;}"
                 + "if(fontIc){try{svSave(el);el.style.webkitTextStroke='0.45px currentColor';}catch(x){}}}"
                 + "if(parseFloat(cs.borderTopWidth)>0||parseFloat(cs.borderBottomWidth)>0"
                 + "||parseFloat(cs.borderLeftWidth)>0||parseFloat(cs.borderRightWidth)>0){"
                 + "var bl=lumOf(cs.borderTopColor);"
-                + "if(bl!==null&&bl>0.8){var nb=clampCss(cs.borderTopColor);"
+                + "if(bl!==null&&bl>0.8){var nb=clampCss(cs.borderTopColor,gl);"
                 + "if(nb){svSave(el);el.style.borderColor=nb;"
                 + "var bw=bumpW(cs.borderTopWidth);"
                 + "if(bw){try{el.style.borderWidth=bw;}catch(x){}}}}}"
@@ -1731,13 +1771,13 @@ public class MediaHook {
                 // (< 1.5 px) stroke to 2 px. All writes ride svSave (exact
                 // restore). The class itself is added by the walk (the
                 // default-flip decision); this is only the visibility kit.
-                + "function iconClamp(el,cs){try{"
+                + "function iconClamp(el,cs,gl){try{"
                 + "var st=cs.stroke,fl=cs.fill;"
                 + "var sl=(st&&st!=='none')?lumOf(st):null;"
                 + "var fll=(fl&&fl!=='none')?lumOf(fl):null;"
-                + "if(sl!==null&&sl>0.8){var ns=clampCss(st);"
+                + "if(sl!==null&&sl>0.8){var ns=clampCss(st,gl);"
                 + "if(ns){svSave(el);el.style.stroke=ns;}}"
-                + "if(fll!==null&&fll>0.8){var nf=clampCss(fl);"
+                + "if(fll!==null&&fll>0.8){var nf=clampCss(fl,gl);"
                 + "if(nf){svSave(el);el.style.fill=nf;}}"
                 + "var sw=parseFloat(cs.strokeWidth)||0;"
                 + "if(sw>0&&sw<1.5&&(sl!==null||fll!==null)){"
@@ -1763,7 +1803,7 @@ public class MediaHook {
                 + "if(!s){s=document.createElement('style');s.id='bolt-psfl';"
                 + "(document.head||document.documentElement).appendChild(s);}"
                 + "s.textContent+=r;}catch(e){}}"
-                + "function pseudoFloor(el,cs,inv){try{"
+                + "function pseudoFloor(el,cs,inv,gl){try{"
                 + "if(psLook>=600||psN>=150||el.children.length>0)return;"
                 + "psLook++;"
                 + "var pb=null;try{pb=getComputedStyle(el,'::before');}catch(x){}"
@@ -1773,7 +1813,7 @@ public class MediaHook {
                 + "if(inv===1){"
                 // v1.4.25 — the RIDE law: icon-font pseudos are never
                 // clamped to the faint gray (they ride: dark->light)
-                + "if(!iconFont(cs)&&pl!==null&&pl>0.8){var nc=clampCss(pb.color);"
+                + "if(!iconFont(cs)&&pl!==null&&pl>0.8){var nc=clampCss(pb.color,gl);"
                 + "if(nc){psN++;var k=el.getAttribute('data-boltpb');"
                 + "if(!k){k=''+psN;el.setAttribute('data-boltpb',k);}"
                 + "psRule('[data-boltpb='+k+']::before{color:'+nc+'}');}}}"
@@ -1786,7 +1826,7 @@ public class MediaHook {
                 + "&&pa.color&&pa.color!==cs.color){"
                 + "var al=lumOf(pa.color);"
                 + "if(inv===1){"
-                + "if(!iconFont(cs)&&al!==null&&al>0.8){var na=clampCss(pa.color);"
+                + "if(!iconFont(cs)&&al!==null&&al>0.8){var na=clampCss(pa.color,gl);"
                 + "if(na){psN++;var j=el.getAttribute('data-boltpa');"
                 + "if(!j){j=''+psN;el.setAttribute('data-boltpa',j);}"
                 + "psRule('[data-boltpa='+j+']::after{color:'+na+'}');}}}"
@@ -1824,16 +1864,38 @@ public class MediaHook {
                 + "return t==='IMG'||t==='VIDEO'||t==='PICTURE'||t==='CANVAS'||t==='SVG'"
                 + "||t==='IFRAME'||t==='EMBED'||t==='OBJECT'||el.getAttribute('role')==='img';}"
                 // the per-element decision; inv = current filter parity of
-                // the subtree this element paints into (1 = inverted once)
-                + "function parityEl(el,inv){"
+                // the subtree this element paints into (1 = inverted once).
+                // v1.4.26 — gl rides the walk: the RENDERED luminance of the
+                // nearest SOLID background under this element (el's own bg
+                // renders at el's parity, else the ancestor's gl rides on);
+                // null = unknown (the clamp's default near-black canvas).
+                // parityEl(el, inv, gl)
+                + "function parityEl(el,inv,gl){"
                 + "var t=el.tagName;var rides=false;"
                 // v1.4.23 — the census small count: every IMG/SVG whose
                 // longest edge lands in (0, 64] is counted, then the
                 // default-flip decides its class; v1.4.24 adds the mono
                 // count (the over-keep census field)
-                + "if(t==='IMG'||t==='SVG'){try{if(smallOf(el)){cnt.small++;"
+                + "if(t==='IMG'||t==='SVG'){try{if(smallOf(el)){cnt.small++;el.__boltSc=1;"
                 + "try{if(monoOf(el,getComputedStyle(el)))cnt.mono++;}catch(x){}"
                 + "rides=ridesFlip(el);}}catch(x){}}"
+                // v1.4.26 — THE DEFERRED RE-EVALUATION QUEUE (the one-shot
+                // race killer): an IMG/SVG that stayed non-riding while it
+                // had NO rect / was !complete / had no naturalWidth yet is
+                // DEFERRED with a one-shot load listener — the walk never
+                // leaves a first-pass content verdict frozen on an image
+                // that decodes later (the DIU hamburger corpse: a 24x24
+                // data:URI at 0-rect in the hydrating SPA came out media
+                // and stayed black on the inverted header while the eight
+                // 48x48 sidebar glyphs rode). Delayed re-passes (~1 s, ~3 s)
+                // and resize/orientationchange (the d-lg-none class flips
+                // with the viewport) sweep the queue again; reEval guards
+                // on __boltDKrun so a pulled inversion never re-classes
+                + "try{if((t==='IMG'||t==='SVG')&&!rides"
+                + "&&!(el.classList&&el.classList.contains(IC))"
+                + "&&(rectMax(el)===0||(t==='IMG'&&(!el.complete||el.naturalWidth===0)))){"
+                + "defer.push(el);"
+                + "if(t==='IMG'){el.addEventListener('load',function(){reEval(el);});}}}catch(x){}"
                 + "if(!rides&&isMedia(el))return inv;"
                 // an IC-pinned element is a LEAF like media: the walk never
                 // adds DK on top of the IC filter (one class, one meaning)
@@ -1845,22 +1907,57 @@ public class MediaHook {
                 + "try{var bi=cs.backgroundImage;"
                 + "if(bi&&bi.indexOf('url(')>=0){want=0;"        // photo ground keeps its overlays
                 + "}else{var l=lumOf(cs.backgroundColor);"
-                + "if(l!==null)want=(l<=0.35)?0:1;}}catch(x){}"
+                + "if(l!==null){"
+                + "var tl=null;try{tl=lumOf(cs.color);}catch(x){}"
+                // v1.4.26 — THE CONTRAST-AWARE PRESERVE (the black-on-black
+                // corpse, the DIU portal round): a SOLID background in
+                // [0.18, 0.80] whose own/inherited text is LIGHT (>0.7) is a
+                // DESIGNED colored chip — Bootstrap btn-success/info/
+                // warning/danger/teal + badges on this portal: colored
+                // ground, white text — and it is PRESERVED (DK) exactly like
+                // the btn-primary/dark/purple path that read fine; only
+                // near-white grounds (>0.80) still invert. The old
+                // <=0.35-else-invert law flipped these mid grounds to mid
+                // and the 153-clamped text read 1.5-2.5:1 on them. The dark
+                // ground law (<=0.35) keeps the v1.4.24 baseline; so does
+                // mid-ground + dark text (no light text to protect)
+                + "if(l<=0.35){want=0;}"
+                + "else if(tl!==null&&tl>0.7&&l<=0.80){want=0;cnt.keep++;}"
+                + "else{want=1;}}}}catch(x){}"
                 + "if(want!==inv){try{el.classList.add(DK);n++;}catch(x){}inv=want;}"
+                // v1.4.26 — the rendered ground under el's OWN box and its
+                // children: el's solid bg (if any) renders at el's parity,
+                // else the incoming gl rides on (unknown grounds stay null)
+                + "var myGl=gl;"
+                + "try{var bl2=lumOf(cs.backgroundColor);"
+                + "if(bl2!==null)myGl=(inv===1)?(1-bl2):bl2;}catch(x){}"
+                // v1.4.26 — THE TEXT LAW (the clamp's preserve half): on the
+                // inverted side, LIGHT text over a ground where NO target
+                // reaches 4.5:1 (a mid-luminance inverted ground) is
+                // PRESERVED (DK) — its designed light text rides the mid
+                // ground un-inverted, which beats every clamp the old law
+                // could write (the 102-gray-on-mid corpse). Own-solid-ground
+                // elements never come here with a mid ground (the preserve
+                // band above already caught them); IC/media leaves never do
+                + "if(inv===1){try{"
+                + "var tl2=lumOf(cs.color);"
+                + "if(tl2!==null&&tl2>0.8&&!iconFont(cs)&&targetOf(myGl)===null"
+                + "&&lumOf(cs.backgroundColor)===null){"
+                + "el.classList.add(DK);n++;inv=0;cnt.keep++;}}catch(x){}}"
                 // a subtree that STAYS INVERTED gets the stroke floor
-                + "if(inv===1){try{strokeFloor(el,cs);}catch(x){}}"
+                + "if(inv===1){try{strokeFloor(el,cs,myGl);}catch(x){}}"
                 // v1.4.23 — THE DEFAULT-FLIP DECISION: the riding element
                 // takes the IC class (both parities — inside a preserved
                 // dark subtree it is a harmless no-op); the clamp kit runs
                 // only on the inverted side (the glyphs were drawn for a
                 // light ground there)
                 + "if(rides){try{el.classList.add(IC);cnt.ic++;}catch(x){}"
-                + "if(inv===1){try{iconClamp(el,cs);}catch(x){}}}"
-                + "if(inv===1){try{pseudoFloor(el,cs,1);}catch(x){}}"
+                + "if(inv===1){try{iconClamp(el,cs,myGl);}catch(x){}}}"
+                + "if(inv===1){try{pseudoFloor(el,cs,1,myGl);}catch(x){}}"
                 + "else{try{fontFloor(el,cs);}catch(x){}"
-                + "try{pseudoFloor(el,cs,0);}catch(x){}}"
+                + "try{pseudoFloor(el,cs,0,myGl);}catch(x){}}"
                 + "var ch=el.children;"
-                + "for(var i=0;i<ch.length;i++){if(n>=3500)break;parityEl(ch[i],inv);}"
+                + "for(var i2=0;i2<ch.length;i2++){if(n>=3500)break;parityEl(ch[i2],inv,myGl);}"
                 + "return inv;}"
                 // one element through BOTH passes (the observer path);
                 // v1.3.93 — the starting parity is the ANCESTOR parity
@@ -1872,14 +1969,27 @@ public class MediaHook {
                 // header/nav, role=button) or icon-named carries a CSS
                 // background-image glyph — it rides the IC class too (the
                 // NI pin would otherwise un-invert it into dark-on-dark).
-                // The element's OWN properties only — no ancestor walking
-                // (the retired uiCtx game).
-                + "function iconNamed(el){try{"
-                + "var cn=el.className;"
+                // v1.4.26 — THE ANCESTOR ICON SIGNAL: iconNamed ALSO walks
+                // the parent chain (<= 6 levels) for the same
+                // icon|menu|toggle|nav|... class/id pattern — the DIU
+                // portal's div.sidebar_icon (the hamburger's wrapper) and
+                // div.line_icon (the mini toggle) both match, so an
+                // UNCLASSED img inside them rides the inversion
+                // DETERMINISTICALLY, independent of decode timing (probe:
+                // an unclassed <img> inside <div class=sidebar_icon> gets
+                // IC; no double quotes in body comments)
+                + "var ICON_RE=/(^|[^a-z])(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)([^a-z]|$)/i;"
+                + "function iconNamedEl(e){try{"
+                + "var cn=e.className;"
                 + "if(cn&&cn.baseVal!==undefined)cn=cn.baseVal;"
-                + "var s=((cn||'')+' '+(el.id||''));"
-                + "return /(^|[^a-z])(icon|menu|hamburger|burger|nav|toggle|chevron|arrow|close|cancel|gear|search)([^a-z]|$)/i.test(s);"
-                + "}catch(e){return false}}"
+                + "var s=((cn||'')+' '+(e.id||''));"
+                + "return ICON_RE.test(s);}catch(x){return false}}"
+                + "function iconNamed(el){try{"
+                + "if(iconNamedEl(el))return true;"
+                + "var p=el.parentElement,lvl=0;"
+                + "while(p&&lvl<6){if(iconNamedEl(p))return true;"
+                + "p=p.parentElement;lvl++;}"
+                + "return false;}catch(e){return false}}"
                 + "function bgUiIcon(el){try{"
                 + "var r=el.getBoundingClientRect();"
                 + "var m=Math.max(r.width,r.height);"
@@ -1892,7 +2002,7 @@ public class MediaHook {
                 + "function both(e){try{var cs=getComputedStyle(e);"
                 + "var b=cs.backgroundImage;if(b&&b.indexOf('url(')>=0){e.classList.add(NI);n++;cnt.ni++;"
                 + "if(bgUiIcon(e)){e.classList.add(IC);cnt.ic++;}}}catch(x){}"
-                + "parityEl(e,ancInv(e));}"
+                + "parityEl(e,ancInv(e),null);}"
                 + "var all=document.body?document.body.querySelectorAll('*'):[];"
                 + "var i=0;"
                 + "function pinEl(e){try{var cs=getComputedStyle(e);var b=cs.backgroundImage;"
@@ -1934,13 +2044,49 @@ public class MediaHook {
                 + "if(dark){el.classList.add(IC);cnt.ic++;cnt.rescue++;rSave++;}"
                 + "}catch(x){}}"
                 + "}catch(x){}}"
+                // v1.4.26 — THE DEFERRED RE-EVALUATION (the race killer's
+                // sweep): reEval re-runs the census counts + ridesFlip on a
+                // deferred element and classes it IC when it NOW passes;
+                // rePass sweeps the whole queue. The __boltDKrun guard means
+                // a pulled inversion never re-classes anything; census.late
+                // counts the late ICs for the field read-back
+                + "var defer=[];"
+                + "function reEval(el){try{"
+                + "if(!window.__boltDKrun)return;"
+                + "if(!el||!el.classList)return;"
+                + "if(el.classList.contains(IC))return;"
+                + "var t=el.tagName;"
+                + "if(t!=='IMG'&&t!=='SVG')return;"
+                // v1.4.26: the recount is guarded by the walk's own counted
+                // marker — an element the census already saw at the walk
+                // never counts twice (the double-count corpse the v1.4.23
+                // gate's own mock caught)
+                + "try{if(smallOf(el)&&!el.__boltSc){cnt.small++;el.__boltSc=1;"
+                + "try{if(monoOf(el,getComputedStyle(el)))cnt.mono++;}catch(x){}}}catch(x){}"
+                + "try{if(ridesFlip(el)){el.classList.add(IC);cnt.ic++;cnt.late++;}}catch(x){}"
+                + "}catch(x){}}"
+                + "function rePass(){try{"
+                + "for(var q=0;q<defer.length;q++){reEval(defer[q]);}"
+                + "}catch(x){}}"
+                + "function armDeferred(){try{"
+                + "if(!defer.length)return;"
+                + "setTimeout(rePass,1000);"
+                + "setTimeout(rePass,3000);"
+                + "var rz=function(){rePass();};"
+                + "window.addEventListener('resize',rz);"
+                + "window.addEventListener('orientationchange',rz);"
+                + "setTimeout(function(){try{window.removeEventListener('resize',rz);"
+                + "window.removeEventListener('orientationchange',rz);}catch(x){}},30000);"
+                + "}catch(x){}}"
                 + "function chunk(){try{var t0=Date.now();"
                 + "for(;i<all.length&&n<3500;i++){pinEl(all[i]);"
                 + "if((i&63)===0&&Date.now()-t0>16)break;}}catch(x){}"
                 + "if(i<all.length&&n<3500)setTimeout(chunk,40);"
-                + "else{try{if(document.body)parityEl(document.body,1);}catch(x){}"
+                + "else{try{if(document.body)parityEl(document.body,1,null);}catch(x){}"
                 // v1.4.23 — the bounded rescue, then the census publish
                 + "try{rescuePass();}catch(x){}"
+                // v1.4.26 — the deferred queue's delayed + resize sweeps
+                + "try{armDeferred();}catch(x){}"
                 + "try{window.__boltDarkCount=cnt;}catch(x){}"
                 + "try{"
                 // the late-nodes observer (12 s, then rest) — added subtrees
@@ -1959,21 +2105,25 @@ public class MediaHook {
 
     /** v1.4.23 — THE CENSUS READER: darkSmartJs publishes its per-page
      *  decision counts into window.__boltDarkCount ({small, ic, ni,
-     *  rescue, mono, fi}); this reader returns them as the display string the
-     *  BrowserActivity diag line logs after the 2.5 s late re-probe
-     *  (dark icons <host> small=N ic=N ni=N rescue=N mono=N fi=N). Empty
-     *  string when the walk has not published yet (no inversion ran / not
-     *  yet). v1.4.24: mono counts the small media classed monochrome
-     *  glyphs — the over-keep corpse read-back field. v1.4.25: fi counts
-     *  the font-icon glyph elements the walk saw (and lifted to the
-     *  visible light where pinned dark/mid on a preserved dark ground) —
-     *  the FA-hamburger read-back (the glyph should count as INVERTED/
-     *  lifted, not mono-only). */
+     *  rescue, mono, fi, late, keep}); this reader returns them as the display
+     *  string the BrowserActivity diag line logs after the 2.5 s late
+     *  re-probe (dark icons <host> small=N ic=N ni=N rescue=N mono=N fi=N
+     *  late=N keep=N). Empty string when the walk has not published yet (no
+     *  inversion ran / not yet). v1.4.24: mono counts the small media
+     *  classed monochrome glyphs — the over-keep corpse read-back field.
+     *  v1.4.25: fi counts the font-icon glyph elements the walk saw (and
+     *  lifted to the visible light where pinned dark/mid on a preserved
+     *  dark ground). v1.4.26: late counts the deferred icons that became IC
+     *  after their decode/layout (the hamburger race read-back — the field
+     *  line should read late>=1 on the DIU portal); keep counts the
+     *  contrast-aware PRESERVES (the designed chips kept as designed — the
+     *  five colored buttons + badges of the black-on-black corpse). */
     public static String darkCountJs() {
         return "(function(){try{var o=window.__boltDarkCount;"
                 + "if(!o)return '';"
                 + "return 'small='+o.small+' ic='+o.ic+' ni='+o.ni"
-                + "+' rescue='+o.rescue+' mono='+(o.mono||0)+' fi='+(o.fi||0);"
+                + "+' rescue='+o.rescue+' mono='+(o.mono||0)+' fi='+(o.fi||0)"
+                + "+' late='+(o.late||0)+' keep='+(o.keep||0);"
                 + "}catch(e){return ''}})()";
     }
 

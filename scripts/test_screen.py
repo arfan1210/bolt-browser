@@ -108,6 +108,10 @@ def main():
     allowed = {
         "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@main/",
         "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/",
+        # v1.4.26 re-point (2026-11-21): the Manga HD script's jpn_vertb
+        # downloads from tessdata_best (its own fail-over pair)
+        "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main/",
+        "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main/",
         "https://cdn.jsdelivr.net/",     # the OCR page's pinned base URL
         "https://bolt.ocr/tess",         # intercepted, never real network
     }
@@ -192,33 +196,36 @@ def main():
         return 1
     print("OK: S6 menu row + action + string wired")
 
-    # S9 — REWRITTEN v1.3.78: THE MODE LAW (the report: "the other modes
-    # are pretty uneffecrive still, so just remove them all, and keep an
-    # unibetsal alternative screen translate non ai option"). TWO modes:
-    # AI (primary) + Basic OCR (universal no-AI fallback); the manga/HD/JP/
-    # CN/EN scripts and their models are GONE, and the on-disk diet deletes
-    # the orphaned jpn_vert/jpn_vertb files (~17 MB of the storage bill).
-    for probe in ('private val SCRIPT_KEYS = arrayOf("ai", "auto")',
+    # S9 — REWRITTEN v1.3.78, then v1.4.26 re-point (2026-11-21): THE MODE
+    # LAW grew the MANGA pair back (the v1.4.25 grid covered the art and
+    # left the speech bubbles — the bubble-aware round restores the
+    # v1.3.74 line): AI Page (the grid) + Basic OCR (the no-AI fallback)
+    # + Manga + Manga HD (jpn_vert / jpn_vertb, tessdata_best for HD, the
+    # model diet NO LONGER deletes the vertical models — they are the
+    # manga mode's own bill again).
+    for probe in ('private val SCRIPT_KEYS = arrayOf("ai", "auto", "manga", "mangahd")',
                   # v1.4.23 re-point (2026-11-20): the label names the hybrid
-                  # (OCR + ONE pure-text pass); the mode set is unchanged
-                  '"AI \\u2014 OCR + one text pass (recommended)"',
+                  # (OCR + ONE pure-text pass); v1.4.26: AI Page + the pair
+                  '"AI Page \\u2014 grid OCR + one AI text pass (full page)"',
                   '"Basic OCR \\u2014 no AI (works offline of the AI key)"',
+                  '"Manga \\u2014 bubble-aware (speech bubbles, vertical JP)"',
+                  '"Manga HD \\u2014 the accurate vertical model (14 MB, one time)"',
                   # v1.3.82: public + @JvmStatic — the update receiver calls
                   # the diet at install time (an un-openable app never ran
                   # the lazy OCR-path diet)
                   '@JvmStatic\n    fun modelDiet(a: Context)',
                   '"scr model diet freed="',
-                  'arrayOf("jpn_vert", "jpn_vertb")'):
+                  '"jpn_vert" to 3037480L, "jpn_vertb" to 14330809L)',
+                  'internal fun bubblesOf(boxes: Array<Rect>): Array<Rect>'):
         if probe not in scr:
-            print(f"FAIL: the v1.3.78 mode law lacks {probe}")
+            print(f"FAIL: the v1.4.26 mode law lacks {probe}")
             return 1
-    for gone in ('"mangahd"', '"manga" -> arrayOf', 'BEST_HOSTS',
-                 'private fun prepOcr(', 'c.rotate(-90f)', 'sb.vert =',
-                 'vertHint', 'arrayOf("jpn_vert")'):
+    for gone in ('private fun prepOcr(', 'c.rotate(-90f)', 'sb.vert =',
+                 'vertHint', 'arrayOf("jpn_vert"))'):
         if gone in scr:
             print(f"FAIL: the removed v1.3.77 machinery still present: {gone}")
             return 1
-    print("OK: S9 the v1.3.78 mode law (AI + universal Basic OCR; scripts, best models and ALL card rotation deleted)")
+    print("OK: S9 the v1.4.26 mode law (AI Page + Basic + the bubble-aware Manga pair)")
 
     # S7 — no NEW permissions: the manifest must carry exactly the
     # pre-v1.3.72 set (screen translate is screenshot-based and needs

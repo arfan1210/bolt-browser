@@ -70,9 +70,43 @@ public final class QrCore {
      * retry as the ARGB path. In-plane rotation is fine: the ZXing detector
      * infers orientation from the three finder patterns, so a portrait-held
      * phone reading an upright code (sensor frame rotated 90°) just works.
+     * v1.4.26 — THE STYLIZED PASSES (the weak-on-stylized-codes field
+     * report): after the plain + inverted attempts, (a) a 2/98-percentile
+     * CONTRAST STRETCH of the luma plane (stylized/colored codes with
+     * tinted or low-contrast modules binarize far better once the range is
+     * blown out) and (b) a HALF-SCALE pass (the ZXing recommendation for
+     * big/blurry/dense codes — a nearest-neighbour 2:1 subsample sharpens
+     * module edges relative to finder patterns). Each pass carries its own
+     * inverted retry. Probe-pinned in scripts/test_v1426.py.
      */
     public static String decodeLuma(byte[] y, int width, int height) {
         if (y == null || width <= 0 || height <= 0 || y.length < width * height) return null;
+        String r = decodeLuma2(y, width, height);
+        if (r != null) return r;
+        // (a) the stretched plane
+        try {
+            byte[] st = stretchLuma(y, width, height);
+            if (st != null) {
+                r = decodeLuma2(st, width, height);
+                if (r != null) return r;
+            }
+        } catch (Throwable ignored) {}
+        // (b) the half-scale plane
+        try {
+            int hw = width / 2, hh = height / 2;
+            if (hw >= 64 && hh >= 64) {
+                byte[] hs = halfLuma(y, width, height);
+                if (hs != null) {
+                    r = decodeLuma2(hs, hw, hh);
+                    if (r != null) return r;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /** the two-attempt core (plain, then inverted) both higher callers ride. */
+    private static String decodeLuma2(byte[] y, int width, int height) {
         try {
             LuminanceSource src = new com.google.zxing.PlanarYUVLuminanceSource(
                     y, width, height, 0, 0, width, height, false);
@@ -92,6 +126,65 @@ public final class QrCore {
                     return null;
                 }
             }
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * v1.4.26 — PURE (probe-pinned): the 2/98-percentile contrast stretch of
+     * a luma plane. A 256-bin histogram over the whole plane; lum <= p2
+     * maps to 0, lum >= p98 maps to 255, linear between (same law the
+     * screen-translate tiles ride). Returns null when the plane is already
+     * contrasty (p98 - p2 < 24) or the histogram is degenerate.
+     */
+    public static byte[] stretchLuma(byte[] y, int width, int height) {
+        try {
+            if (y == null || width <= 0 || height <= 0 || y.length < width * height) return null;
+            int[] hist = new int[256];
+            int n = width * height;
+            for (int i = 0; i < n; i++) {
+                int v = y[i] & 0xFF;
+                hist[v]++;
+            }
+            int p2 = 0, p98 = 255;
+            long acc = 0;
+            for (int i = 0; i < 256; i++) {
+                acc += hist[i];
+                if (acc >= (long) n * 2 / 100) { p2 = i; break; }
+            }
+            acc = 0;
+            for (int i = 255; i >= 0; i--) {
+                acc += hist[i];
+                if (acc >= (long) n * 2 / 100) { p98 = i; break; }
+            }
+            if (p98 - p2 < 24) return null;
+            int[] map = new int[256];
+            for (int i = 0; i < 256; i++) {
+                int v = (i - p2) * 255 / (p98 - p2);
+                map[i] = v < 0 ? 0 : (v > 255 ? 255 : v);
+            }
+            byte[] out = new byte[n];
+            for (int i = 0; i < n; i++) out[i] = (byte) map[y[i] & 0xFF];
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.26 — PURE (probe-pinned): the nearest-neighbour 2:1 subsample
+     *  of a luma plane (even rows/cols) — the big/blurry-code pass. */
+    public static byte[] halfLuma(byte[] y, int width, int height) {
+        try {
+            if (y == null || width < 2 || height < 2 || y.length < width * height) return null;
+            int hw = width / 2, hh = height / 2;
+            byte[] out = new byte[hw * hh];
+            for (int r = 0; r < hh; r++) {
+                for (int c = 0; c < hw; c++) {
+                    out[r * hw + c] = y[(2 * r) * width + (2 * c)];
+                }
+            }
+            return out;
         } catch (Throwable t) {
             return null;
         }

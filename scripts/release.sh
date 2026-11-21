@@ -582,6 +582,28 @@ python3 scripts/test_v1424.py
 # grid tables, the mock-DOM fill relay (two frames, native-setter fill,
 # the climb to pwFillResult) + the FA-glyph walk
 python3 scripts/test_v1425.py
+
+# ---- 1z-26. v1.4.26 gate: THE BLACK-ON-BLACK + BUBBLE ROUND (the saved-DOM
+# root-cause — the DIU portal fixture: the ANCESTOR ICON SIGNAL (iconNamed
+# walks <=6 parents — div.sidebar_icon/div.line_icon ride deterministically),
+# the DEFERRED RE-EVALUATION (load listener + 1s/3s re-passes + resize/
+# orientationchange — no frozen first-walk content verdict on a
+# later-decoding image; data:URI imgs are icon assets), THE CONTRAST-AWARE
+# PRESERVE + TARGET (a solid bg in [0.18,0.80] with light text is DESIGNED
+# and preserved; the clamp targets >=0.75 post-inversion at >=4.5:1, else
+# preserve — the 153-clamp black-on-black corpse is dead); THE MANGA ROUND
+# — the bubble-aware scripts are back (jpn_vert/HD models + the v1.3.74
+# preprocess + bubble clustering + the geometric bright-region vision
+# path — one card INSIDE each bubble, line breaks preserved, never a grid
+# cell); the GFM TABLE WRAPPER TRAVERSAL (TableHead/TableBody descend —
+# the empty-table corpse) + the markdown ~sub~/^sup^ delimiters; the QR
+# BUFFER PIN (the transform computes against the ACTUAL pinned buffer and
+# RE-APPLIES after the re-pin — the half-screen/90-degree race) + the
+# stylized decode passes (2/98 stretch + half-scale)) — probes: the pure
+# targetOf/clampCss/bubblesOf/transform tables, TWO compile-and-run Java
+# probes against the real jars (commonmark table/sub/sup + zxing stylized
+# QR), and the transcribed saved-DOM fixture walk
+python3 scripts/test_v1426.py
 mark gates
 fi
 

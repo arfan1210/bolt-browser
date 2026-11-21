@@ -145,17 +145,21 @@ object ScreenTranslate {
 
     // ---------------- v1.3.73: the script presets + model law ----------------
 
-    /** v1.3.78 — TWO MODES, AT THE USER'S WORD: "The other modes are
-     *  pretty uneffective still, so just remove them all, and keep an
-     *  universal alternative screen translate non ai option in case my ai
-     *  api is blocked or rate limited as it is free tier." The script zoo
-     *  (Manga / Manga HD / JP / CN / EN) is GONE; "ai" is the primary and
-     *  "auto" (EN+JP+CN in one pass) is the universal no-AI fallback —
-     *  same engine, same overlay, one line on the picker. */
-    private val SCRIPT_KEYS = arrayOf("ai", "auto")
+    /** v1.3.78 — TWO MODES, AT THE USER'S WORD (then v1.4.26 grew the
+     *  MANGA pair back: the v1.4.25 fixed grid covers the art and leaves
+     *  speech bubbles — the bubble-aware round restores the v1.3.74 line:
+     *  AI Page (the grid, general pages) vs Manga (bubbles) vs Basic OCR.)
+     *  "ai" = the AI Page grid (per-tile OCR + one text pass + per-tile
+     *  vision cards on FIXED cells — full-page coverage); "auto" = the
+     *  universal no-AI fallback; "manga"/"mangahd" = the BUBBLE-AWARE
+     *  pass (jpn_vert OCR on the manga-preprocessed image, one card per
+     *  speech bubble, HD = tessdata_best). */
+    private val SCRIPT_KEYS = arrayOf("ai", "auto", "manga", "mangahd")
     private val SCRIPT_LABELS = arrayOf(
-        "AI \u2014 OCR + one text pass (recommended)",
-        "Basic OCR \u2014 no AI (works offline of the AI key)")
+        "AI Page \u2014 grid OCR + one AI text pass (full page)",
+        "Basic OCR \u2014 no AI (works offline of the AI key)",
+        "Manga \u2014 bubble-aware (speech bubbles, vertical JP)",
+        "Manga HD \u2014 the accurate vertical model (14 MB, one time)")
 
     private fun langsOf(k: String): Array<String> {
         // v1.4.24 — THE SOURCE-LANGUAGE LAW (the hardcoded-OCR-language
@@ -200,7 +204,8 @@ object ScreenTranslate {
         else -> null
     }
 
-    private fun scriptLabel(k: String): String = if (k == "ai") "AI" else "Basic"
+    private fun scriptLabel(k: String): String = when (k) {
+        "ai" -> "AI Page"; "manga" -> "Manga"; "mangahd" -> "Manga HD"; else -> "Basic" }
 
     /** v1.4.24 — the label the OCR-language door shows for a pack. */
     private fun srcLabelOf(a: Context, pack: String): String {
@@ -342,17 +347,34 @@ object ScreenTranslate {
 
     /** the langs the downloader + interceptor will ever serve
      *  (v1.4.24: the source-law expansion — every language the app's
-     *  translate list names; jpn_vert + jpn_vertb stay dead, their manga
-     *  scripts died in v1.3.78) */
+     *  translate list names; v1.4.26: jpn_vert + jpn_vertb are BACK —
+     *  the manga scripts returned with the bubble-aware round) */
     private val LANG_OK = setOf(
         "eng", "jpn", "chi_sim", "ben", "hin", "spa", "ara", "fra",
-        "deu", "por", "rus", "kor", "ind", "tur", "urd", "vie")
+        "deu", "por", "rus", "kor", "ind", "tur", "urd", "vie",
+        "jpn_vert", "jpn_vertb")
 
     /** pinned model sources (https, GET, no redirects — the relay discipline).
-     *  v1.3.74: tessdata_best for the HD alias, with its own fail-over. */
+     *  v1.3.74: tessdata_best for the HD alias, with its own fail-over;
+     *  v1.4.26: the best pair is BACK (jpn_vertb — the Manga HD pass). */
     private val DL_HOSTS = arrayOf(
         "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@main/",
         "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/")
+    private val BEST_HOSTS = arrayOf(
+        "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main/",
+        "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main/")
+
+    /** v1.4.26 — the repo a pack downloads from: everything rides the fast
+     *  pair; jpn_vertb (the saved-under name for tessdata_best's jpn_vert)
+     *  rides the BEST pair with its own fail-over. */
+    private fun hostsFor(lang: String): Array<String> =
+            if (lang == "jpn_vertb") BEST_HOSTS else DL_HOSTS
+
+    /** v1.4.26 — the remote file name a pack downloads (jpn_vertb fetches
+     *  tessdata_best's jpn_vert.traineddata but SAVES it under the -b name
+     *  so the fast and best vertical models never collide in the cache). */
+    private fun remoteFor(lang: String): String =
+            if (lang == "jpn_vertb") "jpn_vert" else lang
     /** known sizes (bytes) — drives the metered-connection estimate
      *  (v1.3.78: the vertical/best models left with their scripts;
      *  v1.4.24: the source-law expansion adds every pack the picker
@@ -363,13 +385,19 @@ object ScreenTranslate {
         "ara" to 1432056L, "fra" to 1130365L, "deu" to 1525436L,
         "por" to 1982756L, "rus" to 3861738L, "kor" to 1677415L,
         "ind" to 1122661L, "tur" to 4550554L, "urd" to 1398718L,
-        "vie" to 531275L)
+        "vie" to 531275L,
+        // v1.4.26 — the manga round: jpn_vert (tessdata_fast,
+        // 3,037,480 B read from the pinned repo) + jpn_vertb (tessdata_best
+        // jpn_vert, 14,330,809 B — saved under the -b name so the fast and
+        // best vertical models never collide in the cache)
+        "jpn_vert" to 3037480L, "jpn_vertb" to 14330809L)
 
-    /** v1.3.78 — THE MODEL DIET: the manga scripts are gone, so their
-     *  models (jpn_vert fast 3.0 MB + jpn_vertb best 14.3 MB) are dead
-     *  weight on disk — part of the "still over 50 mb after closing"
-     *  storage bill. Deleted once per process, with the freed bytes named
-     *  in the diag line.
+    /** v1.3.78 — THE MODEL DIET — v1.4.26 RE-SCOPED: the jpn_vert/
+     *  jpn_vertb models are no longer dead weight (the manga scripts came
+     *  BACK with the bubble-aware round), so the diet no longer deletes
+     *  them — it keeps sweeping the legacy filesDir/ocrfast tree and the
+     *  stale .tmp leftovers only (a re-download would be the manga mode's
+     *  own bill).
      *  v1.3.82: public + @JvmStatic — the UPDATE receiver calls it too
      *  (an app that cannot open — the v1.3.81 launcher trap — never runs
      *  the lazy OCR-path diet, so the legacy tree survived updates
@@ -395,14 +423,16 @@ object ScreenTranslate {
             } catch (_: Throwable) {}
             val dir = File(a.cacheDir, "ocrfast")
             if (!dir.isDirectory) return
-            for (lang in arrayOf("jpn_vert", "jpn_vertb")) {
-                val f = File(dir, "$lang.traineddata")
-                if (f.exists()) {
-                    val n = f.length()
-                    if (f.delete() && n > 0) freed += n
+            // v1.4.26: the jpn_vert/jpn_vertb DELETION is gone (the manga
+            // round owns them again); only interrupted-download tmps sweep
+            try {
+                dir.listFiles()?.forEach { f ->
+                    if (f.name.endsWith(".tmp")) {
+                        val n = f.length()
+                        if (f.delete() && n > 0) freed += n
+                    }
                 }
-                try { File(dir, "$lang.traineddata.tmp").delete() } catch (_: Throwable) {}
-            }
+            } catch (_: Throwable) {}
             if (freed > 0) try {
                 Diag.log(a, "scr model diet freed=" + (freed / 1048576) + "mb")
             } catch (_: Throwable) {}
@@ -571,6 +601,11 @@ object ScreenTranslate {
         srcPack(a)   // v1.4.24: resolve the OCR source choice before any langs use
         val k = lastScript
         if (k == "ai") { runAiStage(a, bmp, g); return }
+        // v1.4.26 — THE MANGA ROUND: the bubble-aware pass is back (the
+        // v1.4.25 grid covered the art and left the bubbles); it branches
+        // here with its own preprocess + models + clustering — the grid
+        // paths below are untouched for general pages
+        if (k == "manga" || k == "mangahd") { runMangaStage(a, bmp, g, k == "mangahd"); return }
         // v1.4.25 — THE GRID: the basic path runs the same per-tile native-
         // resolution OCR (runOcrStage -> runGridOcr); the whole-screen
         // <=1600 encode is retired here too (coverage + small-text both)
@@ -669,9 +704,12 @@ object ScreenTranslate {
         if (!dir.exists()) dir.mkdirs()
         val out = File(dir, "$lang.traineddata")
         val tmp = File(dir, "$lang.traineddata.tmp")
-        val remote = lang
+        // v1.4.26 — the per-pack repo + remote name (jpn_vertb -> the best
+        // repo's jpn_vert, saved under the -b name)
+        val remote = remoteFor(lang)
+        val hosts = hostsFor(lang)
         var fb = -1
-        for ((hi, host) in DL_HOSTS.withIndex()) {
+        for ((hi, host) in hosts.withIndex()) {
             try {
                 val c = URL(host + remote + ".traineddata").openConnection() as HttpURLConnection
                 c.connectTimeout = 10000
@@ -1222,6 +1260,460 @@ object ScreenTranslate {
         }
     }
 
+    // ---------------- v1.4.26 — THE MANGA ROUND (bubble-aware) ----------------
+
+    /**
+     * v1.4.26 — THE MANGA STAGE (the v1.4.25 grid ruined manga: the fixed
+     *  2x3 cards left the speech bubbles, covered the art and flattened line
+     *  breaks/style). The restored v1.3.74 line, one level up:
+     *  (1) the MANGA PREPROCESS (x2 nearest upscale capped 2600 px long
+     *      edge / 6.5 MP, grayscale, the HARD 5/95 percentile stretch, PNG —
+     *      line art hates JPEG ringing);
+     *  (2) jpn_vert OCR on the WHOLE preprocessed page (PSM 3 auto layout
+     *      reads vertical columns — the host page's own live-verified law);
+     *      the boxes map back to ORIGINAL bitmap coordinates (ocrBlocks);
+     *  (3) BUBBLE CLUSTERING ([bubblesOf], pure) merges the line boxes
+     *      whose line-height-inflated rects touch — a bubble's stacked
+     *      lines and a vertical column's side-by-side runs sit within a
+     *      fraction of a line height of each other; distinct bubbles are a
+     *      bubble-diameter apart. ONE card per bubble: the cluster's own
+     *      extent (covering ONLY the bubble's text), the sampled bubble
+     *      background, the original's line height, line breaks preserved
+     *      (the card's StaticLayout stacks them — the v1.3.78 no-rotation
+     *      law);
+     *  (4) translation: with an AI key ONE numbered-bubble textTranslate
+     *      ([AiBridge.textTranslate] with markBreaks — the ' ~ ' marker
+     *      becomes the newline the card stacks) for terminology
+     *      consistency; without a key the per-bubble gtx pass (the Basic
+     *      law) rides the overlay;
+     *  (5) the OCR-blind path (stylised art the vertical model cannot
+     *      read, total under YIELD_FLOOR): the LOCAL bright-region
+     *      detector ([brightRegions]) finds interior paper-white blobs
+     *      (bubbles) GEOMETRICALLY, each crop goes through the vision
+     *      text-only pass and its card sits INSIDE that region — never a
+     *      grid cell, never the art, and the model's box_2d is never
+     *      consulted (the v1.4.25 grid law, kept).
+     */
+    private fun runMangaStage(a: Activity, bmp: Bitmap, g: Int, hd: Boolean) {
+        if (gen.get() != g) return
+        val pack = if (hd) "jpn_vertb" else "jpn_vert"
+        if (!ensureModels(a, bmp, g, arrayOf(pack))) {
+            if (gen.get() != g) return
+            if (cancelled) cancelOcr(a, bmp, g)
+            else failOcr(a, bmp, g, "dl", "Couldn't download OCR data — check connection")
+            return
+        }
+        if (gen.get() != g) return
+        try {
+            Diag.log(a, "scr manga pack=" + pack + " px=" + bmp.width + "x" + bmp.height)
+        } catch (_: Throwable) {}
+        val t0 = System.currentTimeMillis()
+        // the preprocess is heavy bitmap work — POOL; the host push rides main
+        POOL.execute {
+            try {
+                val enc = mangaEncode(bmp)
+                if (enc == null) { failOcr(a, bmp, g, "prep", null); return@execute }
+                main.post { mangaHostRun(a, bmp, g, pack, enc, t0) }
+            } catch (t: Throwable) {
+                failOcr(a, bmp, g, "prep", null)
+            }
+        }
+    }
+
+    /** the manga preprocess + PNG encode (POOL thread). */
+    private fun mangaEncode(bmp: Bitmap): Enc? {
+        return try {
+            val up = mangaUpscale(bmp)
+            val pre = up ?: bmp
+            hardStretch(pre)
+            val bo = ByteArrayOutputStream()
+            pre.compress(Bitmap.CompressFormat.PNG, 100, bo)
+            val out = Enc(Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP),
+                    pre.width, pre.height)
+            if (pre !== bmp) try { pre.recycle() } catch (_: Throwable) {}
+            out
+        } catch (t: Throwable) { null }
+    }
+
+    /** v1.4.26 — the x2 NEAREST-NEIGHBOUR upscale (filter=false), capped:
+     *  long edge <= 2600 px and <= 6.5 MP after the scale (a 1440x3088
+     *  screenshot rides its own pixels; a fit-to-screen manga page doubles
+     *  its 12-18 px strokes into tesseract's comfort zone — the v1.3.74
+     *  law). Null when no upscale fits (the original rides as-is). */
+    private fun mangaUpscale(bmp: Bitmap): Bitmap? {
+        return try {
+            val longEdge = maxOf(bmp.width, bmp.height)
+            var f = 2f
+            f = minOf(f, 2600f / longEdge)
+            f = minOf(f, Math.sqrt(6_500_000.0 / (bmp.width.toLong() * bmp.height)).toFloat())
+            if (f <= 1.02f) return null
+            val w = (bmp.width * f).toInt().coerceAtLeast(1)
+            val h = (bmp.height * f).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(bmp, w, h, false)
+        } catch (t: Throwable) { null }
+    }
+
+    /** v1.4.26 — the HARD stretch (the manga-era law the mild 2/98 general
+     *  pass replaced for SCREENS): grayscale + 5/95 percentile remap. Pure
+     *  mapping = [stretchOf] (probe-pinned); the percentiles + the <24 skip
+     *  are the manga law (probe-pinned constants in scripts/test_v1426.py). */
+    private fun hardStretch(bmp: Bitmap) {
+        try {
+            val w = bmp.width
+            val h = bmp.height
+            if (w <= 0 || h <= 0 || w * h > 8_000_000) return
+            val px = IntArray(w * h)
+            bmp.getPixels(px, 0, w, 0, 0, w, h)
+            val hist = IntArray(256)
+            for (p in px) {
+                val y = (299 * (p and 0xFF) + 587 * ((p shr 8) and 0xFF) +
+                        114 * ((p shr 16) and 0xFF)) / 1000
+                hist[y]++
+            }
+            val total = w * h
+            var p5 = 0
+            var p95 = 255
+            var acc = 0
+            for (i in 0 until 256) {
+                acc += hist[i]
+                if (acc >= total * 5 / 100) { p5 = i; break }
+            }
+            acc = 0
+            for (i in 255 downTo 0) {
+                acc += hist[i]
+                if (acc >= total * 5 / 100) { p95 = i; break }
+            }
+            if (p95 - p5 < 24) return                 // already contrasty
+            val map = IntArray(256)
+            for (i in 0 until 256) map[i] = stretchOf(p5, p95, i)
+            for (i in px.indices) {
+                val g = map[(299 * (px[i] and 0xFF) + 587 * ((px[i] shr 8) and 0xFF) +
+                        114 * ((px[i] shr 16) and 0xFF)) / 1000]
+                px[i] = (px[i] and (0xFF shl 24)) or (g shl 16) or (g shl 8) or g
+            }
+            bmp.setPixels(px, 0, w, 0, 0, w, h)
+        } catch (_: Throwable) {}
+    }
+
+    /** MAIN. the manga host run: the WHOLE preprocessed page, one PNG pass,
+     *  the per-line boxes mapped back to ORIGINAL coordinates by
+     *  [ocrBlocks] (sx/sy already handles the 2x). */
+    private fun mangaHostRun(a: Activity, bmp: Bitmap, g: Int, pack: String,
+                             enc: Enc, t0: Long) {
+        if (gen.get() != g) return
+        if (prog == null) {
+            prog = ScrProgress.show(a, "Translate screen — manga") { cancelOcr(a, bmp, g) }
+        }
+        val h = try {
+            host ?: OcrHost(a).also { host = it }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "host", null)
+            return
+        }
+        h.onProgress = { s, p -> prog?.set(mapStatus(s, p), p) }
+        try { prog?.set("Reading manga text\u2026", -1) } catch (_: Throwable) {}
+        h.run(arrayOf(pack), enc.b64,
+                { json ->
+                    POOL.execute {
+                        try {
+                            val parsed = ocrBlocks(json, bmp, enc)
+                            mangaOcrDone(a, bmp, g, parsed.first, parsed.second, t0)
+                        } catch (t: Throwable) {
+                            failOcr(a, bmp, g, "parse", null)
+                        }
+                    }
+                },
+                { msg ->
+                    failOcr(a, bmp, g, "host " + (msg ?: "").take(40),
+                            "Text recognition unavailable")
+                },
+                "png")
+    }
+
+    /** POOL. the bubble build + the translation law (AI numbered-bubbles vs
+     *  per-bubble gtx) + the OCR-blind vision regions. */
+    private fun mangaOcrDone(a: Activity, bmp: Bitmap, g: Int,
+                             lines: ArrayList<SBlock>, chars: Int, t0: Long) {
+        if (gen.get() != g) return
+        try {
+            val bubbles = mangaBlocks(bmp, lines)
+            try {
+                Diag.log(a, "scr manga ocr chars=" + chars + " lines=" + lines.size +
+                        " bubbles=" + bubbles.size +
+                        " ms=" + (System.currentTimeMillis() - t0))
+            } catch (_: Throwable) {}
+            val tl = lastTl ?: PageTranslate.deviceTl()
+            if (AiBridge.configured(a)) {
+                if (chars < YIELD_FLOOR || bubbles.isEmpty()) {
+                    // OCR-blind (stylised art): the geometric bubble regions
+                    // + a vision text-only card INSIDE each region
+                    visionRegions(a, bmp, g, tl, bubbles)
+                    return
+                }
+                prog?.set("Translating\u2026", -1)
+                // ONE numbered-bubble request — the multi-line bubble texts
+                // flatten for the numbered protocol, and the reply's ' ~ '
+                // markers become the newlines the card stacks
+                val flat = bubbles.map { it.orig.replace("\n", " ") }
+                val out = AiBridge.textTranslate(a, flat, tl, true)
+                if (gen.get() != g) return
+                if (out == null) {
+                    failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
+                            "AI translation failed — " + AiBridge.lastError.take(60))
+                    return
+                }
+                for (i in bubbles.indices) {
+                    bubbles[i].trans = out.getOrNull(i)?.replace(" ~ ", "\n")
+                    bubbles[i].rev = 1
+                }
+                val blocks = ArrayList<SBlock>(bubbles)
+                try {
+                    Diag.log(a, "scr manga ai ok bubbles=" + bubbles.size +
+                            " ms=" + (System.currentTimeMillis() - t0))
+                } catch (_: Throwable) {}
+                main.post { deliverAiBlocks(a, bmp, blocks, g) }
+            } else {
+                if (bubbles.isEmpty()) {
+                    failOcr(a, bmp, g, "empty", "No readable text on this screen")
+                    return
+                }
+                // no key: the Basic law — the overlay + per-bubble gtx
+                main.post { deliverBlocks(a, bmp, bubbles, g) }
+            }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "parse", null)
+        }
+    }
+
+    /**
+     * v1.4.26 — PURE (probe-pinned): cluster OCR line boxes into BUBBLE
+     * regions. Two boxes MERGE when their line-height-inflated rects touch:
+     * every box is inflated by [BUBBLE_GROW] (0.6) x its own height in all
+     * four directions (a bubble's stacked lines and a vertical column's
+     * side-by-side runs sit within a fraction of a line height of each
+     * other; distinct bubbles are a bubble-diameter apart). Repeated
+     * union-merge over the inflated rects until stable; the cluster's box
+     * is the UNION of the ORIGINAL member boxes + a [BUBBLE_PAD] (2) px pad,
+     * clamped to the page. */
+    internal fun bubblesOf(boxes: Array<Rect>): Array<Rect> {
+        val out = ArrayList<Rect>()
+        if (boxes.isEmpty()) return out.toTypedArray()
+        val rects = ArrayList<Rect>(boxes.size)
+        for (b in boxes) rects.add(Rect(b))
+        var merged = true
+        while (merged) {
+            merged = false
+            outer@ for (i in rects.indices) {
+                for (j in i + 1 until rects.size) {
+                    val gi = grownOf(rects[i])
+                    val gj = grownOf(rects[j])
+                    if (gi.left <= gj.right && gj.left <= gi.right &&
+                            gi.top <= gj.bottom && gj.top <= gi.bottom) {
+                        rects[i].union(rects[j])
+                        rects.removeAt(j)
+                        merged = true
+                        break@outer
+                    }
+                }
+            }
+        }
+        for (r in rects) {
+            val cr = Rect(r.left - BUBBLE_PAD, r.top - BUBBLE_PAD,
+                    r.right + BUBBLE_PAD, r.bottom + BUBBLE_PAD)
+            if (cr.width() >= 8 && cr.height() >= 8) out.add(cr)
+        }
+        return out.toTypedArray()
+    }
+
+    /** the [bubblesOf] inflation helper (pure). */
+    private fun grownOf(r: Rect): Rect {
+        val dy = (BUBBLE_GROW * maxOf(1, r.height())).toInt()
+        return Rect(r.left - dy, r.top - dy, r.right + dy, r.bottom + dy)
+    }
+
+    /** probe-pinned constants: the cluster inflation (0.6 x own height) and
+     *  the bubble box pad (2 px). */
+    internal const val BUBBLE_GROW = 0.6f
+    internal const val BUBBLE_PAD = 2
+
+    /** ONE bubble card per cluster: the cluster's own extent (ONLY the
+     *  bubble's text — never a grid cell), the sampled bubble paper, the
+     *  median ORIGINAL line height, the stacked-line text. POOL thread. */
+    private fun mangaBlocks(bmp: Bitmap, lines: ArrayList<SBlock>): ArrayList<SBlock> {
+        val out = ArrayList<SBlock>()
+        if (lines.isEmpty()) return out
+        val clusters = bubblesOf(Array(lines.size) { lines[it].box })
+        for (cr in clusters) {
+            val members = ArrayList<SBlock>()
+            for (l in lines) {
+                if (cr.contains(l.box.left, l.box.top) &&
+                        cr.contains(l.box.right - 1, l.box.bottom - 1)) members.add(l)
+            }
+            if (members.isEmpty()) continue
+            val text = members.joinToString("\n") { it.orig }
+            val sb = SBlock(Rect(cr), text, regionLight(bmp, cr))
+            sb.bg = sampleRing(bmp, cr)
+            sb.thPx = medianLine(members)
+            out.add(sb)
+            if (out.size >= MAXBLK) break
+        }
+        return out
+    }
+
+    private fun medianLine(members: List<SBlock>): Float {
+        val th = members.map { it.thPx }.filter { it > 0f }.sorted()
+        return if (th.isEmpty()) 0f else th[th.size / 2]
+    }
+
+    /**
+     * v1.4.26 — THE OCR-BLIND BUBBLE REGIONS (the manga vision path): the
+     *  LOCAL, GEOMETRIC detector — bright connected regions on a ~1/8
+     *  grayscale downscale that do NOT touch the image border (the page's
+     *  own paper is border-connected; a bubble is an INTERIOR paper-white
+     *  blob), sized 1.5%-25% of the page, aspect 0.25-4.0. Each uncovered
+     *  region crops through the vision text-only pass and its card sits
+     *  INSIDE the region — never a grid cell, never the art; box_2d stays
+     *  retired. POOL thread.
+     */
+    private fun visionRegions(a: Activity, bmp: Bitmap, g: Int, tl: String,
+                              bubbles: ArrayList<SBlock>) {
+        if (gen.get() != g || cancelled) return
+        try {
+            Diag.log(a, "scr manga vision regions")
+        } catch (_: Throwable) {}
+        try {
+            prog?.set("Reading missed bubbles\u2026", -1)
+            val regions = brightRegions(bmp)
+            val blocks = ArrayList<SBlock>(bubbles)
+            for ((i, rr) in regions.withIndex()) {
+                if (gen.get() != g || cancelled) return
+                // a region already carrying OCR text is not ours to cover
+                val covered = bubbles.any {
+                    val interW = minOf(it.box.right, rr.right) - maxOf(it.box.left, rr.left)
+                    val interH = minOf(it.box.bottom, rr.bottom) - maxOf(it.box.top, rr.top)
+                    interW > 0 && interH > 0 &&
+                            (interW * interH) * 2 >= rr.width() * rr.height()
+                }
+                if (covered) continue
+                val card = visionBubbleCard(a, bmp, rr, tl, null)
+                if (card != null) blocks.add(card)
+                else try { Diag.log(a, "scr manga region " + i + " fail") } catch (_: Throwable) {}
+            }
+            if (blocks.isEmpty()) {
+                failOcr(a, bmp, g, "ai " + AiBridge.lastError.take(60),
+                        "AI translation failed — " + AiBridge.lastError.take(60))
+                return
+            }
+            try { Diag.log(a, "scr manga vision ok regions=" + blocks.size) } catch (_: Throwable) {}
+            main.post { deliverAiBlocks(a, bmp, blocks, g) }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "vision", null)
+        }
+    }
+
+    /** one vision card INSIDE its detected bubble region (the region's own
+     *  rect — never a grid cell). POOL thread. */
+    private fun visionBubbleCard(a: Activity, bmp: Bitmap, rr: Rect,
+                                 tl: String, ctx: String?): SBlock? {
+        val tile = try {
+            Bitmap.createBitmap(bmp, rr.left, rr.top, rr.width(), rr.height())
+        } catch (_: Throwable) { null } ?: return null
+        val enc = encodeAi(tile)
+        try { tile.recycle() } catch (_: Throwable) {}
+        if (enc == null) return null
+        val text = try {
+            AiBridge.visionTileTranslate(a, enc.b64, tl, enc.w, enc.h, ctx)
+        } catch (_: Throwable) { null }
+        if (text == null || text.isBlank() || text.length < 3) return null
+        val sb = SBlock(Rect(rr), text, regionLight(bmp, rr))
+        sb.trans = text
+        sb.rev = 1
+        sb.bg = sampleRing(bmp, rr)
+        return sb
+    }
+
+    /**
+     * v1.4.26 — PURE-ish (constants probe-pinned): the bright-region
+     *  detector — [BRIGHT_TH] (>= 200) pixels on a downscale whose long
+     *  edge is <= [BRIGHT_DS] (256), connected components (flood fill),
+     *  border-touching components dropped (page paper), area in
+     *  1.5%-25% of the page, aspect 0.25-4.0, the survivors scaled back to
+     *  ORIGINAL coordinates, biggest first, capped at [BRIGHT_MAX] (8).
+     *  POOL thread.
+     */
+    internal fun brightRegions(bmp: Bitmap): Array<Rect> {
+        return try {
+            val ds = minOf(BRIGHT_DS.toFloat() / maxOf(bmp.width, bmp.height), 1f)
+            val w = maxOf(1, (bmp.width * ds).toInt())
+            val h = maxOf(1, (bmp.height * ds).toInt())
+            val small = Bitmap.createScaledBitmap(bmp, w, h, true)
+            val px = IntArray(w * h)
+            small.getPixels(px, 0, w, 0, 0, w, h)
+            try { small.recycle() } catch (_: Throwable) {}
+            val seen = BooleanArray(w * h)
+            val found = ArrayList<IntArray>()   // x0,y0,x1,y1,area (downscale coords)
+            for (y0 in 0 until h) {
+                for (x0 in 0 until w) {
+                    val i0 = y0 * w + x0
+                    if (seen[i0]) continue
+                    val l = lumOfPx(px[i0])
+                    if (l < BRIGHT_TH) continue
+                    // flood fill this bright component
+                    var minX = x0; var maxX = x0
+                    var minY = y0; var maxY = y0
+                    var area = 0
+                    val st = ArrayList<Int>()
+                    st.add(i0); seen[i0] = true
+                    while (st.isNotEmpty()) {
+                        val i = st.removeAt(st.size - 1)
+                        val x = i % w
+                        val y = i / w
+                        area++
+                        if (x < minX) minX = x
+                        if (x > maxX) maxX = x
+                        if (y < minY) minY = y
+                        if (y > maxY) maxY = y
+                        if (x > 0 && !seen[i - 1] && lumOfPx(px[i - 1]) >= BRIGHT_TH) { seen[i - 1] = true; st.add(i - 1) }
+                        if (x < w - 1 && !seen[i + 1] && lumOfPx(px[i + 1]) >= BRIGHT_TH) { seen[i + 1] = true; st.add(i + 1) }
+                        if (y > 0 && !seen[i - w] && lumOfPx(px[i - w]) >= BRIGHT_TH) { seen[i - w] = true; st.add(i - w) }
+                        if (y < h - 1 && !seen[i + w] && lumOfPx(px[i + w]) >= BRIGHT_TH) { seen[i + w] = true; st.add(i + w) }
+                    }
+                    // border-connected = the page's own paper, not a bubble
+                    if (minX == 0 || minY == 0 || maxX == w - 1 || maxY == h - 1) continue
+                    val rw = maxX - minX + 1
+                    val rh = maxY - minY + 1
+                    val pageN = w.toLong() * h
+                    val areaN = area.toLong()
+                    if (areaN * 100 < pageN * 3 / 2) continue        // < 1.5%
+                    if (areaN * 100 > pageN * 25) continue           // > 25%
+                    val ratio = maxOf(rw, rh).toFloat() / minOf(rw, rh)
+                    if (ratio > 4f) continue
+                    found.add(intArrayOf(minX, minY, maxX + 1, maxY + 1, area))
+                }
+            }
+            found.sortByDescending { it[4] }
+            val out = ArrayList<Rect>(minOf(found.size, BRIGHT_MAX))
+            val inv = 1f / ds
+            for (f in found) {
+                if (out.size >= BRIGHT_MAX) break
+                val l = (f[0] * inv).toInt().coerceIn(0, bmp.width - 8)
+                val t = (f[1] * inv).toInt().coerceIn(0, bmp.height - 8)
+                val r = (f[2] * inv).toInt().coerceAtMost(bmp.width).coerceAtLeast(l + 8)
+                val b = (f[3] * inv).toInt().coerceAtMost(bmp.height).coerceAtLeast(t + 8)
+                out.add(Rect(l, t, r, b))
+            }
+            out.toTypedArray()
+        } catch (_: Throwable) { arrayOf() }
+    }
+
+    /** the [brightRegions] constants (probe-pinned). */
+    internal const val BRIGHT_TH = 200
+    internal const val BRIGHT_DS = 256
+    internal const val BRIGHT_MAX = 8
+
+    private fun lumOfPx(p: Int): Int =
+            (299 * (p and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * ((p shr 16) and 0xFF)) / 1000
+
     /** the model name WITHOUT the key ever leaving the diag channel.
      *  v1.4.21: names the EFFECTIVE translate model (the dedicated
      *  translate-model picker when set, the shared chat model otherwise). */
@@ -1240,7 +1732,7 @@ object ScreenTranslate {
         if (gen.get() != g) return
         prog?.close()
         prog = null
-        schip?.text = "Mode: AI"
+        schip?.text = "Mode: " + scriptLabel(lastScript)
         val v = viewRef
         if (v != null && v.bmpRef() === bmp) {
             v.blocks.clear()
@@ -1959,27 +2451,31 @@ object ScreenTranslate {
             wv.loadDataWithBaseURL("https://cdn.jsdelivr.net/", html, "text/html", "utf-8", null)
         }
 
-        /** push the image in binder-safe chunks, then fire the OCR job. */
-        fun run(langs: Array<String>, b64: String, done: (String) -> Unit, fail: (String) -> Unit) {
+        /** push the image in binder-safe chunks, then fire the OCR job.
+         *  v1.4.26 — [mime] rides the data URL the host page builds (jpeg
+         *  default; the manga pass sends PNG — line art hates JPEG
+         *  ringing, the restored v1.3.74 law). */
+        fun run(langs: Array<String>, b64: String, done: (String) -> Unit,
+                 fail: (String) -> Unit, mime: String = "jpeg") {
             mainH.post {
                 if (destroyed) { fail("destroyed"); return@post }
                 onDone = done
                 onFail = fail
-                pushWhenReady(langs.joinToString("+"), b64, 0)
+                pushWhenReady(langs.joinToString("+"), b64, 0, mime)
             }
         }
 
-        private fun pushWhenReady(langs: String, b64: String, tries: Int) {
+        private fun pushWhenReady(langs: String, b64: String, tries: Int, mime: String) {
             if (destroyed) return
             if (!ready) {
                 if (tries >= 40) { val f = onFail; onDone = null; onFail = null; f?.invoke("page-timeout"); return }
-                mainH.postDelayed({ pushWhenReady(langs, b64, tries + 1) }, 500)
+                mainH.postDelayed({ pushWhenReady(langs, b64, tries + 1, mime) }, 500)
                 return
             }
             for (c in b64.chunked(200_000)) {
                 wv.evaluateJavascript("window.__push('$c')", null)
             }
-            wv.evaluateJavascript("window.__ocr('$langs')", null)
+            wv.evaluateJavascript("window.__ocr('$langs','$mime')", null)
             val w = Runnable {
                 val f = onFail ?: return@Runnable
                 onDone = null
