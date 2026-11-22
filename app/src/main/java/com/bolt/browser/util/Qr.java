@@ -38,11 +38,27 @@ public final class Qr {
     }
 
     /**
-     * Open the picked image (content:// or file://), downsampled to roughly
-     * maxDim px on the long edge, and decode any QR inside it.
-     * Returns the QR text or null (absent / unreadable / IO error).
+     * Open the picked image (content:// or file://) and decode any QR
+     * inside it. Returns the QR text or null (absent / unreadable / IO
+     * error).
+     * v1.4.27 — THE ROBUST GALLERY LADDER (the "photo-from-device not
+     * detected" corpse): the old flow decoded ONCE at ~2000 px and ran the
+     * plain two-attempt decode on it — a QR that occupies part of a large
+     * or stylized/low-contrast photo never survived. The new flow:
+     * (1) FULL resolution first — the smallest inSampleSize that keeps
+     *     the decode inside the memory law (8 MP int[] = 32 MB peak on
+     *     the 3 GB device floor);
+     * (2) that pass rides the SAME multi-pass kit the camera uses
+     *     ([QrCore.decodeRobust]: plain + inverted ARGB, the luma
+     *     contrast-stretch + half-scale passes, the rotations, and the
+     *     center-crop windows for a code that occupies part of the
+     *     frame);
+     * (3) progressive downscales ([maxDim], 1200, 800) each through the
+     *     same robust ladder — a small code on a huge photo sometimes
+     *     needs the downsampled geometry to binarize at all.
      */
     public static String decodeUri(android.content.Context ctx, Uri uri, int maxDim) {
+        Bitmap base = null;
         try {
             InputStream in = ctx.getContentResolver().openInputStream(uri);
             if (in == null) return null;
@@ -50,18 +66,51 @@ public final class Qr {
             o.inJustDecodeBounds = true;
             BitmapFactory.decodeStream(in, null, o);
             try { in.close(); } catch (Throwable ignored) {}
+            int w = o.outWidth, h = o.outHeight;
+            if (w <= 0 || h <= 0) return null;
+            // the memory law: the smallest sample holding the decode under
+            // ~8 MP (a 12 MP photo rides 1/4 area — still its own pixels
+            // for any code a fifth of the frame)
             int sample = 1;
-            int big = Math.max(o.outWidth, o.outHeight);
-            while (big / (sample * 2) >= Math.max(600, maxDim / 2)) sample *= 2;
+            while ((long) (w / sample) * (h / sample) > 8_000_000L) sample *= 2;
             InputStream in2 = ctx.getContentResolver().openInputStream(uri);
             if (in2 == null) return null;
             BitmapFactory.Options o2 = new BitmapFactory.Options();
             o2.inSampleSize = sample;
-            Bitmap bmp = BitmapFactory.decodeStream(in2, null, o2);
+            base = BitmapFactory.decodeStream(in2, null, o2);
             try { in2.close(); } catch (Throwable ignored) {}
-            return decode(bmp);
+            if (base == null) return null;
+            // (1) the full-resolution robust pass
+            int bw = base.getWidth(), bh = base.getHeight();
+            int[] px = new int[bw * bh];
+            base.getPixels(px, 0, bw, 0, 0, bw, bh);
+            String r = QrCore.decodeRobust(px, bw, bh);
+            if (r != null) return r;
+            // (2) the progressive downscales (maxDim -> 1200 -> 800)
+            int longEdge = Math.max(bw, bh);
+            int[] rungs = {Math.max(600, maxDim), 1200, 800};
+            for (int target : rungs) {
+                if (longEdge <= target + 80) continue;   // effectively same scale
+                float f = (float) target / longEdge;
+                int sw = Math.max(1, Math.round(bw * f));
+                int sh = Math.max(1, Math.round(bh * f));
+                Bitmap s = null;
+                try {
+                    s = Bitmap.createScaledBitmap(base, sw, sh, true);
+                    if (s == null || s == base) continue;
+                    int[] spx = new int[sw * sh];
+                    s.getPixels(spx, 0, sw, 0, 0, sw, sh);
+                    r = QrCore.decodeRobust(spx, sw, sh);
+                    if (r != null) return r;
+                } finally {
+                    if (s != null && s != base) try { s.recycle(); } catch (Throwable ignored) {}
+                }
+            }
+            return null;
         } catch (Throwable t) {
             return null;
+        } finally {
+            if (base != null) try { base.recycle(); } catch (Throwable ignored) {}
         }
     }
 

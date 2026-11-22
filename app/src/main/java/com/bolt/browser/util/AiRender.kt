@@ -1,6 +1,8 @@
 package com.bolt.browser.util
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.Layout
@@ -11,24 +13,19 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.BulletSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.ImageSpan
+import android.text.style.LeadingMarginSpan
+import android.text.style.QuoteSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.ReplacementSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.SubscriptSpan
 import android.text.style.SuperscriptSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
-import org.commonmark.ext.gfm.strikethrough.Strikethrough
-import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
-import org.commonmark.ext.gfm.tables.TableBlock
-import org.commonmark.ext.gfm.tables.TableCell
-import org.commonmark.ext.gfm.tables.TableRow
-import org.commonmark.ext.gfm.tables.TablesExtension
+import android.text.style.UnderlineSpan
 import android.text.TextPaint
 import android.text.style.ClickableSpan
-import android.text.style.LeadingMarginSpan
-import android.text.style.QuoteSpan
-import android.text.style.UnderlineSpan
 import android.view.View
 import android.widget.TextView
 import org.commonmark.ext.footnotes.FootnoteDefinition
@@ -880,12 +877,11 @@ object AiRender {
         }
 
         fun table(t: TableBlock) {
-            // flatten to an aligned monospace grid (renderTable, pure)
             // v1.4.26 — THE WRAPPER TRAVERSAL (the empty-table corpse): the
             // commonmark GFM AST wraps the rows in TableHead/TableBody
             // blocks — TableBlock's direct children are the WRAPPERS, not
             // TableRows, so the old firstChild-only walk collected ZERO
-            // rows and every GFM table rendered empty. The walk now descends
+            // rows and every GFM table rendered empty. The walk descends
             // one level into BOTH wrappers (in document order) and gathers
             // every TableRow either way.
             val rows = ArrayList<List<String>>()
@@ -917,6 +913,31 @@ object AiRender {
                 }
                 node = node.next
             }
+            if (rows.isNotEmpty()) {
+                // v1.4.27 — THE REAL-LINE GRID: a 3x3 table draws its TRUE
+                // grid on the canvas — the outer border + a rule at every
+                // row/column boundary (rows+1 horizontal + cols+1 vertical
+                // rules), the BOLD header row on its filled band, cell
+                // padding, theme-aware line/text colors and column widths
+                // measured from the content ([tableSpan]). The raw markdown
+                // keeps riding the bubble's tag for long-press copy; a
+                // span-construction failure falls back to the v1.4.20
+                // monospace text grid ([renderTable] — the never-eat-a-
+                // reply law holds; that path itself never throws)
+                try {
+                    val span = tableSpan(c, rows)
+                    if (span != null) {
+                        if (sb.isNotEmpty() && sb[sb.length - 1] != '\n') sb.append('\n')
+                        val st = sb.length
+                        sb.append('\u2009')   // the slot char the span replaces
+                        sb.setSpan(span, st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        sb.append('\n')
+                        blockGap()
+                        return
+                    }
+                } catch (_: Throwable) {}
+            }
+            // the FALLBACK: the aligned monospace text grid (probe-pinned)
             val start = sb.length
             sb.append(renderTable(rows))
             val end = sb.length
@@ -1178,6 +1199,174 @@ object AiRender {
             }
         }
         return out.toString().trimEnd('\n')
+    }
+
+    // ---------------- v1.4.27 — THE REAL-LINE TABLE SPAN ----------------
+
+    /** v1.4.27 — builds the drawn-grid [TableSpan] with theme-aware colors
+     *  and dp paddings; the width budget is the screen's own width (the
+     *  span shrinks its type once, bounded, when the content overflows).
+     *  Null (never a throw — the caller falls back to [renderTable]). */
+    internal fun tableSpan(c: Context, rows: List<List<String>>): TableSpan? {
+        if (rows.isEmpty()) return null
+        return try {
+            val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
+            val dens = c.resources.displayMetrics.density
+            val maxW = (c.resources.displayMetrics.widthPixels * 0.94f).toInt()
+            TableSpan(
+                    rows,
+                    if (dark) 0x66FFFFFF.toInt() else 0x44000000.toInt(),   // the rules
+                    if (dark) 0xFFD6DAE1.toInt() else 0xFF1F2430.toInt(),    // body text
+                    Fx.accentText(c),                                        // header text
+                    if (dark) 0x22FFFFFF.toInt() else 0x14000000.toInt(),    // header band
+                    10f * dens, 5f * dens, maxW)
+        } catch (_: Throwable) { null }
+    }
+
+    /**
+     * v1.4.27 — THE REAL-LINE GRID (the monospace-text-grid corpse: aligned
+     * text columns with one dashed rule carried NO borders, NO header band,
+     * NO cell padding — a table read as a code slab). One span per table,
+     * drawn on the canvas: the OUTER BORDER rides the same rules as every
+     * row/column boundary — rows+1 HORIZONTAL rules and cols+1 VERTICAL
+     * rules (a 3x3 table draws 4 + 4), the BOLD header row sits on its
+     * filled band, cells pad by [padH]/[padV], line/text colors are
+     * theme-aware, and COLUMN WIDTHS come from the content (an
+     * equal-split floor keeps one dwarfing column from starving the rest;
+     * a too-wide table shrinks its type once against the width budget).
+     * [getSize] grows the line's FontMetrics to the full table height —
+     * the TextView lays the grid out as one tall line, its bottom on the
+     * baseline. Never throws in draw (the worst case is an unpainted
+     * slot; the renderTable text grid remains the fallback).
+     */
+    internal class TableSpan(
+            private val rows: List<List<String>>,
+            private val lineColor: Int,
+            private val textColor: Int,
+            private val headerColor: Int,
+            private val headerBg: Int,
+            private val padH: Float,
+            private val padV: Float,
+            private val maxW: Int) : ReplacementSpan() {
+
+        private var cols = 0
+        private var colW = FloatArray(0)
+        private var rowH = 0f
+        private var totalW = 0f
+        private var totalH = 0f
+        private var textSize = 0f
+        private var laid = false
+
+        /** the geometry, at one type size (col widths = widest cell + 2x
+         *  padH, the equal-split floor, row height = font box + 2x padV). */
+        private fun measureAt(paint: Paint, size: Float) {
+            textSize = size
+            colW = FloatArray(cols) { 0f }
+            val probe = Paint(paint)
+            probe.textSize = size
+            for (r in rows) {
+                for (i in 0 until cols) {
+                    val cell = if (i < r.size) r[i] else ""
+                    val w = probe.measureText(cell)
+                    if (w > colW[i]) colW[i] = w
+                }
+            }
+            // the equal-split floor: no column under half the mean width —
+            // one dwarfing column cannot starve the rest of the grid
+            var sum = 0f
+            for (w in colW) sum += w
+            val mean = sum / cols
+            for (i in 0 until cols) colW[i] = maxOf(colW[i], mean * 0.5f)
+            for (i in 0 until cols) colW[i] += 2f * padH
+            totalW = 0f
+            for (w in colW) totalW += w
+            val fm = probe.fontMetrics
+            rowH = (fm.descent - fm.ascent) + 2f * padV
+            totalH = rowH * rows.size
+        }
+
+        private fun layout(paint: Paint) {
+            if (laid) return
+            laid = true
+            cols = 1
+            for (r in rows) cols = maxOf(cols, r.size)
+            val base = paint.textSize
+            measureAt(paint, base)
+            // the width budget: shrink the type ONCE (bounded at 0.55x —
+            // under that a dense table honestly overflows rather than
+            // turning into unreadable specks)
+            if (totalW > maxW && totalW > 0f) {
+                val f = (maxW / totalW).coerceAtLeast(0.55f)
+                measureAt(paint, base * f)
+            }
+        }
+
+        override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int,
+                             fm: Paint.FontMetrics?): Int {
+            try {
+                layout(paint)
+                if (fm != null) {
+                    // the line grows to the table's full height; the grid
+                    // hangs from the baseline (draw uses y - totalH .. y)
+                    fm.ascent = -totalH
+                    fm.top = -totalH
+                    fm.descent = 0f
+                    fm.bottom = 0f
+                }
+                return totalW.toInt().coerceAtLeast(1)
+            } catch (_: Throwable) {
+                return 1
+            }
+        }
+
+        override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int,
+                          x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+            try {
+                layout(paint)
+                val body = Paint(paint)
+                body.color = textColor
+                body.textSize = textSize
+                val head = Paint(body)
+                head.color = headerColor
+                head.typeface = Typeface.DEFAULT_BOLD
+                val line = Paint(Paint.ANTI_ALIAS_FLAG)
+                line.color = lineColor
+                line.strokeWidth = maxOf(1f, textSize * 0.045f)
+                val band = Paint(paint)
+                band.color = headerBg
+                band.textSize = textSize
+                val top0 = y - totalH
+                // the header band under its bold row
+                canvas.drawRect(x, top0, x + totalW, top0 + rowH, band)
+                // THE RULES: rows+1 horizontal lines (the first and last
+                // ARE the outer border's top and bottom) + cols+1 vertical
+                // lines (the first and last are its left and right edges)
+                for (r in 0..rows.size) {
+                    canvas.drawLine(x, top0 + r * rowH, x + totalW, top0 + r * rowH, line)
+                }
+                var cx = 0f
+                for (c in 0..cols) {
+                    canvas.drawLine(x + cx, top0, x + cx, top0 + totalH, line)
+                    if (c < cols) cx += colW[c]
+                }
+                // the cells: row 0 rides the BOLD header paint on its band;
+                // every cell centers its text vertically
+                for ((ri, r) in rows.withIndex()) {
+                    val rowTop = top0 + ri * rowH
+                    var xx = 0f
+                    for (ci in 0 until cols) {
+                        val cell = if (ci < r.size) r[ci] else ""
+                        if (cell.isNotEmpty()) {
+                            val p = if (ri == 0) head else body
+                            val cy = rowTop + rowH / 2f
+                            canvas.drawText(cell, x + xx + padH,
+                                    cy - (p.ascent + p.descent) / 2f, p)
+                        }
+                        xx += colW[ci]
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
     }
 
     // ---------------- v1.4.21 — the lightweight syntax colorizer (PURE) ----------------

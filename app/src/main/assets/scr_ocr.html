@@ -39,14 +39,35 @@
   var chunks = [];
   var worker = null;
   var workerLangs = '';
+  // v1.4.27 — THE BUSY GUARD (the fails-after-a-few-runs corpse): a job
+  // still in flight means the worker is stuck in a slow/failed recognize;
+  // queueing another behind it never resolves. __ocr fails fast with
+  // 'busy' (Kotlin resets the page FIRST when it knows a job is pending,
+  // so this is the race backstop), and __reset is the clean re-arm:
+  // terminate the worker, drop the chunk queue, clear the flag — the
+  // next run rebuilds the worker instead of queueing forever.
+  var pending = false;
 
   function B() { return window.BoltOcr; }
 
   window.__push = function (s) { chunks.push(s); };
 
+  // v1.4.27 — THE RE-ARM ENTRY: Kotlin calls this before pushing a run
+  // onto a busy page (and after any timeout), so a stuck worker dies
+  // HERE instead of poisoning every later run.
+  window.__reset = function () {
+    chunks = [];
+    if (worker) { try { worker.terminate(); } catch (e) {} }
+    worker = null;
+    workerLangs = '';
+    pending = false;
+  };
+
   window.__ocr = function (langs, mime) {
     var b64 = chunks.join(''); chunks = [];
     if (!window.Tesseract) { try { B().fail('no-lib'); } catch (e) {} return; }
+    if (pending) { try { B().fail('busy'); } catch (e) {} return; }
+    pending = true;
     // v1.4.26: the mime rides from Kotlin (jpeg default; the manga pass
     // sends png — line art hates JPEG ringing, the v1.3.74 law)
     var m = mime || 'jpeg';
@@ -95,8 +116,10 @@
         }
       }
       try { B().done(JSON.stringify(out)); } catch (e) {}
+      pending = false;
     }).catch(function (e) {
       worker = null; workerLangs = '';
+      pending = false;
       try { B().fail(String(e && e.message || e)); } catch (x) {}
     });
   };

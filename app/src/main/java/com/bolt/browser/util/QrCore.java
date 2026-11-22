@@ -191,6 +191,148 @@ public final class QrCore {
     }
 
     /**
+     * v1.4.27 — THE ARGB MULTI-PASS (the photo-from-device corpse): the
+     * gallery path's decode used to be the plain two-attempt ARGB call on
+     * one 2000px downsample — a stylized / low-contrast QR inside a large
+     * photo never survived it. This is the SAME robust ladder the camera
+     * rides, lifted to ARGB pixels: (1) the plain + inverted RGB pass,
+     * then (2) the LUMINANCE ladder on the BT.601 plane — plain + inverted,
+     * the 2/98 percentile CONTRAST STRETCH (each with its inverted retry)
+     * and the HALF-SCALE pass (the stylized-code kit, probe-pinned in
+     * scripts/test_v1426.py).
+     */
+    public static String decodeMulti(int[] pixels, int width, int height) {
+        String r = decode(pixels, width, height);
+        if (r != null) return r;
+        try {
+            byte[] y = lumaOf(pixels, width, height);
+            r = decodeLuma(y, width, height);
+            if (r != null) return r;
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /** v1.4.27 — PURE (probe-pinned): the BT.601 luma plane of an ARGB
+     *  int[] buffer (the exact formula the stretch/half passes ride). */
+    public static byte[] lumaOf(int[] pixels, int width, int height) {
+        if (pixels == null || width <= 0 || height <= 0
+                || pixels.length < width * height) return null;
+        byte[] y = new byte[width * height];
+        for (int i = 0; i < width * height; i++) {
+            int p = pixels[i];
+            y[i] = (byte) ((299 * (p & 0xFF) + 587 * ((p >> 8) & 0xFF)
+                    + 114 * ((p >> 16) & 0xFF)) / 1000);
+        }
+        return y;
+    }
+
+    /**
+     * v1.4.27 — PURE (probe-pinned): rotate a luma plane 90 degrees
+     * clockwise. Out(x', y') = In(y, h-1-x) — the belt-and-braces pass for
+     * a photo whose code was scanned sideways (ZXing infers orientation
+     * from the finder patterns, but a stretched/exif-flipped photo can
+     * still lose them; two cheap rotations cost nothing on a one-shot
+     * decode). w x h -> h x w.
+     */
+    public static byte[] rotate90Luma(byte[] y, int width, int height) {
+        if (y == null || width <= 0 || height <= 0 || y.length < width * height) return null;
+        int hw = height, hh = width;
+        byte[] out = new byte[hw * hh];
+        for (int r = 0; r < height; r++) {
+            for (int c = 0; c < width; c++) {
+                // (r, c) -> (c, height-1-r) in the rotated plane
+                out[(height - 1 - r) * hw + c] = y[r * width + c];
+            }
+        }
+        return out;
+    }
+
+    /**
+     * v1.4.27 — PURE (probe-pinned): a sub-rectangle crop of an ARGB buffer
+     * (l, t, r, b — right/bottom EXCLUSIVE, clamped to the source). Null
+     * on a degenerate window.
+     */
+    public static int[] cropArgb(int[] px, int w, int h, int l, int t, int r, int b) {
+        if (px == null || w <= 0 || h <= 0) return null;
+        if (l < 0) l = 0;
+        if (t < 0) t = 0;
+        if (r > w) r = w;
+        if (b > h) b = h;
+        if (r - l < 8 || b - t < 8) return null;
+        int cw = r - l, ch = b - t;
+        int[] out = new int[cw * ch];
+        for (int row = 0; row < ch; row++) {
+            System.arraycopy(px, (t + row) * w + l, out, row * cw, cw);
+        }
+        return out;
+    }
+
+    /**
+     * v1.4.27 — THE ROBUST PHOTO LADDER (the "photo-from-device not
+     * detected" corpse): the camera's full kit on a picked photo, at the
+     * scale the caller hands over (the gallery path tries FULL resolution
+     * first, then progressive downscales). The ladder, in order:
+     *  (1) the whole image through [decodeMulti] (plain + inverted ARGB,
+     *      then the luma stretch/half passes);
+     *  (2) the 90/180/270 rotations of the luma plane through the
+     *      two-attempt core (belt-and-braces for a sideways scan);
+     *  (3) CENTER-CROPS at this scale — a QR occupying only part of a
+     *      photo keeps its module pixels only inside a crop: the center
+     *      70% window, then the four 50% quadrant windows, each through
+     *      [decodeMulti]. Every pass is bounded and failure moves on.
+     */
+    public static String decodeRobust(int[] pixels, int width, int height) {
+        if (pixels == null || width <= 0 || height <= 0) return null;
+        try {
+            String r = decodeMulti(pixels, width, height);
+            if (r != null) return r;
+        } catch (Throwable ignored) {}
+        // (2) the rotations (two-attempt core each — the finder patterns
+        // usually self-orient; this is the cheap belt-and-braces pass)
+        try {
+            byte[] y0 = lumaOf(pixels, width, height);
+            if (y0 != null) {
+                byte[] y90 = rotate90Luma(y0, width, height);
+                if (y90 != null) {
+                    int w90 = height, h90 = width;
+                    String r = decodeLuma2(y90, w90, h90);
+                    if (r != null) return r;
+                    byte[] y180 = rotate90Luma(y90, w90, h90);
+                    if (y180 != null) {
+                        r = decodeLuma2(y180, width, height);
+                        if (r != null) return r;
+                        byte[] y270 = rotate90Luma(y180, width, height);
+                        if (y270 != null) {
+                            r = decodeLuma2(y270, w90, h90);
+                            if (r != null) return r;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        // (3) the center-crops: the 80% center window + the four ~50%+ quadrant
+        // windows (a QR occupying part of a photo survives at CROP scale)
+        try {
+            int m10 = width / 10;
+            int v10 = height / 10;
+            int[][] wins = {
+                    {m10, v10, width - m10, height - v10},          // center 80%x80%
+                    {0, 0, width / 2 + m10, height / 2 + v10},       // top-left
+                    {width / 2 - m10, 0, width, height / 2 + v10},  // top-right
+                    {0, height / 2 - v10, width / 2 + m10, height},// bottom-left
+                    {width / 2 - m10, height / 2 - v10, width, height} // bottom-right
+            };
+            for (int[] win : wins) {
+                int[] crop = cropArgb(pixels, width, height, win[0], win[1], win[2], win[3]);
+                if (crop == null) continue;
+                String r = decodeMulti(crop, win[2] - win[0], win[3] - win[1]);
+                if (r != null) return r;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /**
      * Encode text into a QR code as ARGB pixels (black modules on white).
      * Returns null when the text cannot be encoded (empty / too long).
      */

@@ -37,6 +37,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.bolt.browser.R;
+import com.bolt.browser.util.Diag;
 import com.bolt.browser.util.Fx;
 import com.bolt.browser.util.Qr;
 import com.bolt.browser.util.QrCore;
@@ -93,6 +94,14 @@ public class QrScanActivity extends AppCompatActivity {
     // buffer rode the view untransformed (half-screen + the 90-degree
     // mismatch). probe-pinned in scripts/test_v1426.py.
     private int bufW = 640, bufH = 480;
+    // v1.4.27 — THE FIRST-FRAME RE-DERIVE + the re-pin budget: the first
+    // delivered frame re-applies the transform (a surface that configured
+    // before the view laid out carried a stale/identity matrix — the
+    // bottom-half-black report), and the fills-both-axes assertion gets
+    // ONE re-pin attempt (a surface resized after the pin re-pins its own
+    // buffer). Both flags are one-shot so no layout storm loops.
+    private boolean firstFrameSeen = false;
+    private boolean pinRetried = false;
     private ImageButton btnTorch;
     private View scanLine;
     private TextView tvHint;
@@ -140,7 +149,22 @@ public class QrScanActivity extends AppCompatActivity {
                 applyPreviewTransform(w, h);
             }
             @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture st) { return true; }
-            @Override public void onSurfaceTextureUpdated(SurfaceTexture st) {}
+            // v1.4.27 — THE FIRST-DELIVERED-FRAME RE-DERIVE (the camera
+            // bottom-half-black corpse): the surface may deliver its first
+            // frame AFTER the transform was last computed (the camera
+            // opened late, the buffer took the real producer size only
+            // then, the view laid out after). Re-deriving the matrix on the
+            // FIRST delivered frame — with the ACTUAL pinned buffer dims +
+            // the CURRENT view dims — guarantees a delivered frame is
+            // never shown under a stale transform.
+            @Override public void onSurfaceTextureUpdated(SurfaceTexture st) {
+                if (!firstFrameSeen) {
+                    firstFrameSeen = true;
+                    try {
+                        applyPreviewTransform(tvPreview.getWidth(), tvPreview.getHeight());
+                    } catch (Throwable ignored) {}
+                }
+            }
         });
 
         addViewfinder(root);
@@ -616,6 +640,23 @@ public class QrScanActivity extends AppCompatActivity {
             float uh = (theta % 180 == 0) ? bh : bw;
             // cover scale: fill the view, keep the aspect, crop the overflow
             float s = Math.max(viewW / uw, viewH / uh);
+            // v1.4.27 — THE FILLS-BOTH-AXES ASSERTION (the bottom-half-black
+            // corpse): the cover recipe's own invariant is that the scaled
+            // upright content is >= the view on BOTH axes (that is what
+            // "cover" means — a stale/mismatched buffer dims pair breaks it
+            // and a half-black panel is exactly the symptom). When the
+            // assertion fails, the surface's buffer is re-pinned to the
+            // camera preview size (a surface resized after the pin) and the
+            // matrix recomputed once — bounded by the one-shot pinRetried.
+            boolean fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f;
+            if (!fills && !pinRetried) {
+                pinRetried = true;
+                try { pinBuffer(); } catch (Throwable ignored) {}
+                try { Diag.log(this, "qr preview re-pin view=" + viewW + "x" + viewH +
+                        " buf=" + bufW + "x" + bufH + " theta=" + theta); } catch (Throwable ignored) {}
+                applyPreviewTransform(viewW, viewH);
+                return;
+            }
             float cx = viewW / 2f, cy = viewH / 2f;
             Matrix matrix = new Matrix();
             // buffer center -> view center, rotate to upright, scale to cover
@@ -624,6 +665,15 @@ public class QrScanActivity extends AppCompatActivity {
             matrix.postScale(s, s);
             matrix.postTranslate(cx, cy);
             tvPreview.setTransform(matrix);
+            // v1.4.27 — THE READABLE RESIDUAL: view/buffer dims, the rotation
+            // and the cover scale ride the Diag — a mismatch left in the
+            // field is now readable from the log line instead of guesswork
+            try {
+                Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
+                        " buf=" + bw + "x" + bh + " theta=" + theta +
+                        " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
+                        (fills ? "" : " MISMATCH"));
+            } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }
 

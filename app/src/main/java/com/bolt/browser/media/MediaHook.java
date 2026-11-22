@@ -1380,6 +1380,25 @@ public class MediaHook {
                 // pinEl/both). One class, one meaning: filter:none = this
                 // element rides the page inversion.
                 + ".__boltIC{filter:none!important;}"
+                // v1.4.27 — THE NESTED-MEDIA EXEMPTION (the TBS picture
+                // corpse): the counter-invert above applies to img, video,
+                // picture, canvas and svg TOGETHER, so media INSIDE an
+                // already-counter-inverted <picture> stacks html x picture
+                // x img = 3 inversions = ODD = net INVERTED (a standalone
+                // img is html x img = 2 = original). The saved TBS DOM
+                // carried 65 <picture class=ratio ratio__16x9> blocks each
+                // wrapping a ratio__16x9 lazyloaded img with NO __bolt
+                // class — every thumbnail read as an x-ray negative. The
+                // exemption makes media inside a <picture> contribute NO
+                // second counter-filter: picture>img = html x picture = 2
+                // = ORIGINAL. The descendant selector out-specifies the
+                // type rule it overrides; .__boltIC and the DK descendants
+                // agree on filter:none either way; the DIU portal has no
+                // <picture> at all (the fixture walk proves the
+                // isolation). CSS-only BY DESIGN — the classifier never
+                // changes on this round.
+                + "picture img,picture video,picture canvas,picture svg"
+                + "{filter:none!important;}"
                 + "html body *:not(img):not(video):not(picture):not(canvas)"
                 + ":not(svg):not(iframe):not(embed):not(object)"
                 + "{text-shadow:0 0 0.35px currentColor;}";
@@ -1658,11 +1677,32 @@ public class MediaHook {
                 + "function bannerish(el){try{var r=el.getBoundingClientRect();"
                 + "var w=r.width,h=r.height;if(w<=0||h<=0)return false;"
                 + "var mx=Math.max(w,h),mn=Math.min(w,h);"
-                + "return (mx/mn)>=2.5;}catch(e){return false}}"
+                // v1.4.27 — THE IMG BANNER THRESHOLD (the TBS corpse's
+                // belt-and-braces half): an IMG is banner-shaped at a 1.5
+                // aspect, not the 2.5 the general element rides — a 16:9
+                // thumbnail (mx/mn = 1.78) is CONTENT, period, even when
+                // it lays out under 64 px on a dense listing; square UI
+                // glyphs (1.0) never trip it. Data-URI icons stay square
+                // and unchanged.
+                + "var th=(el.tagName==='IMG')?1.5:2.5;"
+                + "return (mx/mn)>=th;}catch(e){return false}}"
                 + "function photoCtx(el){try{var p=el.parentElement,lvl=0;"
                 + "while(p&&lvl<6){var t=p.tagName;"
                 + "if(t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE')return true;"
                 + "p=p.parentElement;lvl++;}return false;}catch(e){return false}}"
+                // v1.4.27 — the REMOTE-IMG CONTENT law (the plain-img half
+                // of the TBS belt-and-braces): a REMOTE-URL (http/https) IMG
+                // larger than 48 px with NO icon-named ancestor is CONTENT
+                // — it un-inverts with the media family and reads original
+                // (html x img = 2). The DIU portal's icons are all data:URI
+                // squares inside icon-named wrappers — the law cannot touch
+                // them; a CDN emoji-sized glyph stays under the 48 floor or
+                // keeps its icon-named wrapper, both riding as before
+                // (no double quotes in body comments — check_dark_js)
+                + "function remoteUrl(el){try{var su='';"
+                + "try{su=(el.currentSrc||el.src||'');}catch(x){}"
+                + "return su.indexOf('http:')===0||su.indexOf('https:')===0;"
+                + "}catch(e){return false}}"
                 // v1.4.24 — THE MONOCHROME-GLYPH LAW (the over-keep corpse:
                 // small=7 ic=0 ni=0 rescue=0 on auth.meta.com — every small
                 // medium classed content). monoOf: SVG paint colors are all
@@ -1717,6 +1757,11 @@ public class MediaHook {
                 + "var m=rectMax(el);"
                 + "if(m>64)return false;"
                 + "var named=iconNamed(el);"
+                // v1.4.27 — the remote-img content veto rides BETWEEN the
+                // big-element law and the small-element ride law: remote
+                // URL + over 48 px + no icon-named ancestor = a thumbnail,
+                // not a glyph (the data:URI/icon-named icons never match)
+                + "if(m>48&&el.tagName==='IMG'&&!named&&remoteUrl(el))return false;"
                 + "if(m>0){"
                 + "if(named)return true;"
                 + "return !((bannerish(el)||photoCtx(el))"
