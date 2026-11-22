@@ -2025,6 +2025,117 @@ session, 2026-11-20):
   candidate.
 
 
+**v1.4.28 — THE SECURITY + VISIBILITY ROUND** (the twenty-first session,
+2026-11-22): three user-requested security laws + three log-verified bug
+fixes; the hard constraint (the v1.4.27 TBS/DIU dark fixtures + the camera
+preview fix) held green throughout — no classifier or scanner code was
+touched on this round's legs.
+
+1. *SECURITY — THE AUTOFILL AUTH GATE.* Filling a saved login — or even
+   opening the account picker, whose rows reveal usernames — now requires
+   the device credential first (`runPwGated` →
+   `KeyguardManager.createConfirmDeviceCredentialIntent`). The pref
+   ("Require unlock for autofill", default ON) lives on the
+   Saved-passwords screen; a successful unlock caches ~60 s (a login
+   form and its follow-up don't double-prompt; the stamp is static, so a
+   fresh process re-prompts — the safe direction). Cancelling the prompt
+   fills NOTHING and opens NO picker: the pending runnable dies with the
+   gate (request 1014 in `onActivityResult`). A device without a secure
+   lock screen cannot be gated — the vault screen's red banner owns that
+   education, and the gate passes through.
+2. *SECURITY — THE VAULT ACCESS GATE.* `PasswordVaultActivity` built its
+   whole entry list in `onCreate` and never handled the credential
+   prompt's result: cancelling the unlock left the entries fully
+   visible behind the prompt (a prompt is an overlay, not a full cover,
+   on split-screen/large-panel devices). Now the entries stay UNBUILT
+   until `onActivityResult(1013)` answers RESULT_OK; any other result
+   `finish()`es immediately. The `rebuild()` early-return is the
+   withhold — even the add/edit/delete re-builds cannot leak a row while
+   the gate is unanswered.
+3. *SECURITY — THE ENCRYPTED PASSWORD BACKUP (the plaintext-zip
+   corpse).* The "Saved passwords" backup toggle used to write the
+   DECRYPTED vault as plain JSON into the zip. The new law: device
+   credential first (a cancelled prompt exports WITHOUT the passwords,
+   said aloud), then a passphrase prompt (enter + confirm, min 4);
+   the zip entry is `passwords.vault` — `"BOLTPWV1" | salt(16) | iv(12) |
+   AES-256-GCM ct+tag`, key = PBKDF2-HMAC-SHA256(passphrase, salt,
+   120k, 256-bit). The passphrase is never stored anywhere. The
+   SCHEDULED auto-backup skips the passwords part honestly (no user to
+   type a passphrase headlessly — a Diag line, never a silent hole);
+   plausibly-deniable plaintext never lands in Downloads again. The
+   restore path gates + asks the passphrase (a wrong one fails the GCM
+   tag → -1, distinguished from 0 = empty vault, toasted), and merges
+   every row through the vault's own `save()` (re-encrypted under the
+   new device's keystore key). The legacy plain `passwords.json` import
+   (old zips) stays, behind the same gate. The crypto round-trip probe
+   runs the REAL primitives (PBKDF2 + AES-GCM) in the gate.
+4. *Bolt AI tables — THE INVISIBLE SPAN (log-verified: "TableSpan is
+   applied to \u2009 but renders nothing").* The v1.4.27
+   `ReplacementSpan` never painted on real devices — its try/catch
+   swallowed whatever threw, and the static gates proved geometry, not
+   pixels. The table now renders as a REAL VIEW: the visitor marks the
+   table with a `TableMark` span, `splitTables` cuts the rendered text
+   at the marks, and the bubble is a CONTAINER (LinearLayout) whose
+   children interleave the text segments with `TableView` children in
+   document order ("compare: [TABLE] as you can see" reads in order).
+   `TableView.onDraw` paints the true grid (outer border, rules at every
+   row/column boundary — 4+4 on a 3x3 — bold header on its band, cell
+   padding, theme colors, content widths, one bounded 0.55x shrink).
+   THE LAW: the framework guarantees an attached view's onDraw runs
+   (a span inside one text line never had that guarantee), and the catch
+   inside onDraw paints the monospace grid itself. `TableRenderTest`
+   (Robolectric, `@GraphicsMode(NATIVE)` — the legacy shadow mode draws
+   nothing and reports degenerate font metrics) runs the REAL pipeline
+   and asserts PIXELS: cell-text ink AND grid pixels; the release
+   pipeline runs it with the launch smoke. The streaming bubble and the
+   math-font re-render both re-fill the CONTAINER
+   (`fillMarkdown`/`fillBubble`); long-press copy still yields the raw
+   source via the container's tag.
+5. *OCR — VISION-PRIMARY MANGA + THE VISIBLE-FAIL LAW (log-verified:
+   chars=0 lines=0 for ALL languages/models).* The wasm tesseract
+   engine rejects the jpn_vert/jpn_vertb (tessdata_best vertical)
+   model family outright — parameter warnings, and a poisoned worker
+   takes later runs down with it. The manga modes now ride the AI vision
+   path DIRECTLY (bright-region bubble detection + one vision card per
+   bubble — the clustering the mode was built for, on the detector's
+   own geometry; no model download, no host page; Manga HD's only
+   difference is the 1600/q90 encode). OCR stays for eng/chi_sim
+   (field-proven): "auto" trims to that pair — Japanese screens ride
+   the vision fallback. THE VISIBLE-FAIL LAW: the host page diag's
+   `ocr worker ok`, `ocr done lines=N` per run, and `ocr fail init:`
+   vs `ocr fail recognize:` with the throwable's own message; Kotlin's
+   bridge logs error-ish diag lines and console ERROR/WARNING lines
+   UNCAPPED (the old 12-line noise cap could hide the failure behind
+   progress chatter — the "OCR fails universally" report stayed
+   invisible). The manga preprocess (x2/hard-5/95/PNG per tile) stays in
+   the shared grid stage for any future engine that can read vertical
+   JP; a manga run without an AI key asks for the key (there is no
+   working on-device vertical OCR to fall back to — the confirm says
+   exactly that).
+6. *QR — THE FULL-RESOLUTION-FIRST GALLERY LADDER.* `decodeUri` capped
+   every photo at 8 MP BEFORE the first pass: a 12 MP photo rode sample
+   2 (every module pixel halved) and a small stylized code lost its
+   geometry before ANY pass ran. The ladder now opens at FULL
+   resolution (sample 1, the memory cost accepted for the one-shot
+   gallery pick, bounded at a 24 MP ceiling so a panorama starts at the
+   memory law instead of OOMing), then the ≤8 MP pass, then the rungs —
+   every scale through `decodeRobust`'s full kit (rotations +
+   center-crops at EACH scale). Probe: a stylized low-contrast QR in a
+   12 MP photo decodes at full resolution.
+
+The standing sweep: `repin_gates_1428.py` repinned 45 gates to
+142/1.4.28 (dated re-points where the v1.4.28 round legitimately moved
+pinned targets: the v1.4.27 gate's manga-dispatch + TableSpan pins — the
+vision-primary dispatch and the view-based renderer carry them now, with
+dated notes). The v1.4.27 TBS/DIU fixture walks and the camera preview
+pins ride the suite unchanged (the hard constraint, verified green).
+Future candidates: the OCR host could name the failing wasm/model
+combination at startup (probe the engine before offering the OCR
+modes); the vault screen could offer a "re-encrypt with passphrase"
+door for users who want passphrase protection on-device too; the QR
+gallery diag could name the pass that decoded (full-res vs rung N) for
+the field log.
+
 **v1.4.27 — THE PICTURE-STACK + MERGED-PIPELINE ROUND** (the twentieth
 session, 2026-11-22): four fixes root-caused from the user's saved TBS
 DOM (a Business Standard page captured with the dark engine live) + the
