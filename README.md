@@ -2132,6 +2132,17 @@ AI tables as a text slab).
    cluster-list textTranslate call, the merged aggregate guard, the
    under-read/read verdicts); dual-published on both repos.
 
+
+**v1.4.27 post-release: the known-good numbers.** APK 3,150,771 B (the
++2,772 B four-fix round over v1.4.26's 3,147,999 B — the CSS exemption +
+the cluster merge traded code both ways); suite green incl. the smoke on
+the persistent Robolectric cache, the 50-gate suite with the v1.4.27
+rung (the parity table + the TBS/DIU fixture walk, the stuck-worker
+re-arm + 5-consecutive-runs Node probe on the REAL page script, the
+table rule geometry, the zxing stylized-photo probe with the ten-window
+crop ladder, the fills law) and the v1.4.26 DIU fixture regression
+against the current source; dual-published, md5-verified.
+
 **Plans / candidates for future versions (v1.4.27 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
   v1.4.23).
