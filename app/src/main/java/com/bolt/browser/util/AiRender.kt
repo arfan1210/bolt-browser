@@ -27,6 +27,7 @@ import android.text.style.UnderlineSpan
 import android.text.TextPaint
 import android.text.style.ClickableSpan
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
@@ -396,42 +397,42 @@ object AiRender {
     // ---------------- v1.4.24 — the on-demand font pack's re-render ----------------
 
     /** bubbles that rendered math through the subset fallback while the
-     *  pack was still downloading (weak — a dismissed bubble dies) */
+     *  pack was still downloading (weak — a dismissed bubble dies).
+     *  v1.4.28: the held view is the bubble CONTAINER (the bubble is a
+     *  LinearLayout of text segments + table views now, not one TextView). */
     private val fontPending = java.util.concurrent.CopyOnWriteArrayList<
-            java.lang.ref.WeakReference<android.widget.TextView>>()
+            java.lang.ref.WeakReference<android.widget.LinearLayout>>()
 
-    /** the [render] half: a reply that CARRIES math, rendered while the
-     *  font pack is absent, is held for a re-render on pack-ready. */
-    private fun holdForFonts(c: Context, md: String, view: android.widget.TextView) {
+    /** the [fillMarkdown] half: a reply that CARRIES math, rendered while
+     *  the font pack is absent, is held for a re-fill on pack-ready. */
+    private fun holdForFonts(c: Context, md: String, box: android.widget.LinearLayout) {
         try {
             if (com.bolt.browser.util.MathFonts.present(c)) return
             val mathPossible = md.contains('$') || md.contains("\\[") || md.contains("\\(")
             if (!mathPossible) return
             for (w in fontPending) {
-                if (w.get() === view) return   // already held (stream refreshes)
+                if (w.get() === box) return    // already held (stream refreshes)
             }
-            fontPending.add(java.lang.ref.WeakReference(view))
+            fontPending.add(java.lang.ref.WeakReference(box))
             com.bolt.browser.util.MathFonts.ensureAsync(c, onReady = {
-                try { refreshPendings() } catch (t: Throwable) {}
+                try { refreshPendings() } catch (t2: Throwable) {}
             })
         } catch (t: Throwable) {}
     }
-
     /** MAIN thread (the MathFonts completion posts here): re-render every
      *  held bubble through the now-complete font pack — the raw source
      *  rides each bubble's tag (long-press copy already relies on it). */
     @JvmStatic
     fun refreshPendings() {
         for (w in fontPending) {
-            val v = w.get() ?: continue
+            val box = w.get() ?: continue
             try {
-                val raw = v.tag as? String ?: continue
-                v.text = render(v.context, raw)
+                val raw = box.tag as? String ?: continue
+                fillMarkdown(box.context, box, raw)
             } catch (t: Throwable) {}
         }
         fontPending.clear()
     }
-
     /** the visitor — one branch per node kind, spans applied as the
      *  builder fills. Bold/italic/links/code ride commonmark's inline
      *  nodes; lists get BulletSpan / leading numbers; tables flatten to
@@ -920,27 +921,31 @@ object AiRender {
                 node = node.next
             }
             if (rows.isNotEmpty()) {
-                // v1.4.27 — THE REAL-LINE GRID: a 3x3 table draws its TRUE
-                // grid on the canvas — the outer border + a rule at every
-                // row/column boundary (rows+1 horizontal + cols+1 vertical
-                // rules), the BOLD header row on its filled band, cell
-                // padding, theme-aware line/text colors and column widths
-                // measured from the content ([tableSpan]). The raw markdown
-                // keeps riding the bubble's tag for long-press copy; a
-                // span-construction failure falls back to the v1.4.20
-                // monospace text grid ([renderTable] — the never-eat-a-
-                // reply law holds; that path itself never throws)
+                // v1.4.28 — THE TABLE MARKER (the invisible-table corpse:
+                // the v1.4.27 TableSpan — a ReplacementSpan drawing the
+                // grid inside the text line — rendered NOTHING in the field
+                // for every table reply; whatever its draw() swallowed, the
+                // bubble showed only the bare \u2009 slot). The marker span
+                // carries the parsed ROWS to the bubble SPLIT step
+                // ([splitTables] -> [tableView]): the chat bubble becomes a
+                // container whose children interleave the text segments
+                // with REAL VIEWS that draw the true grid (the outer border
+                // + a rule at every row/column boundary — rows+1
+                // horizontal + cols+1 vertical rules, the BOLD header row
+                // on its filled band, cell padding, theme-aware colors,
+                // content-measured column widths). The raw markdown keeps
+                // riding the bubble's tag for long-press copy; the
+                // never-eat-a-reply law holds at every layer ([tableView]
+                // construction failure -> the monospace text grid below).
                 try {
-                    val span = tableSpan(c, rows)
-                    if (span != null) {
-                        if (sb.isNotEmpty() && sb[sb.length - 1] != '\n') sb.append('\n')
-                        val st = sb.length
-                        sb.append('\u2009')   // the slot char the span replaces
-                        sb.setSpan(span, st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        sb.append('\n')
-                        blockGap()
-                        return
-                    }
+                    if (sb.isNotEmpty() && sb[sb.length - 1] != '\n') sb.append('\n')
+                    val st = sb.length
+                    sb.append('\u2009')   // the slot char the marker replaces
+                    sb.setSpan(TableMark(rows), st, sb.length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.append('\n')
+                    blockGap()
+                    return
                 } catch (_: Throwable) {}
             }
             // the FALLBACK: the aligned monospace text grid (probe-pinned)
@@ -1207,45 +1212,153 @@ object AiRender {
         return out.toString().trimEnd('\n')
     }
 
-    // ---------------- v1.4.27 — THE REAL-LINE TABLE SPAN ----------------
+    // ---------------- v1.4.28 — THE VIEW-BASED TABLE ----------------
 
-    /** v1.4.27 — builds the drawn-grid [TableSpan] with theme-aware colors
+    /** v1.4.28 — THE TABLE MARKER: the non-drawn span carrying the parsed
+     *  rows through the rendered Spanned to the bubble SPLIT step
+     *  ([splitTables] -> [tableView]). Replaces the v1.4.27 TableSpan
+     *  (the invisible-table corpse: a ReplacementSpan inside the text
+     *  line whose draw never painted on real devices). */
+    internal class TableMark(@JvmField val rows: List<List<String>>)
+
+    /**
+     * v1.4.28 — THE BUBBLE SPLIT: the rendered Spanned, cut at every
+     * [TableMark] into ordered parts — Spanned text segments and table
+     * specs — for a bubble CONTAINER (see [fillMarkdown]). No marks: the
+     * whole Spanned as one part. Never throws (worst case: the undivided
+     * Spanned, which renders with the marker slots as thin spaces — the
+     * [fillMarkdown] fallback layer then still paints every table).
+     */
+    fun splitTables(spanned: Spanned): List<Any> {
+        return try {
+            val marks = spanned.getSpans(0, spanned.length, TableMark::class.java)
+                    .sortedBy { spanned.getSpanStart(it) }
+            if (marks.isEmpty()) return listOf(spanned)
+            val out = ArrayList<Any>()
+            var pos = 0
+            for (m in marks) {
+                val st = spanned.getSpanStart(m)
+                val en = spanned.getSpanEnd(m)
+                if (st < 0 || en <= st || st < pos) continue
+                if (st > pos) out.add(SpannableString(spanned, pos, st))
+                out.add(m)
+                pos = en
+            }
+            if (pos < spanned.length) out.add(SpannableString(spanned, pos, spanned.length))
+            if (out.isEmpty()) listOf(spanned) else out
+        } catch (_: Throwable) { listOf(spanned) }
+    }
+
+    /** v1.4.28 — builds the drawn-grid [TableView] with theme-aware colors
      *  and dp paddings; the width budget is the screen's own width (the
-     *  span shrinks its type once, bounded, when the content overflows).
-     *  Null (never a throw — the caller falls back to [renderTable]). */
-    internal fun tableSpan(c: Context, rows: List<List<String>>): TableSpan? {
-        if (rows.isEmpty()) return null
+     *  view shrinks its type once, bounded, when the content overflows).
+     *  A construction failure falls to a plain TextView carrying the
+     *  [renderTable] monospace grid (the never-eat-a-reply law). */
+    fun tableView(c: Context, rows: List<List<String>>): android.view.View {
+        if (rows.isEmpty()) return android.view.View(c)
         return try {
             val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
             val dens = c.resources.displayMetrics.density
             val maxW = (c.resources.displayMetrics.widthPixels * 0.94f).toInt()
-            TableSpan(
+            TableView(
+                    c,
                     rows,
                     if (dark) 0x66FFFFFF.toInt() else 0x44000000.toInt(),   // the rules
                     if (dark) 0xFFD6DAE1.toInt() else 0xFF1F2430.toInt(),    // body text
                     Fx.accentText(c),                                        // header text
                     if (dark) 0x22FFFFFF.toInt() else 0x14000000.toInt(),    // header band
                     10f * dens, 5f * dens, maxW)
-        } catch (_: Throwable) { null }
+        } catch (_: Throwable) { tableFallback(c, rows) }
+    }
+
+    /** the plain-TextView fallback: the [renderTable] monospace grid. */
+    private fun tableFallback(c: Context, rows: List<List<String>>): android.widget.TextView {
+        val t = android.widget.TextView(c)
+        t.text = renderTable(rows)
+        t.typeface = Typeface.MONOSPACE
+        t.textSize = 12.5f
+        t.setTextColor(Fx.txt(c))
+        return t
     }
 
     /**
-     * v1.4.27 — THE REAL-LINE GRID (the monospace-text-grid corpse: aligned
-     * text columns with one dashed rule carried NO borders, NO header band,
-     * NO cell padding — a table read as a code slab). One span per table,
-     * drawn on the canvas: the OUTER BORDER rides the same rules as every
-     * row/column boundary — rows+1 HORIZONTAL rules and cols+1 VERTICAL
-     * rules (a 3x3 table draws 4 + 4), the BOLD header row sits on its
-     * filled band, cells pad by [padH]/[padV], line/text colors are
-     * theme-aware, and COLUMN WIDTHS come from the content (an
-     * equal-split floor keeps one dwarfing column from starving the rest;
-     * a too-wide table shrinks its type once against the width budget).
-     * [getSize] grows the line's FontMetrics to the full table height —
-     * the TextView lays the grid out as one tall line, its bottom on the
-     * baseline. Never throws in draw (the worst case is an unpainted
-     * slot; the renderTable text grid remains the fallback).
+     * v1.4.28 — THE BUBBLE FILLER (the invisible-table fix's host side):
+     * a chat bubble is now a CONTAINER (vertical LinearLayout carrying
+     * the rounded background + the raw-source tag); this fills it with
+     * the rendered reply — the Spanned text segments and the
+     * [tableView] grid views INTERLEAVED in document order, so a reply
+     * like "compare: / [TABLE] / as you can see" reads in order. The
+     * math-font hold rides the container ([holdForFonts] —
+     * [refreshPendings] re-fills it when the pack lands). Never throws
+     * (worst case: the plain reply text). Main thread.
      */
-    internal class TableSpan(
+    @JvmStatic
+    fun fillMarkdown(c: Context, box: android.widget.LinearLayout, md: String) {
+        try {
+            holdForFonts(c, md, box)
+            val spanned = render(c, md)
+            val parts = splitTables(spanned)
+            if (parts.size == 1 && parts[0] is Spanned) {
+                addSegment(c, box, parts[0] as Spanned)
+                return
+            }
+            for (p in parts) {
+                if (p is Spanned) addSegment(c, box, p)
+                else if (p is TableMark) addTable(c, box, p)
+            }
+        } catch (_: Throwable) {
+            try {
+                box.removeAllViews()
+                val t = android.widget.TextView(c)
+                t.text = md
+                t.textSize = 14.5f
+                t.setTextColor(Fx.txt(c))
+                box.addView(t, android.widget.LinearLayout.LayoutParams(-1, -2))
+            } catch (_: Throwable) {}
+        }
+    }
+
+    /** one text segment of a split bubble (the markdown spans ride intact). */
+    private fun addSegment(c: Context, box: android.widget.LinearLayout,
+                           text: Spanned) {
+        val t = android.widget.TextView(c)
+        t.text = text
+        t.textSize = 14.5f
+        t.setTextColor(Fx.txt(c))
+        try {
+            t.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        } catch (_: Throwable) {}
+        box.addView(t, android.widget.LinearLayout.LayoutParams(-1, -2))
+    }
+
+    /** one table view of a split bubble (its own margins inside the
+     *  bubble). */
+    private fun addTable(c: Context, box: android.widget.LinearLayout, m: TableMark) {
+        val v = tableView(c, m.rows)
+        val lp = android.widget.LinearLayout.LayoutParams(-1, -2)
+        lp.topMargin = Fx.dp(c, 6)
+        lp.bottomMargin = Fx.dp(c, 6)
+        box.addView(v, lp)
+    }
+
+    /**
+     * v1.4.28 — THE REAL-LINE GRID, AS A VIEW (the monospace-text-grid
+     * corpse + the v1.4.27 span corpse): one [TableView] per table, drawn
+     * on the canvas in onDraw — the OUTER BORDER rides the same rules as
+     * every row/column boundary — rows+1 HORIZONTAL rules and cols+1
+     * VERTICAL rules (a 3x3 table draws 4 + 4), the BOLD header row sits
+     * on its filled band, cells pad by [padH]/[padV], line/text colors
+     * are theme-aware, and COLUMN WIDTHS come from the content (an
+     * equal-split floor keeps one dwarfing column from starving the rest;
+     * a too-wide table shrinks its type once against [maxW]). THE LAW
+     * that makes it un-hideable: a real attached View's onDraw is
+     * INVOKED by the framework (unlike a ReplacementSpan whose draw sat
+     * inside one text line and never painted in the field) — and the
+     * catch inside onDraw paints the [renderTable] monospace grid itself,
+     * so even a drawing exception cannot leave the table invisible.
+     */
+    internal class TableView(
+            ctx: Context,
             private val rows: List<List<String>>,
             private val lineColor: Int,
             private val textColor: Int,
@@ -1253,7 +1366,7 @@ object AiRender {
             private val headerBg: Int,
             private val padH: Float,
             private val padV: Float,
-            private val maxW: Int) : ReplacementSpan() {
+            private val maxW: Int) : android.view.View(ctx) {
 
         private var cols = 0
         private var colW = FloatArray(0)
@@ -1307,29 +1420,27 @@ object AiRender {
             }
         }
 
-        override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int,
-                             fm: Paint.FontMetricsInt?): Int {
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
             try {
-                layout(paint)
-                if (fm != null) {
-                    // the line grows to the table's full height; the grid
-                    // hangs from the baseline (draw uses y - totalH .. y)
-                    fm.ascent = -totalH.toInt()
-                    fm.top = -totalH.toInt()
-                    fm.descent = 0
-                    fm.bottom = 0
-                }
-                return totalW.toInt().coerceAtLeast(1)
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                p.textSize = 14.5f * resources.displayMetrics.scaledDensity
+                layout(p)
+                // measured content width, bounded by [maxW] + the clip
+                // guard so the outer rules never shave on a hairline
+                val want = Math.min(totalW + 2f, maxW.toFloat()).toInt()
+                val w = resolveSize(want, widthSpec)
+                setMeasuredDimension(w, (totalH + 2f).toInt())
             } catch (_: Throwable) {
-                return 1
+                setMeasuredDimension(maxW, Fx.dp(context, 60))
             }
         }
 
-        override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int,
-                          x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+        override fun onDraw(canvas: Canvas) {
             try {
-                layout(paint)
-                val body = Paint(paint)
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                p.textSize = 14.5f * resources.displayMetrics.scaledDensity
+                layout(p)
+                val body = Paint(p)
                 body.color = textColor
                 body.textSize = textSize
                 val head = Paint(body)
@@ -1338,10 +1449,10 @@ object AiRender {
                 val line = Paint(Paint.ANTI_ALIAS_FLAG)
                 line.color = lineColor
                 line.strokeWidth = maxOf(1f, textSize * 0.045f)
-                val band = Paint(paint)
+                val band = Paint(p)
                 band.color = headerBg
-                band.textSize = textSize
-                val top0 = y - totalH
+                val x = 0f
+                val top0 = 0f
                 // the header band under its bold row
                 canvas.drawRect(x, top0, x + totalW, top0 + rowH, band)
                 // THE RULES: rows+1 horizontal lines (the first and last
@@ -1363,15 +1474,29 @@ object AiRender {
                     for (ci in 0 until cols) {
                         val cell = if (ci < r.size) r[ci] else ""
                         if (cell.isNotEmpty()) {
-                            val p = if (ri == 0) head else body
+                            val pp = if (ri == 0) head else body
                             val cy = rowTop + rowH / 2f
                             canvas.drawText(cell, x + xx + padH,
-                                    cy - (p.ascent() + p.descent()) / 2f, p)
+                                    cy - (pp.ascent() + pp.descent()) / 2f, pp)
                         }
                         xx += colW[ci]
                     }
                 }
-            } catch (_: Throwable) {}
+            } catch (_: Throwable) {
+                // the never-blank law: even a drawing exception paints the
+                // monospace text grid — the v1.4.27 corpse could not recur
+                try {
+                    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                    p.textSize = if (textSize > 0f) textSize
+                            else 12f * resources.displayMetrics.scaledDensity
+                    p.color = textColor
+                    var y = -p.ascent()
+                    for (ln in renderTable(rows).split('\n')) {
+                        canvas.drawText(ln, 0f, y, p)
+                        y += p.fontMetrics.descent - p.fontMetrics.ascent
+                    }
+                } catch (_: Throwable) {}
+            }
         }
     }
 

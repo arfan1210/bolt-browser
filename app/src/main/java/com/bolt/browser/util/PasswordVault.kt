@@ -14,6 +14,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * v1.3.38 — the PASSWORD VAULT (menu item 6 of the round-2 modernization
@@ -485,7 +486,8 @@ object PasswordVault {
         try { idxFile(c).delete() } catch (ignored: Throwable) {}
     }
 
-    /** decrypted export for the backup zip (opt-in, user was warned). */
+    /** decrypted export for the legacy PLAIN backup zip entry (old zips
+     *  only; new exports ride [exportEncrypted] — see the v1.4.28 law). */
     @JvmStatic
     fun exportPlain(c: Context): JSONArray = readAll(c)
 
@@ -505,4 +507,77 @@ object PasswordVault {
         }
         return n
     }
+
+    // ---------------- v1.4.28 — THE ENCRYPTED BACKUP EXPORT ----------------
+
+    /** The v1.4.28 export format (the plaintext-zip corpse: the old
+     *  "include saved passwords" toggle wrote the DECRYPTED vault as plain
+     *  JSON into the zip — any file manager read every password). The
+     *  passphrase export re-encrypts the vault with a key derived FROM THE
+     *  PASSPHRASE THE USER TYPES AT EXPORT (never stored — not in prefs,
+     *  not on disk), so the zip is portable to any device while staying
+     *  ciphertext at rest:
+     *      "BOLTPWV1" (8 bytes) | salt (16) | iv (12) | AES-256-GCM ct+tag
+     *  key = PBKDF2-HMAC-SHA256(passphrase, salt, 120000 iters, 256-bit).
+     *  Returns null when the vault is empty/unreadable or the crypto
+     *  fails (never throws — the caller skips the passwords part). */
+    @JvmStatic
+    fun exportEncrypted(c: Context, passphrase: String): ByteArray? {
+        return try {
+            if (passphrase.length < 4) return null
+            val plain = try {
+                val arr = readAll(c)
+                if (arr.length() == 0 || unreadable) return null
+                arr.toString().toByteArray(Charsets.UTF_8)
+            } catch (_: Throwable) { return null }
+            val rnd = java.security.SecureRandom()
+            val salt = ByteArray(16).also { rnd.nextBytes(it) }
+            val spec = javax.crypto.spec.PBEKeySpec(
+                    passphrase.toCharArray(), salt, 120_000, 256)
+            val kf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val key = kf.generateSecret(spec)
+            val aesKey = SecretKeySpec(key.encoded, "AES")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey)
+            val iv = cipher.iv                       // fresh, 12 bytes for GCM
+            if (iv.size != 12) return null
+            val ct = cipher.doFinal(plain)
+            val out = ByteArray(8 + 16 + 12 + ct.size)
+            System.arraycopy(MAGIC, 0, out, 0, 8)
+            System.arraycopy(salt, 0, out, 8, 16)
+            System.arraycopy(iv, 0, out, 24, 12)
+            System.arraycopy(ct, 0, out, 36, ct.size)
+            out
+        } catch (_: Throwable) { null }
+    }
+
+    /** The restore path for [exportEncrypted]'s blob: prompts are the
+     *  caller's concern (BackupActivity gates the device credential + asks
+     *  the passphrase). A wrong passphrase fails the GCM tag and returns
+     *  -1 ("nothing decrypted" — distinguishable from 0 = empty vault).
+     *  A successful decrypt merges through [importPlain] (every row
+     *  re-encrypts under THIS device's keystore key). Never throws. */
+    @JvmStatic
+    fun importEncrypted(c: Context, blob: ByteArray, passphrase: String): Int {
+        return try {
+            if (blob.size < 36 + 16) return -1
+            val magic = blob.copyOfRange(0, 8)
+            if (!magic.contentEquals(MAGIC)) return -1
+            val salt = blob.copyOfRange(8, 24)
+            val iv = blob.copyOfRange(24, 36)
+            val ct = blob.copyOfRange(36, blob.size)
+            val spec = javax.crypto.spec.PBEKeySpec(
+                    passphrase.toCharArray(), salt, 120_000, 256)
+            val kf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val key = kf.generateSecret(spec)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key.encoded, "AES"),
+                    GCMParameterSpec(128, iv))
+            val plain = cipher.doFinal(ct)   // AEADBadTagException -> -1 below
+            importPlain(c, JSONArray(String(plain, Charsets.UTF_8)))
+        } catch (_: Throwable) { -1 }
+    }
+
+    /** the export blob's magic header ("Bolt password vault v1"). */
+    private val MAGIC = byteArrayOf(66, 79, 76, 84, 80, 87, 86, 49)
 }

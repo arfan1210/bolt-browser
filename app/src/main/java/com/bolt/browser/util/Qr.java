@@ -20,6 +20,14 @@ public final class Qr {
 
     private Qr() {}
 
+    /** v1.4.28 — the full-resolution ceiling for the gallery ladder's FIRST
+     *  pass: photos up to this size ride their OWN pixels before any
+     *  downsample (a 12 MP photo = 48 MB int[] + bitmap — accepted for a
+     *  one-shot gallery decode; a 24 MP photo = 96 MB still clears on the
+     *  3 GB floor). Above the ceiling the full pass starts at the memory
+     *  law's sample instead — a 50 MP panorama never OOMs the pick. */
+    private static final long FULL_RES_MAX = 24_000_000L;
+
     /** Decode a QR from a Bitmap (returns null when none found). */
     public static String decode(Bitmap bmp) {
         if (bmp == null) return null;
@@ -57,6 +65,24 @@ public final class Qr {
      *     same robust ladder — a small code on a huge photo sometimes
      *     needs the downsampled geometry to binarize at all.
      */
+    /**
+     * v1.4.27 — THE ROBUST GALLERY LADDER (the "photo-from-device not
+     *  detected" corpse): the old flow decoded ONCE at ~2000 px and ran the
+     *  plain two-attempt decode on it. Every scale rides the SAME multi-
+     *  pass kit the camera uses ([QrCore.decodeRobust]: plain + inverted
+     *  ARGB, the luma contrast-stretch + half-scale passes, the 0/90/180/
+     *  270 rotations, and the center-crop windows for a code that occupies
+     *  part of the frame).
+     *  v1.4.28 — FULL RESOLUTION FIRST (the "stylized QR in a 12 MP photo
+     *  not detected" corpse): the v1.4.27 ladder still decimated a 12 MP
+     *  photo to ≤8 MP (sample 2 — every module pixel HALVED) before the
+     *  first pass, and a small code in a big photo lost its geometry before
+     *  ANY pass ran. The ladder now opens with the TRUE full-resolution
+     *  pass (sample 1, memory cost accepted for the one-shot gallery pick,
+     *  bounded at [FULL_RES_MAX] for the OOM-panorama floor), THEN the
+     *  memory-law sample (≤8 MP), THEN the downscales — every scale through
+     *  the full robust kit (rotations + crops at EACH scale).
+     */
     public static String decodeUri(android.content.Context ctx, Uri uri, int maxDim) {
         Bitmap base = null;
         try {
@@ -68,25 +94,74 @@ public final class Qr {
             try { in.close(); } catch (Throwable ignored) {}
             int w = o.outWidth, h = o.outHeight;
             if (w <= 0 || h <= 0) return null;
-            // the memory law: the smallest sample holding the decode under
-            // ~8 MP (a 12 MP photo rides 1/4 area — still its own pixels
-            // for any code a fifth of the frame)
+            // the memory law for the LATER rungs: the smallest sample holding
+            // the decode under ~8 MP (a 12 MP photo rides 1/4 area at sample 2)
             int sample = 1;
             while ((long) (w / sample) * (h / sample) > 8_000_000L) sample *= 2;
+            // (1) FULL RESOLUTION FIRST — the true pixels, the memory cost
+            // accepted for the gallery pick; bounded at FULL_RES_MAX so a
+            // 50 MP panorama starts at the memory law instead of OOMing
+            long mp = (long) w * h;
+            if (mp <= FULL_RES_MAX && sample > 1) {
+                try {
+                    String r = decodeAtSample(ctx, uri, 1);
+                    if (r != null) return r;
+                } catch (Throwable ignored) {}   // OOM etc: the ladder continues
+            }
+            // (2) the memory-law pass (≤8 MP) + the progressive downscales
+            // (maxDim -> 1200 -> 800)
+            base = decodeBitmapAtSample(ctx, uri, sample);
+            if (base == null) return null;
+            return decodeLadder(base, maxDim);
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            if (base != null) try { base.recycle(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** v1.4.28 — open + decode the picked image at one sample size (null
+     *  when unreadable); the caller recycles. */
+    private static Bitmap decodeBitmapAtSample(android.content.Context ctx, Uri uri,
+                                               int sample) {
+        try {
             InputStream in2 = ctx.getContentResolver().openInputStream(uri);
             if (in2 == null) return null;
             BitmapFactory.Options o2 = new BitmapFactory.Options();
             o2.inSampleSize = sample;
-            base = BitmapFactory.decodeStream(in2, null, o2);
+            Bitmap b = BitmapFactory.decodeStream(in2, null, o2);
             try { in2.close(); } catch (Throwable ignored) {}
-            if (base == null) return null;
-            // (1) the full-resolution robust pass
+            return b;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.28 — the full-resolution FIRST pass on its own bitmap (the
+     *  caller holds no base bitmap yet at that point). */
+    private static String decodeAtSample(android.content.Context ctx, Uri uri, int sample) {
+        Bitmap b = decodeBitmapAtSample(ctx, uri, sample);
+        if (b == null) return null;
+        try {
+            int bw = b.getWidth(), bh = b.getHeight();
+            int[] px = new int[bw * bh];
+            b.getPixels(px, 0, bw, 0, 0, bw, bh);
+            return QrCore.decodeRobust(px, bw, bh);
+        } finally {
+            try { b.recycle(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** v1.4.28 — the ≤8 MP pass + the progressive downscales, each through
+     *  [QrCore.decodeRobust] (the rotations + center-crops at EACH scale).
+     *  [base] is owned by the caller (recycled there). */
+    private static String decodeLadder(Bitmap base, int maxDim) {
+        try {
             int bw = base.getWidth(), bh = base.getHeight();
             int[] px = new int[bw * bh];
             base.getPixels(px, 0, bw, 0, 0, bw, bh);
             String r = QrCore.decodeRobust(px, bw, bh);
             if (r != null) return r;
-            // (2) the progressive downscales (maxDim -> 1200 -> 800)
             int longEdge = Math.max(bw, bh);
             int[] rungs = {Math.max(600, maxDim), 1200, 800};
             for (int target : rungs) {
@@ -109,11 +184,8 @@ public final class Qr {
             return null;
         } catch (Throwable t) {
             return null;
-        } finally {
-            if (base != null) try { base.recycle(); } catch (Throwable ignored) {}
         }
     }
-
     /** Render text as a QR Bitmap (black on white — scanners require the
      *  light background regardless of the app theme). Null when undecodable. */
     public static Bitmap encodeBitmap(String text, int sizePx) {

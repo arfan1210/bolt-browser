@@ -86,6 +86,10 @@
       }).then(function (w) { worker = w; workerLangs = langs; return w; });
     }
     p.then(function (w) {
+      // v1.4.28 — THE VISIBLE-FAIL LAW: the worker's creation is SAID
+      // (an init that died silently read as "chars=0 lines=0" for every
+      // language in the field log)
+      try { B().diag('ocr worker ok ' + langs); } catch (e) {}
       // PSM 3 (AUTO page segmentation) — NOT tesseract.js's default PSM 6
       // (single horizontal block): auto is what detects VERTICAL text with
       // the jpn_vert model (live-verified: PSM 6 reads manga columns as
@@ -115,9 +119,19 @@
           }
         }
       }
+      try { B().diag('ocr done lines=' + out.length); } catch (e) {}
       try { B().done(JSON.stringify(out)); } catch (e) {}
       pending = false;
     }).catch(function (e) {
+      // v1.4.28 — THE VISIBLE-FAIL LAW: WHICH stage died, said with the
+      // throwable's own message — init (the wasm core / a model it cannot
+      // load, e.g. the jpn_vert tessdata_best family) vs recognize. The
+      // old catch passed only e.message to Kotlin's fail path; the
+      // distinction never surfaced.
+      try {
+        B().diag('ocr fail ' + (worker ? 'recognize' : 'init') + ': ' +
+          String(e && e.message || e));
+      } catch (x) {}
       worker = null; workerLangs = '';
       pending = false;
       try { B().fail(String(e && e.message || e)); } catch (x) {}

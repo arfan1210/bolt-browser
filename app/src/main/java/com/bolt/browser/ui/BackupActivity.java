@@ -27,8 +27,20 @@ import java.util.zip.ZipInputStream;
 public class BackupActivity extends AppCompatActivity {
 
     private static final int IMPORT_REQ = 91;
+    /** v1.4.28 — the device-credential gates: 1015 the password-inclusive
+     *  EXPORT (passphrase prompt follows), 1016 the password RESTORE. */
+    private static final int PW_EXPORT_GATE = 1015;
+    private static final int PW_IMPORT_GATE = 1016;
     private Prefs prefs;
     private EditText nameField;
+    /** the gate's continuation (runs on RESULT_OK; a cancel takes the
+     *  no-passwords branch). */
+    private Runnable pwGateNext;
+    /** v1.4.28 — the import's staged password payloads: the legacy plain
+     *  JSON (old zips) and/or the encrypted vault blob (passwords.vault). */
+    private org.json.JSONArray pwPlainLegacy;
+    private byte[] pwVaultBlob;
+    private int importFileCount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,7 +83,8 @@ public class BackupActivity extends AppCompatActivity {
         // v1.3.39 — CHOOSE WHAT RIDES ALONG (field report: "In the export,
         // give me a toggle to controll everything I want to choose to backup
         // or not"). One switch per backup component, all ON by default except
-        // passwords (still opt-in: the zip copy is plain JSON).
+        // passwords (v1.4.28: still opt-in — and the zip copy is now
+        // PASSPHRASE-ENCRYPTED ciphertext, never the old plain JSON).
         list.addView(label("Include in backup"));
         list.addView(itemToggle("bkSettings", "Settings", true,
                 "All app settings (prefs.json) — skins, toggles, engine choice."));
@@ -94,7 +107,8 @@ public class BackupActivity extends AppCompatActivity {
         list.addView(itemToggle("bkAuth", "Authenticator (2FA keys)", true,
                 "Plain JSON by design — the ONLY way a restore works on another device. Keep the zip safe."));
         list.addView(itemToggle("backupPw", "Saved passwords", false,
-                "DECRYPTED, unencrypted JSON in the zip — keep the file safe and delete it after importing."));
+                "Encrypted with a passphrase you set at export (device unlock " +
+                "asked first) — restorable on any device. Off by default."));
 
         // v1.3.40 — SCHEDULED AUTO-BACKUP (round-4 #14): opt-in weekly
         // export to Downloads with a stamped filename; the row right below
@@ -176,14 +190,110 @@ public class BackupActivity extends AppCompatActivity {
 
     private void doExport() {
         if (nameField != null) prefs.set("profileName", nameField.getText().toString().trim());
-        // v1.3.40: the zip builder lives in util/AutoBackup.kt now — the
-        // manual button and the weekly scheduler share one implementation
-        // (same component toggles, same Downloads destination).
+        // v1.4.28 — THE PASSWORD EXPORT GATE (the security round's ask):
+        // when the (default-off) Saved-passwords switch is ON, the export
+        // first requires the DEVICE CREDENTIAL (a cancelled prompt exports
+        // WITHOUT the passwords part — never silently, a toast says so),
+        // then asks for the passphrase whose derived key re-encrypts the
+        // vault into the zip. Without the switch the export runs as before
+        // (v1.3.40: the zip builder lives in util/AutoBackup.kt — the manual
+        // button and the weekly scheduler share one implementation).
+        if (prefs.b("backupPw", false)) {
+            if (gateDeviceCredential(PW_EXPORT_GATE,
+                    () -> askExportPassphrase())) return;   // gate launched
+            askExportPassphrase();
+            return;
+        }
+        runExport(null);
+    }
+
+    /** v1.4.28 — launch the device-credential gate; false when the
+     *  continuation already ran (nothing to gate with / the intent is
+     *  unavailable). TRUE = the prompt is up and [onOk] rides RESULT_OK. */
+    private boolean gateDeviceCredential(int req, Runnable onOk) {
+        try {
+            android.app.KeyguardManager km = (android.app.KeyguardManager)
+                    getSystemService(KEYGUARD_SERVICE);
+            if (km == null || !km.isDeviceSecure()) { onOk.run(); return false; }
+            android.content.Intent i = km.createConfirmDeviceCredentialIntent(
+                    "Bolt is locked", "Unlock to continue with saved passwords");
+            if (i == null) { onOk.run(); return false; }
+            pwGateNext = onOk;
+            startActivityForResult(i, req);
+            return true;
+        } catch (Throwable t) {
+            onOk.run();
+            return false;
+        }
+    }
+
+    /** v1.4.28 — the passphrase prompt for the password-inclusive export:
+     *  passphrase + confirm (both masked), min 4 chars. OK rides the
+     *  export thread with the passphrase; Cancel exports WITHOUT the
+     *  passwords (said aloud — never a silent hole). */
+    private void askExportPassphrase() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        int pad = Fx.dp(this, 8);
+        col.setPadding(pad, pad, pad, 0);
+        EditText p1 = new EditText(this);
+        p1.setHint("Passphrase (min 4 characters)");
+        p1.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        p1.setTextColor(Fx.txt(this));
+        p1.setHintTextColor(Fx.dim(this));
+        EditText p2 = new EditText(this);
+        p2.setHint("Repeat passphrase");
+        p2.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        p2.setTextColor(Fx.txt(this));
+        p2.setHintTextColor(Fx.dim(this));
+        col.addView(p1, new LinearLayout.LayoutParams(-1, -2));
+        col.addView(p2, new LinearLayout.LayoutParams(-1, -2));
+        TextView note = new TextView(this);
+        note.setText("The saved-passwords part of the zip is encrypted with " +
+                "this passphrase (AES-256-GCM). It is never stored — if you " +
+                "forget it, that zip's passwords cannot be recovered.");
+        note.setTextSize(12);
+        note.setTextColor(Fx.dim(this));
+        note.setPadding(0, Fx.dp(this, 8), 0, 0);
+        col.addView(note, new LinearLayout.LayoutParams(-1, -2));
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Password backup passphrase")
+                .setView(col)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String a = p1.getText().toString();
+                    String b = p2.getText().toString();
+                    if (a.length() < 4) {
+                        Toast.makeText(this, "Passphrase too short — passwords " +
+                                "not included", Toast.LENGTH_LONG).show();
+                        runExport(null);
+                    } else if (!a.equals(b)) {
+                        Toast.makeText(this, "Passphrases differ — passwords " +
+                                "not included", Toast.LENGTH_LONG).show();
+                        runExport(null);
+                    } else {
+                        runExport(a);
+                    }
+                })
+                .setNegativeButton(R.string.cancel, (d, w) -> {
+                    Toast.makeText(this, "Passwords not included — cancelled",
+                            Toast.LENGTH_LONG).show();
+                    runExport(null);
+                })
+                .show();
+    }
+
+    /** the export thread ([passphrase] null = without the passwords part). */
+    private void runExport(final String passphrase) {
         new Thread(() -> {
             try {
-                String fname = com.bolt.browser.util.AutoBackup.backupNow(this, "BoltBackup");
+                String fname = com.bolt.browser.util.AutoBackup.backupNow(this,
+                        "BoltBackup", passphrase);
                 runOnUiThread(() -> Toast.makeText(this,
-                        "Exported to Downloads/" + fname, Toast.LENGTH_LONG).show());
+                        "Exported to Downloads/" + fname
+                                + (passphrase != null ? " (passwords encrypted)" : ""),
+                        Toast.LENGTH_LONG).show());
             } catch (Throwable e) {
                 runOnUiThread(() -> Toast.makeText(this, "Export failed: " + e,
                         Toast.LENGTH_LONG).show());
@@ -196,30 +306,60 @@ public class BackupActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == IMPORT_REQ && resultCode == RESULT_OK && data != null && data.getData() != null) {
             importBackup(data.getData());
+            return;
+        }
+        // v1.4.28 — THE PASSWORD GATES' RESULTS. RESULT_OK runs the waiting
+        // continuation (the passphrase prompt — export, or the merge —
+        // import); a CANCEL takes the no-passwords branch, SAID ALOUD
+        // (export without the passwords / import skips them and restarts).
+        if (requestCode == PW_EXPORT_GATE || requestCode == PW_IMPORT_GATE) {
+            Runnable r = pwGateNext;
+            pwGateNext = null;
+            if (resultCode == RESULT_OK && r != null) {
+                try { r.run(); } catch (Throwable ignored) {}
+            } else if (r != null) {
+                if (requestCode == PW_EXPORT_GATE) {
+                    Toast.makeText(this, "Passwords not included — unlock cancelled",
+                            Toast.LENGTH_LONG).show();
+                    runExport(null);
+                } else {
+                    Toast.makeText(this, "Saved passwords skipped — unlock cancelled",
+                            Toast.LENGTH_LONG).show();
+                    finishImport();
+                }
+            }
         }
     }
 
     /** v1.3.94 — STAGED IMPORT. The v1.3.93-and-older import wrote the
-     * zip's files STRAIGHT into filesDir while the live process kept
-     * running — and every live writer (Prefs.set rewriting prefs.json,
-     * TabManager.save on every tab event, the speed-dial store) flushed its
-     * STALE in-memory state back over the imported files within seconds:
-     * the v1.3.93 field report ("no tabs are imported, no settings or
-     * workspace are here; I do see the authenticator") is exactly this —
-     * the authenticator.json has no live writer, everything else did.
-     * Now the import STAGES the files into filesDir/.bolt-import/ (the
-     * live singletons never touch that tree), BoltApp applies the tree at
-     * the very top of the NEXT process start (attachBaseContext — before
-     * Prefs/TabManager construct), and this screen then relaunches the app
-     * (alarm + exit — never startActivity+finish, the v1.3.86 task-hop
-     * race lesson) so the clean load is immediate. */
+     *  zip's files STRAIGHT into filesDir while the live process kept
+     *  running — and every live writer (Prefs.set rewriting prefs.json,
+     *  TabManager.save on every tab event, the speed-dial store) flushed its
+     *  STALE in-memory state back over the imported files within seconds:
+     *  the v1.3.93 field report ("no tabs are imported, no settings or
+     *  workspace are here; I do see the authenticator") is exactly this —
+     *  the authenticator.json has no live writer, everything else did.
+     *  Now the import STAGES the files into filesDir/.bolt-import/ (the
+     *  live singletons never touch that tree), BoltApp applies the tree at
+     *  the very top of the NEXT process start (attachBaseContext — before
+     *  Prefs/TabManager construct), and this screen then relaunches the app
+     *  (alarm + exit — never startActivity+finish, the v1.3.86 task-hop
+     *  race lesson) so the clean load is immediate.
+     *  v1.4.28 — THE PASSWORD MERGE IS GATED (the security round's ask):
+     *  the zip's password payload — the legacy plain `passwords.json` (old
+     *  zips) or the encrypted `passwords.vault` blob — is COLLECTED during
+     *  the scan and merged ONLY after the device-credential gate answers
+     *  RESULT_OK (the encrypted blob additionally asks the passphrase — a
+     *  wrong passphrase fails the GCM tag and merges nothing). Cancelling
+     *  the gate skips the passwords, says so, and restarts for the rest. */
     private void importBackup(final Uri uri) {
         new Thread(() -> {
             int files = 0;
-            int pws = 0;
             java.io.File staging = new java.io.File(prefs.filesDir(), ".bolt-import");
             deleteTree(staging);
             staging.mkdirs();
+            pwPlainLegacy = null;
+            pwVaultBlob = null;
             try (ZipInputStream z = new ZipInputStream(
                     getContentResolver().openInputStream(uri))) {
                 ZipEntry e;
@@ -227,19 +367,29 @@ public class BackupActivity extends AppCompatActivity {
                 while ((e = z.getNextEntry()) != null) {
                     String name = e.getName();
                     if (name.endsWith("/")) continue;
-                    // v1.3.38: the password entry is the DECRYPTED vault —
-                    // merge it through the vault (it re-encrypts on save),
-                    // never a raw file copy. The vault's plain index is
-                    // derived, never imported. (The vault merge is safe to
-                    // run live: it writes through the vault's own save.)
+                    // v1.4.28 — the password payloads are COLLECTED here and
+                    // merged later behind the gate: the legacy DECRYPTED
+                    // vault JSON (old zips — kept working) and the encrypted
+                    // passwords.vault blob. Never a raw file copy — the
+                    // merge rides the vault's own save (re-encrypts under
+                    // THIS device's keystore key); the vault's plain index
+                    // is derived, never imported.
                     if (name.equals("passwords.json")) {
                         try {
                             java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
                             int n;
                             while ((n = z.read(b)) > 0) bo.write(b, 0, n);
-                            org.json.JSONArray arr =
-                                    new org.json.JSONArray(bo.toString("UTF-8"));
-                            pws = com.bolt.browser.util.PasswordVault.importPlain(this, arr);
+                            pwPlainLegacy = new org.json.JSONArray(bo.toString("UTF-8"));
+                        } catch (Throwable ignored) {}
+                        files++;
+                        continue;
+                    }
+                    if (name.equals("passwords.vault")) {
+                        try {
+                            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                            int n;
+                            while ((n = z.read(b)) > 0) bo.write(b, 0, n);
+                            pwVaultBlob = bo.toByteArray();
                         } catch (Throwable ignored) {}
                         files++;
                         continue;
@@ -270,18 +420,116 @@ public class BackupActivity extends AppCompatActivity {
                 return;
             }
             final int count = files;
-            final int pwCount = pws;
             runOnUiThread(() -> {
-                Toast.makeText(this,
-                        "Imported " + count + " files" + (pwCount > 0
-                                ? " + " + pwCount + " saved logins" : "")
-                                + " — restarting to apply",
-                        Toast.LENGTH_LONG).show();
-                restartApp();
+                importFileCount = count;
+                continueImport();
             });
         }, "import").start();
     }
 
+    /** v1.4.28 — the staged scan finished: no password payload -> restart
+     *  now; a payload -> the device-credential gate first (its cancel
+     *  skips the passwords, says so, restarts for the rest of the backup). */
+    private void continueImport() {
+        if (pwPlainLegacy == null && pwVaultBlob == null) {
+            finishImport();
+            return;
+        }
+        if (gateDeviceCredential(PW_IMPORT_GATE, this::continueImportAfterGate)) return;
+        continueImportAfterGate();
+    }
+
+    /** past the gate: the encrypted blob asks its passphrase; a legacy
+     *  plain zip merges right away. */
+    private void continueImportAfterGate() {
+        if (pwVaultBlob != null) {
+            askImportPassphrase();
+            return;
+        }
+        mergePlainLegacy();
+    }
+
+    /** v1.4.28 — the passphrase prompt for the encrypted vault blob. OK
+     *  decrypts + merges on a worker thread (PBKDF2 + the keystore writes
+     *  never touch the UI thread); a wrong passphrase says so and costs
+     *  only the passwords part. Cancel skips the passwords, said aloud. */
+    private void askImportPassphrase() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        int pad = Fx.dp(this, 8);
+        col.setPadding(pad, pad, pad, 0);
+        EditText p1 = new EditText(this);
+        p1.setHint("Backup passphrase");
+        p1.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        p1.setTextColor(Fx.txt(this));
+        p1.setHintTextColor(Fx.dim(this));
+        col.addView(p1, new LinearLayout.LayoutParams(-1, -2));
+        TextView note = new TextView(this);
+        note.setText("This backup carries encrypted saved passwords. Enter " +
+                "the passphrase set at export to restore them on this device.");
+        note.setTextSize(12);
+        note.setTextColor(Fx.dim(this));
+        note.setPadding(0, Fx.dp(this, 8), 0, 0);
+        col.addView(note, new LinearLayout.LayoutParams(-1, -2));
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Restore saved passwords")
+                .setView(col)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    final String pass = p1.getText().toString();
+                    final byte[] blob = pwVaultBlob;
+                    new Thread(() -> {
+                        int pws = -1;
+                        try {
+                            if (blob != null && pass.length() > 0) {
+                                pws = com.bolt.browser.util.PasswordVault
+                                        .importEncrypted(this, blob, pass);
+                            }
+                        } catch (Throwable ignored) {}
+                        final int pwCount = pws;
+                        runOnUiThread(() -> {
+                            if (pwCount < 0) {
+                                Toast.makeText(this, "Wrong passphrase — saved " +
+                                        "passwords not restored", Toast.LENGTH_LONG).show();
+                            }
+                            finishImport(pwCount > 0 ? pwCount : 0);
+                        });
+                    }, "pw-import").start();
+                })
+                .setNegativeButton(R.string.cancel, (d, w) -> {
+                    Toast.makeText(this, "Saved passwords skipped",
+                            Toast.LENGTH_LONG).show();
+                    finishImport();
+                })
+                .show();
+    }
+
+    /** the legacy plain JSON merge (old zips — behind the same gate). */
+    private void mergePlainLegacy() {
+        final org.json.JSONArray arr = pwPlainLegacy;
+        new Thread(() -> {
+            int pws = 0;
+            try {
+                if (arr != null) pws = com.bolt.browser.util.PasswordVault
+                        .importPlain(this, arr);
+            } catch (Throwable ignored) {}
+            final int pwCount = pws;
+            runOnUiThread(() -> finishImport(pwCount));
+        }, "pw-import").start();
+    }
+
+    /** the toast + the staged-tree restart (the staged files apply at the
+     *  next process start; [pws] the merged login count, 0 when none). */
+    private void finishImport(int pws) {
+        Toast.makeText(this,
+                "Imported " + importFileCount + " files" + (pws > 0
+                        ? " + " + pws + " saved logins" : "")
+                        + " — restarting to apply",
+                Toast.LENGTH_LONG).show();
+        restartApp();
+    }
+
+    private void finishImport() { finishImport(0); }
     /** best-effort recursive delete (staging cleanup). */
     private static void deleteTree(java.io.File f) {
         if (f == null || !f.exists()) return;

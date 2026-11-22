@@ -87,11 +87,20 @@ object AutoBackup {
      * Build + write the backup zip to the public Downloads folder
      * (MediaStore on API 29+, legacy path below). BLOCKING — call from a
      * worker thread. Returns the filename on success, throws on failure.
-     * The component toggles ("bkSettings"…, "backupPw") decide what rides.
+     * The component toggles ("bkSettings"…) decide what rides.
+     * v1.4.28 — THE PASSPHRASE PARAMETER (the plaintext-zip corpse): the
+     * saved-passwords entry rides ONLY as [PasswordVault.exportEncrypted]
+     * ciphertext ("passwords.vault"), and ONLY when the caller hands a
+     * passphrase collected BEHIND the device-credential gate — the manual
+     * export screen. The SCHEDULED backup passes none (headless runs have
+     * no user to type a passphrase — the passwords part is skipped and
+     * Diag'd, never silently): no plaintext password blob ever lands in a
+     * zip again. The legacy plain `passwords.json` import stays (old
+     * backups must keep restoring).
      */
     @JvmStatic
     @Throws(Exception::class)
-    fun backupNow(c: Context, prefix: String): String {
+    fun backupNow(c: Context, prefix: String, passphrase: String? = null): String {
         val prefs = Prefs.get(c)
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm",
                 java.util.Locale.US).format(java.util.Date())
@@ -143,18 +152,29 @@ object AutoBackup {
                         if (src.exists()) addEntry(z, f, FileInputStream(src))
                     }
                 }
-                // passwords: only when the (default-off) opt-in switch is on;
-                // plain JSON on purpose — portability beats encryption here
+                // passwords (v1.4.28 — the ENCRYPTED-ONLY law): only when the
+                // (default-off) opt-in switch is on AND a passphrase was
+                // collected behind the device-credential gate; the blob is
+                // AES-GCM ciphertext under a passphrase-derived key — never
+                // the plaintext JSON the old toggle wrote
                 if (prefs.b("backupPw", false)) {
-                    try {
-                        val pw = PasswordVault.exportPlain(c)
-                        if (pw.length() > 0) {
-                            val b = pw.toString().toByteArray(Charsets.UTF_8)
-                            z.putNextEntry(ZipEntry("passwords.json"))
-                            z.write(b)
-                            z.closeEntry()
-                        }
-                    } catch (ignored: Throwable) {}
+                    if (passphrase == null) {
+                        // the scheduled run: no user, no passphrase — skip
+                        // honestly (a Diag line, never a silent hole)
+                        try {
+                            Diag.log(c, "bk pw skipped (no passphrase — manual " +
+                                    "export carries passwords)")
+                        } catch (_: Throwable) {}
+                    } else {
+                        try {
+                            val blob = PasswordVault.exportEncrypted(c, passphrase)
+                            if (blob != null && blob.size > 0) {
+                                z.putNextEntry(ZipEntry("passwords.vault"))
+                                z.write(blob)
+                                z.closeEntry()
+                            }
+                        } catch (ignored: Throwable) {}
+                    }
                 }
                 if (prefs.b("bkScripts", true)) zipDir(z, prefs.scriptsDir(), "scripts/")
                 if (prefs.b("bkFilters", true)) zipDir(z, prefs.filtersDir(), "filters/")

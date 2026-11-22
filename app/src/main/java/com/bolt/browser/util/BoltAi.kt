@@ -607,8 +607,6 @@ object BoltAi {
         val sp = View(a)
         sp.layoutParams = LinearLayout.LayoutParams(1, Fx.dp(a, 8).toInt())
         l.addView(sp)
-    }
-
     /** one chat bubble — user right/accent, AI left/surface. v1.3.76:
      *  SINGLE-TAP COPY (the field ask: "an option to like copy the prompts
      *  and replies with a single tap"). v1.3.92 — LONG-HOLD COPY (the
@@ -621,26 +619,19 @@ object BoltAi {
      *  turns the reply into native Spanned (headings, lists, links,
      *  tables, code blocks, math). The RAW text rides the view's tag —
      *  long-press copy always yields the model's source, never the
-     *  rendered glyphs. User bubbles stay plain by design. */
-    private fun addBubble(a: Activity, text: String, user: Boolean): TextView {
-        val l = list ?: return TextView(a)
-        val t = TextView(a)
-        if (user || !AiRender.looksMarkdown(text)) {
-            t.text = text
-        } else {
-            try {
-                // v1.4.24 — the view rides along: while the math font pack
-                // is still downloading the bubble is held for the full-TeX
-                // re-render when it lands
-                t.text = AiRender.render(a, text, t)
-                t.movementMethod = android.text.method.LinkMovementMethod.getInstance()
-            } catch (_: Throwable) {
-                t.text = text
-            }
-        }
-        t.tag = text
-        t.textSize = 14.5f
-        t.setTextColor(if (user) Color.WHITE else Fx.txt(a))
+     *  rendered glyphs. User bubbles stay plain by design.
+     *  v1.4.28 — THE CONTAINER BUBBLE (the invisible-table fix): the
+     *  bubble is a vertical LinearLayout whose children are the rendered
+     *  text SEGMENTS interleaved with the real table VIEWS
+     *  ([AiRender.fillMarkdown] -> [AiRender.tableView]) — a
+     *  ReplacementSpan drawing the grid inside one text line never
+     *  painted on real devices (the v1.4.27 corpse); an attached View's
+     *  onDraw cannot stay invisible. Returns the container (the
+     *  streaming reply re-fills it through [fillBubble]). */
+    private fun addBubble(a: Activity, text: String, user: Boolean): LinearLayout {
+        val l = list ?: return LinearLayout(a)
+        val box = LinearLayout(a)
+        box.orientation = LinearLayout.VERTICAL
         val bg = GradientDrawable()
         bg.cornerRadius = Fx.dp(a, 16).toFloat()
         if (user) {
@@ -653,32 +644,61 @@ object BoltAi {
         } else {
             bg.setColor(Fx.surface2(a))
         }
-        t.background = bg
+        box.background = bg
         val pad = Fx.dp(a, 12).toInt()
-        t.setPadding(pad, pad, pad, pad)
+        box.setPadding(pad, pad, pad, pad)
         val lp = LinearLayout.LayoutParams(
-            (a.resources.displayMetrics.widthPixels * 0.82f).toInt(),
-            ViewGroup.LayoutParams.WRAP_CONTENT)
+                (a.resources.displayMetrics.widthPixels * 0.82f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.gravity = if (user) Gravity.END else Gravity.START
         lp.topMargin = Fx.dp(a, 8).toInt()
-        t.layoutParams = lp
+        box.layoutParams = lp
+        box.tag = text
         // v1.3.92: long-press -> this bubble's RAW text goes to the clipboard
         // (v1.4.20: the tag carries the pre-render source — copy never
-        // yields placeholder glyphs or flattened math)
-        t.setOnLongClickListener {
+        // yields placeholder glyphs or flattened math; v1.4.28: the
+        // CONTAINER carries the tag)
+        box.setOnLongClickListener { v ->
             try {
-                val raw = (t.tag as? String) ?: t.text.toString()
+                val raw = (v.tag as? String) ?: ""
                 val cm = a.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("Bolt AI", raw))
-                try { com.bolt.browser.util.Ui.tap(t) } catch (_: Throwable) {}
+                try { com.bolt.browser.util.Ui.tap(v) } catch (_: Throwable) {}
                 Fx.toast(a, "Copied")
             } catch (_: Throwable) {
                 Fx.toast(a, "Copy failed")
             }
             true
         }
-        l.addView(t)
-        return t
+        fillBubble(a, box, text, user)
+        l.addView(box)
+        return box
+    }
+
+    /** v1.4.28 — fill (or re-fill) a bubble container: a plain user/legacy
+     *  message rides one TextView; a markdown reply rides
+     *  [AiRender.fillMarkdown] (segments + table views interleaved). */
+    private fun fillBubble(a: Activity, box: LinearLayout, text: String, user: Boolean) {
+        try {
+            if (user || !AiRender.looksMarkdown(text)) {
+                val t = TextView(a)
+                t.text = text
+                t.textSize = 14.5f
+                t.setTextColor(if (user) Color.WHITE else Fx.txt(a))
+                box.addView(t, LinearLayout.LayoutParams(-1, -2))
+                return
+            }
+            AiRender.fillMarkdown(a, box, text)
+        } catch (_: Throwable) {
+            try {
+                box.removeAllViews()
+                val t = TextView(a)
+                t.text = text
+                t.textSize = 14.5f
+                t.setTextColor(if (user) Color.WHITE else Fx.txt(a))
+                box.addView(t, LinearLayout.LayoutParams(-1, -2))
+            } catch (_: Throwable) {}
+        }
     }
 
     private fun scrollDown() {
@@ -734,8 +754,13 @@ object BoltAi {
                 try {
                     if (reply == null) {
                         try { Diag.log(a, "ai fail " + AiBridge.lastError.take(60)) } catch (_: Throwable) {}
-                        thinking.text = "\u26A0 " + AiBridge.lastError
-                        thinking.setTextColor(0xFFB33939.toInt())
+                        thinking.tag = "\u26A0 " + AiBridge.lastError
+                        thinking.removeAllViews()
+                        val err = TextView(a)
+                        err.text = thinking.tag as String
+                        err.textSize = 14.5f
+                        err.setTextColor(0xFFB33939.toInt())
+                        thinking.addView(err, LinearLayout.LayoutParams(-1, -2))
                     } else {
                         try {
                             Diag.log(a, "ai ok ms=" + (System.currentTimeMillis() - t0) +
@@ -748,15 +773,11 @@ object BoltAi {
                         // v1.4.24 — the view rides along: while the math
                         // font pack is still downloading the bubble is held
                         // for the full-TeX re-render when it lands
-                        try {
-                            thinking.text = AiRender.render(a, reply, thinking)
-                            thinking.movementMethod =
-                                    android.text.method.LinkMovementMethod.getInstance()
-                        } catch (_: Throwable) {
-                            thinking.text = reply
-                        }
+                        // v1.4.28 — the CONTAINER re-fill: the thinking
+                        // bubble is the container ([fillMarkdown] handles
+                        // the math-font hold + the table views itself)
                         thinking.tag = reply
-                        thinking.setTextColor(Fx.txt(a))
+                        fillBubble(a, thinking, reply, false)
                     }
                 } catch (_: Throwable) {}
                 scrollDown()

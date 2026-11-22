@@ -37,6 +37,18 @@ class PasswordVaultActivity : AppCompatActivity() {
     private var emptyState: LinearLayout? = null
     private var gateShown = false
 
+    // v1.4.28 — THE VAULT ACCESS GATE: the entries stay UNBUILT until the
+    // device-credential prompt (request 1013) answers RESULT_OK. The old
+    // screen built the whole list in onCreate and NEVER handled the gate's
+    // result — cancelling the prompt left the entries fully visible behind
+    // it (on a split-screen/large-panel device the prompt is an overlay,
+    // not a full cover). Now: onCreate builds only the chrome; a cancelled
+    // gate finish()es immediately; a passed gate latches [gatePassed] and
+    // reveals the list. A device with no secure lock screen cannot be
+    // gated — the red banner already tells that user to set one, and the
+    // list shows as before.
+    private var gatePassed = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Fx.theme(this)
         super.onCreate(savedInstanceState)
@@ -65,6 +77,14 @@ class PasswordVaultActivity : AppCompatActivity() {
                 "Ask when you sign in to a site",
                 prefs.b("pwSave", true)) { on -> prefs.set("pwSave", on) })
 
+        // ---- v1.4.28 — the AUTOFILL GATE's pref (the security round's ask;
+        // default ON). A successful unlock caches for ~60 s in the browser
+        // process, so a login form + its follow-up confirm don't
+        // double-prompt ----
+        root.addView(switchRow("Require unlock for autofill",
+                "Ask for device unlock before filling or picking saved passwords",
+                prefs.b("pwGate", true)) { on -> prefs.set("pwGate", on) })
+
         // ---- v1.4.19 — THE ADD-ENTRY DOOR (the manually-add/edit ask):
         // the vault had save/delete backend (saveEx upserts) but NO way to
         // create or edit an entry by hand — only the site-driven save
@@ -92,6 +112,13 @@ class PasswordVaultActivity : AppCompatActivity() {
                 "No saved passwords", "Sign in to a site and accept the save prompt")
         root.addView(emptyState, LinearLayout.LayoutParams(-1, -2))
 
+        // v1.4.28 — THE VAULT ACCESS GATE: entries stay withheld until the
+        // gate passes. A device with no secure lock screen has nothing to
+        // gate with — the list builds now (the warning banner above already
+        // names the exposure); a secure device builds ONLY after
+        // onActivityResult(1013) lands RESULT_OK.
+        val km0 = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (!km0.isDeviceSecure) gatePassed = true
         rebuild()
     }
 
@@ -100,8 +127,29 @@ class PasswordVaultActivity : AppCompatActivity() {
         if (!gateShown) showGate()
     }
 
+    /** v1.4.28 — THE GATE RESULT (the corpse: the old screen had NO
+     *  onActivityResult — cancelling the credential prompt left the
+     *  entries visible). Cancel/back -> finish() NOW, entries never
+     *  revealed; RESULT_OK -> latch + build the list. */
+    override fun onActivityResult(requestCode: Int, resultCode: Int,
+                                  data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1013) {
+            if (resultCode == Activity.RESULT_OK) {
+                gatePassed = true
+                rebuild()
+            } else {
+                try { list?.removeAllViews() } catch (_: Throwable) {}
+                finish()
+            }
+        }
+    }
+
     /** device-credential gate (once per visit; the fill chip in the browser
-     *  is not re-gated — the user is mid-session there). */
+     *  is not re-gated — the user is mid-session there).
+     *  v1.4.28 — when the gate intent is unavailable (createConfirmDevice
+     *  CredentialIntent null on a secure device — an OEM quirk), the screen
+     *  passes through rather than sitting empty forever. */
     private fun showGate() {
         try {
             val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
@@ -110,6 +158,7 @@ class PasswordVaultActivity : AppCompatActivity() {
             val i = km.createConfirmDeviceCredentialIntent("Bolt is locked",
                     "Unlock to view saved passwords")
             if (i != null) startActivityForResult(i, 1013)
+            else { gatePassed = true; rebuild() }
         } catch (ignored: Throwable) {
         }
     }
@@ -243,6 +292,10 @@ class PasswordVaultActivity : AppCompatActivity() {
     }
 
     private fun rebuild() {
+        // v1.4.28 — the VAULT ACCESS GATE's withhold: entries (even the
+        // plain index rows — hosts + usernames) are NEVER built while the
+        // gate is unanswered.
+        if (!gatePassed) return
         val host = list ?: return
         host.removeAllViews()
         PasswordVault.checkHealth(this)   // v1.3.91: refresh `unreadable`

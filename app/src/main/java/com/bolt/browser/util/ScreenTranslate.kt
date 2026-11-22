@@ -174,8 +174,15 @@ object ScreenTranslate {
         // "auto" keeping the legacy CN+JP+EN trio for the manga case;
         // the default is eng (Latin script), NOT chi_sim+jpn. The script
         // argument stays for call-shape compat; the pack decides.
+        // v1.4.28 — THE VERT-FAMILY TRIM (the "OCR fails universally"
+        // report): the wasm tesseract engine rejects the jpn_vert /
+        // jpn_vertb model family outright (parameter warnings, chars=0
+        // lines=0), and a poisoned worker takes later runs down with it.
+        // The TRUSTED OCR languages are eng + chi_sim (field-proven on
+        // other sites); "auto" drops to that pair — Japanese screens ride
+        // the vision fallback (or the Manga mode's vision-primary path).
         val p = lastSrc ?: "eng"
-        return if (p == "auto") arrayOf("chi_sim", "jpn", "eng") else arrayOf(p)
+        return if (p == "auto") arrayOf("chi_sim", "eng") else arrayOf(p)
     }
 
     /** v1.4.24 — the memoized source-language choice ("scrSrc" pref;
@@ -229,6 +236,11 @@ object ScreenTranslate {
      *  whose six tiles together read under this is vision territory);
      *  the per-tile decision rides [TILE_FLOOR]. */
     private const val YIELD_FLOOR = 120
+
+    /** v1.4.28 — the manga pair's privacy latch (vision-primary sends the
+     *  bubble-region images; the "ai" latch's wording says text-only, so
+     *  the manga confirm carries its own words). */
+    @Volatile private var mangaConfirmed = false
 
     /** v1.4.25 — THE GRID LAW (the thin-strip corpse: OCR chars=54
      *  lines=5 -> the vision fallback -> "vision ok lines=1" — ONE
@@ -1312,42 +1324,69 @@ object ScreenTranslate {
     // ---------------- v1.4.26 — THE MANGA ROUND (bubble-aware) ----------------
 
     /**
-     * v1.4.26 — THE MANGA STAGE; v1.4.27 — THE ONE-PIPELINE REWRITE (the
-     *  failure-after-a-few-runs + zoomed-out no-op round): Manga/Manga HD
-     *  are a PREPROCESSING VARIANT of the ONE shared grid pipeline, never
-     *  a separate placement or host path. This adapter resolves the
-     *  vertical models (jpn_vert / jpn_vertb = tessdata_best) and posts
-     *  THE SAME stage ([runOneStage] with manga=true): every grid cell
-     *  crops at native resolution, rides the x2-nearest grayscale hard-
-     *  5/95 PNG preprocess per tile ([cropTileManga] — a zoomed-out dense
-     *  page reads at native tile resolution; the whole-page upscale that
-     *  read nothing is gone) and the per-tile boxes CLUSTER into bubbles
-     *  across tiles ([bubblesOf] — one card INSIDE each bubble, sampled
-     *  background, line height, preserved line breaks). The retired
-     *  whole-page OcrHost run (one huge PNG recognize that stacked
-     *  behind a stuck worker — the fails-after-a-few-runs corpse) and the
-     *  separate manga host call are GONE; the robust host lifecycle is
-     *  the shared one ([OcrHost] re-arms its worker cleanly per run).
+     * v1.4.26 — THE MANGA STAGE; v1.4.27 — the one-pipeline rewrite;
+     * v1.4.28 — THE VISION-PRIMARY LAW (the "OCR fails universally"
+     * corpse): the wasm tesseract engine REJECTS the jpn_vert/jpn_vertb
+     * model family outright (the field log: every manga tile
+     * chars=0 lines=0 with parameter warnings — those models are
+     * tessdata_best vertical builds the wasm core cannot load), so
+     * OCR-first manga can never read. The manga modes now ride the AI
+     * VISION path DIRECTLY: the bright-region bubble detection
+     * ([brightRegions]) + one vision card per bubble
+     * ([visionRegions] -> [visionBubbleCard]) — the bubble clustering the
+     * mode was built for, on the detector's own geometry instead of OCR
+     * line boxes. No model download, no host page, no re-arm;
+     * a-manga-without-an-AI-key asks for the key (there is no working
+     * on-device vertical OCR to fall back to — the honest wording).
+     * Manga HD's only difference is the ENCODE (1600 px / q90 vs
+     * 1280 / q75 — [encodeScaled]). The manga PREPROCESS
+     * ([cropTileManga] + the PNG tile) stays in the shared grid stage
+     * (the retained manga variant, probe-pinned) for any future engine
+     * that CAN read vertical JP.
      */
     private fun runMangaStage(a: Activity, bmp: Bitmap, g: Int, hd: Boolean) {
         if (gen.get() != g) return
-        val pack = if (hd) "jpn_vertb" else "jpn_vert"
-        if (!ensureModels(a, bmp, g, arrayOf(pack))) {
-            if (gen.get() != g) return
-            if (cancelled) cancelOcr(a, bmp, g)
-            else failOcr(a, bmp, g, "dl", "Couldn't download OCR data — check connection")
+        if (!AiBridge.configured(a)) {
+            main.post {
+                if (gen.get() != g) return@post
+                try { Diag.log(a, "scr manga cfg") } catch (_: Throwable) {}
+                // saving a key CONTINUES the run on the capture in hand
+                AiBridge.configDialog(a, { url -> openAiUrl(a, url) }) {
+                    if (gen.get() == g) {
+                        try { Diag.log(a, "scr manga cfg saved") } catch (_: Throwable) {}
+                        POOL.execute {
+                            try { runMangaStage(a, bmp, g, hd) } catch (_: Throwable) {}
+                        }
+                    }
+                }
+            }
             return
+        }
+        if (!mangaConfirmed) {
+            // confirmDialog is POOL-safe (it posts the dialog to main
+            // itself and latches HERE)
+            val ok = confirmDialog(a, "Send the manga page to AI?",
+                "This screen's detected speech-bubble regions (images) go to " +
+                        AiBridge.providerName(a) + " for reading and translation. " +
+                        "On-device vertical-Japanese OCR does not work in this " +
+                        "engine (the wasm core rejects the vertical models), so " +
+                        "vision IS the manga path. Everything else stays on-device.")
+            if (!ok) { cancelOcr(a, bmp, g); return }
+            mangaConfirmed = true
         }
         if (gen.get() != g) return
         try {
-            Diag.log(a, "scr manga pack=" + pack + " px=" + bmp.width + "x" + bmp.height +
-                    " grid=1")
-        } catch (_: Throwable) {}
-        val t0 = System.currentTimeMillis()
-        // the shared grid stage — the manga preprocess rides per tile now
-        main.post { runOneStage(a, bmp, arrayOf(pack), g, true, t0) }
+            val tl = lastTl ?: PageTranslate.deviceTl()
+            try {
+                Diag.log(a, "scr manga vision primary hd=" + (if (hd) 1 else 0) +
+                        " px=" + bmp.width + "x" + bmp.height)
+            } catch (_: Throwable) {}
+            val t0 = System.currentTimeMillis()
+            POOL.execute { visionRegions(a, bmp, g, tl, ArrayList(), hd) }
+        } catch (t: Throwable) {
+            failOcr(a, bmp, g, "manga", null)
+        }
     }
-
     /** v1.4.26 — the x2 NEAREST-NEIGHBOUR upscale (filter=false), capped:
      *  long edge <= 2600 px and <= 6.5 MP after the scale (a 1440x3088
      *  screenshot rides its own pixels; a fit-to-screen manga page doubles
@@ -1499,7 +1538,7 @@ object ScreenTranslate {
      *  retired. POOL thread.
      */
     private fun visionRegions(a: Activity, bmp: Bitmap, g: Int, tl: String,
-                              bubbles: ArrayList<SBlock>) {
+                              bubbles: ArrayList<SBlock>, hd: Boolean = false) {
         if (gen.get() != g || cancelled) return
         try {
             Diag.log(a, "scr manga vision regions")
@@ -1518,7 +1557,7 @@ object ScreenTranslate {
                             (interW * interH) * 2 >= rr.width() * rr.height()
                 }
                 if (covered) continue
-                val card = visionBubbleCard(a, bmp, rr, tl, null)
+                val card = visionBubbleCard(a, bmp, rr, tl, null, hd)
                 if (card != null) blocks.add(card)
                 else try { Diag.log(a, "scr manga region " + i + " fail") } catch (_: Throwable) {}
             }
@@ -1537,11 +1576,14 @@ object ScreenTranslate {
     /** one vision card INSIDE its detected bubble region (the region's own
      *  rect — never a grid cell). POOL thread. */
     private fun visionBubbleCard(a: Activity, bmp: Bitmap, rr: Rect,
-                                 tl: String, ctx: String?): SBlock? {
+                                 tl: String, ctx: String?, hd: Boolean = false): SBlock? {
         val tile = try {
             Bitmap.createBitmap(bmp, rr.left, rr.top, rr.width(), rr.height())
         } catch (_: Throwable) { null } ?: return null
-        val enc = encodeAi(tile)
+        // v1.4.28 — Manga HD's encode: 1600 px / q90 (vs the vision tile's
+        // 1280 / q75) — the ONLY difference the HD mode keeps now that the
+        // vertical OCR models are gone from the path
+        val enc = if (hd) encodeScaled(tile, 1600, 90) else encodeAi(tile)
         try { tile.recycle() } catch (_: Throwable) {}
         if (enc == null) return null
         val text = try {
@@ -2362,8 +2404,14 @@ object ScreenTranslate {
             }
             wv.webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-                    if (diagN < 12) {
-                        diagN++
+                    // v1.4.28 — THE VISIBLE-FAIL LAW: console ERROR/WARNING
+                    // lines (the wasm engine's model-parameter warnings)
+                    // always ride the diag; routine lines stay capped.
+                    val lv = m.messageLevel()
+                    val errish = lv == ConsoleMessage.MessageLevel.ERROR
+                            || lv == ConsoleMessage.MessageLevel.WARNING
+                    if (errish || diagN < 12) {
+                        if (!errish) diagN++
                         try { Diag.log(appCtx, "scr ocr console " + m.message()) } catch (_: Throwable) {}
                     }
                     return true
@@ -2486,8 +2534,14 @@ object ScreenTranslate {
 
             @JavascriptInterface
             fun diag(s: String) {
-                if (diagN < 12) {
-                    diagN++
+                // v1.4.28 — THE VISIBLE-FAIL LAW: error-ish lines ALWAYS ride
+                // the diag (the old 12-line cap could swallow an init/
+                // recognize failure behind routine progress noise — the
+                // "chars=0 lines=0 for ALL languages" report stayed
+                // invisible); routine lines stay capped.
+                val errish = s.contains("fail") || s.contains("error") || s.contains("warn")
+                if (errish || diagN < 12) {
+                    if (!errish) diagN++
                     try { Diag.log(appCtx, "scr ocr js $s") } catch (_: Throwable) {}
                 }
             }

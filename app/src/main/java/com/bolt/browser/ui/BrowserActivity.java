@@ -3828,18 +3828,30 @@ public class BrowserActivity extends AppCompatActivity {
                     : getString(R.string.pw_fill_chip,
                             picks.get(0).user.isEmpty() ? picks.get(0).host : picks.get(0).user));
             tv.setOnClickListener(v -> {
-                if (!multi) { fillPwFromChip(picks.get(0)); return; }
-                // the account picker: one row per saved login (user, or the
-                // host when the username was never captured)
-                String[] names = new String[picks.size()];
-                for (int i = 0; i < picks.size(); i++) {
-                    com.bolt.browser.util.PasswordVault.Entry e = picks.get(i);
-                    names[i] = (e.user.isEmpty() ? e.host : e.user)
-                            + (e.host.equals(chipHost) ? "" : " · " + e.host);
-                }
-                com.bolt.browser.util.Ui.choiceSheet(BrowserActivity.this,
-                        getString(R.string.pw_pick_account), names, -1, pi ->
-                                fillPwFromChip(picks.get(pi)));
+                // v1.4.28 — THE AUTOFILL AUTH GATE (the security round's ask:
+                // "before fillPwFromChip AND the account picker, require
+                // device credential"): BOTH legs of the chip tap — the
+                // single-login direct fill AND the multi-login account
+                // picker (its rows reveal usernames) — ride runPwGated.
+                // The pref ("Require unlock for autofill", default ON)
+                // lives on the Saved-passwords screen; a successful unlock
+                // caches for ~60 s so a login form + its follow-up confirm
+                // don't double-prompt; cancelling the prompt fills/picks
+                // NOTHING (the pending action dies with the gate).
+                runPwGated(() -> {
+                    if (!multi) { fillPwFromChip(picks.get(0)); return; }
+                    // the account picker: one row per saved login (user, or the
+                    // host when the username was never captured)
+                    String[] names = new String[picks.size()];
+                    for (int i = 0; i < picks.size(); i++) {
+                        com.bolt.browser.util.PasswordVault.Entry e = picks.get(i);
+                        names[i] = (e.user.isEmpty() ? e.host : e.user)
+                                + (e.host.equals(chipHost) ? "" : " · " + e.host);
+                    }
+                    com.bolt.browser.util.Ui.choiceSheet(BrowserActivity.this,
+                            getString(R.string.pw_pick_account), names, -1, pi ->
+                                    fillPwFromChip(picks.get(pi)));
+                });
             });
             pwChip = tv;
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2,
@@ -3918,6 +3930,42 @@ public class BrowserActivity extends AppCompatActivity {
             if (pwChip != null && pwChip.getParent() == flRoot) flRoot.removeView(pwChip);
         } catch (Throwable ignored) {}
         pwChip = null;
+    }
+
+    // ------------------------------------------------------------ v1.4.28 the autofill auth gate
+
+    /** v1.4.28 — the last successful device unlock (elapsedRealtime ms —
+     *  survives activity recreation within the process; a fresh process
+     *  re-prompts, which is the safe direction). */
+    private static volatile long pwGateOkAt = 0L;
+
+    /** v1.4.28 — the action waiting on the credential prompt (1014). */
+    protected volatile Runnable pwGatePending;
+
+    /** v1.4.28 — THE AUTOFILL AUTH GATE: runs [r] directly when the gate is
+     *  not needed (pref off / no secure lock screen / the ~60 s unlock
+     *  cache still warm); otherwise the device-credential prompt
+     *  (KeyguardManager.createConfirmDeviceCredentialIntent) launches and
+     *  [r] runs ONLY on RESULT_OK (onActivityResult 1014 stamps the
+     *  cache). Cancelling the prompt runs NOTHING — no fill, no account
+     *  picker. A device without a secure lock screen cannot be gated —
+     *  the vault screen's banner already tells that user to set one. */
+    protected void runPwGated(final Runnable r) {
+        try {
+            if (r == null) return;
+            if (!prefs.b("pwGate", true)) { r.run(); return; }              // the pref (default ON)
+            if (android.os.SystemClock.elapsedRealtime() - pwGateOkAt < 60_000L) {
+                r.run(); return;                                            // the ~60 s cache
+            }
+            android.app.KeyguardManager km = (android.app.KeyguardManager)
+                    getSystemService(KEYGUARD_SERVICE);
+            if (km == null || !km.isDeviceSecure()) { r.run(); return; }    // nothing to gate with
+            android.content.Intent i = km.createConfirmDeviceCredentialIntent(
+                    "Bolt is locked", "Unlock to autofill saved passwords");
+            if (i == null) { r.run(); return; }
+            pwGatePending = r;
+            startActivityForResult(i, 1014);
+        } catch (Throwable ignored) {}
     }
 
     // ------------------------------------------------------------ v1.3.39 profile fill chip
@@ -14988,6 +15036,21 @@ public class BrowserActivity extends AppCompatActivity {
                 } catch (Throwable ignored) {}
             }
             try { cb.onReceiveValue(result); } catch (Throwable ignored) {}
+            return;
+        }
+        // v1.4.28 — THE AUTOFILL AUTH GATE's result (request 1014): RESULT_OK
+        // stamps the ~60 s unlock cache and runs the action that was waiting
+        // (the fill, or the account picker); ANY other result (cancel / back)
+        // drops the pending action — nothing is filled, no picker opens.
+        if (requestCode == 1014) {
+            Runnable r = pwGatePending;
+            pwGatePending = null;
+            if (resultCode == RESULT_OK) {
+                pwGateOkAt = android.os.SystemClock.elapsedRealtime();
+                if (r != null) {
+                    try { r.run(); } catch (Throwable ignored) {}
+                }
+            }
             return;
         }
         // v1.3.37 — QR scanner result (request 1006): the decoded text goes
