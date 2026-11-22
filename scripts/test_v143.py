@@ -126,10 +126,22 @@ print("A3 — the vault's caller-IV corpse (PasswordVault)")
 need(re.search(r"cipher\.init\(Cipher\.ENCRYPT_MODE, key\(c\)\)", pv) is not None,
      "ENCRYPT init passes the KEY ALONE — the keystore generates the IV (the documented contract)")
 inits = [l.strip() for l in re.findall(r"cipher\.init\(Cipher\.(?:ENCRYPT|DECRYPT)_MODE[^\n]*", pv)]
-need(len(inits) == 2
-     and any(l.startswith("cipher.init(Cipher.ENCRYPT_MODE, key(c))") for l in inits)
-     and any(l.startswith("cipher.init(Cipher.DECRYPT_MODE, key(c), GCMParameterSpec(128, iv))") for l in inits),
-     f"exactly two cipher inits: ENCRYPT (key alone) + DECRYPT (stored IV) — got {inits}")
+need(any(l.startswith("cipher.init(Cipher.ENCRYPT_MODE, key(c))") for l in inits)
+     and any(l.startswith("cipher.init(Cipher.DECRYPT_MODE, key(c), GCMParameterSpec(128, iv))") for l in inits)
+     and True,
+     f"the VAULT's two cipher inits survive — ENCRYPT (key alone) + "
+     f"DECRYPT (stored IV); the 1.4.28 passphrase-backup pair "
+     f"(ENCRYPT, aesKey / DECRYPT, SecretKeySpec) is a SEPARATE init "
+     f"family — got {inits}")
+     # v1.4.28 re-point (2026-11-22): the count went 2 -> 4 (the encrypted
+     # password backup's own PBKDF2+GCM pair); the two VAULT inits this
+     # gate pins are unchanged and still present
+need(all(l.startswith(("cipher.init(Cipher.ENCRYPT_MODE, key(c))",
+        "cipher.init(Cipher.DECRYPT_MODE, key(c), GCMParameterSpec(128, iv))",
+        "cipher.init(Cipher.ENCRYPT_MODE, aesKey)",
+        "cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key.encoded")) for l in inits),
+     "every cipher init is one of the four known-good forms (vault x2 + "
+     "passphrase backup x2)")
 need(re.search(r"cipher\.init\(Cipher\.DECRYPT_MODE, key\(c\), GCMParameterSpec\(128, iv\)\)", pv) is not None,
      "DECRYPT still supplies the STORED IV (the mirror path — always was correct)")
 need(re.search(r"val iv = cipher\.iv", pv) is not None

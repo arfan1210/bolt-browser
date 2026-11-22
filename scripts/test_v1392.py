@@ -132,8 +132,10 @@ need("plusCell(final int idx)" in act and "i >= n) continue;   // the plus tile"
      "the plus tile carries its index and is never a group target")
 
 print("C1 — the long-hold copy")
-need("t.setOnLongClickListener {" in boltai and "setPrimaryClip" in boltai,
+need("setOnLongClickListener" in boltai and "setPrimaryClip" in boltai,
      "Bolt AI messages copy on LONG-press")
+     # v1.4.28 re-point (2026-11-22): the listener rides the CONTAINER
+     # bubble (box.setOnLongClickListener — the same gesture, same clip)
 need("t.setOnClickListener {\n            try {\n                val cm" not in boltai,
      "the single-tap copy path is gone")
 need("Long-press any message to copy it." in boltai,

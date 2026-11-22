@@ -156,8 +156,12 @@ print()
 print("2 — fix 2: THE HARDCODED OCR LANGUAGE (source law + low yield)")
 need('val p = lastSrc ?: "eng"' in st,
      "langsOf reads the SOURCE choice; the DEFAULT is eng (Latin script) [RAW]")
-need('"auto") arrayOf("chi_sim", "jpn", "eng") else arrayOf(p)' in st,
-     "auto keeps the legacy manga trio; every other source is its own pack [RAW]")
+need('"auto") arrayOf("chi_sim", "eng") else arrayOf(p)' in st,
+     "auto keeps the trusted pair; every other source is its own pack [RAW]")
+     # v1.4.28 re-point (2026-11-22): the jpn member is GONE from auto —
+     # the wasm engine rejects the vert-family models it was there for
+     # (chars=0 lines=0 for all languages once the worker is poisoned);
+     # Japanese screens ride the vision fallback / manga vision-primary
 need("private val LANG_OK = setOf(" in st_code and '"ben"' in st and '"vie"' in st and '"urd"' in st,
      "LANG_OK serves the expanded source-language set")
 need('"scrSrc"' in st and "setSrc(a, packs[w])" in st_code,
@@ -293,12 +297,17 @@ need("MathFonts.present(c)" in ar_code and "return null" in ar_code,
      "mathDrawable declines while the pack is absent (span subset shows)")
 need("MathFonts.ensureAsync(c, onReady = {" in ar_code and "fun refreshPendings()" in ar_code,  # v1.4.25 re-point (2026-11-21): the failure-path nudge (core renders without any pack)
      "the bubbles re-render the moment the pack lands")
-need("holdForFonts(c, md, view)" in ar_code
-     and "render(c: Context, md: String, view: android.widget.TextView? = null)" in ar_code,
-     "render() holds math-carrying bubbles for the pack-ready re-render")
-need("AiRender.render(a, reply, thinking)" in bai_code
-     and "AiRender.render(a, text, t)" in bai_code,
-     "both chat render sites hand the bubble view over")
+need("holdForFonts(c: Context, md: String, box: android.widget.LinearLayout)" in ar_code
+     and "fillMarkdown(c: Context, box: android.widget.LinearLayout, md: String)" in ar_code,
+     "the math-carrying bubbles are held for the pack-ready re-fill")
+     # v1.4.28 re-point (2026-11-22): render() lost the view param —
+     # fillMarkdown owns the hold now (the bubble is the container)
+need("AiRender.fillMarkdown(a, box, text)" in bai_code
+     and "fillBubble(a, thinking, reply, false)" in bai_code,
+     "both chat render sites hand the bubble CONTAINER over")
+     # v1.4.28 re-point (2026-11-22): the render sites became container
+     # fills — addBubble/fillBubble carry fillMarkdown, the streaming
+     # reply re-fills the thinking container through the same helper
 
 # ---- the behavioral probe: the door + render decision, transcribed ----
 print("  ... transcribed probe: the seam doors + the render decision")

@@ -338,12 +338,16 @@ need("TablesExtension.create()" in ar_code,
      "the tables extension is wired into the parser")
 need("if (user || !AiRender.looksMarkdown(text)) {" in bai,
      "ASSISTANT bubbles only — user input stays plain by design")
-need("AiRender.render(a, reply, thinking)" in bai and "thinking.tag = reply" in bai,
+need("thinking.tag = reply" in bai and "fillBubble(a, thinking, reply, false)" in bai,
      # v1.4.24 re-point (2026-11-21): the view rides along — the font-pack
      # split re-renders the bubble when the on-demand fonts land
+     # v1.4.28 re-point (2026-11-22): the bubble is the CONTAINER — the
+     # re-render rides fillBubble -> AiRender.fillMarkdown (which carries
+     # the font-pack hold itself)
      "the reply re-renders on arrival; the raw source rides the tag")
-need("(t.tag as? String) ?: t.text.toString()" in bai,
+need("(v.tag as? String) ?:" in bai,
      "long-press copy yields the RAW source, never rendered glyphs")
+     # v1.4.28 re-point: the tag copy reads the CONTAINER's tag (v.tag)
 
 print("I — the standing sweep count")
 need(gradle.count("versionCode 142") == 1,
