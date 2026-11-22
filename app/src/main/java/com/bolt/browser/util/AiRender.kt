@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.Layout
+import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.AlignmentSpan
@@ -283,15 +284,12 @@ object AiRender {
 
     /** render one reply: markdown + math → Spanned (assistant bubbles).
      *  NEVER throws — worst case the raw text rides out unchanged.
-     *  v1.4.24 — [view] (the bubble TextView) rides along when the caller
-     *  can hand it over: while the math FONT PACK is still downloading,
-     *  the reply renders through the v1.4.20 subset and the bubble is
-     *  held for a full re-render the moment the pack lands (the raw text
-     *  rides the view's tag). */
-    fun render(c: Context, md: String, view: android.widget.TextView? = null): Spanned {
+     *  v1.4.24 — the bubble TextView used to ride along for the math-font
+     *  hold; v1.4.28 — [fillMarkdown] (the container bubble filler) owns
+     *  the hold now ([holdForFonts] holds the whole container). */
+    fun render(c: Context, md: String): Spanned {
         val sb = SpannableStringBuilder()
         try {
-            if (view != null) holdForFonts(c, md, view)
             val prepared = codeProtect(md)
             val segs = pendingSegs
             // v1.4.23 — THE FOUR-PACK joins the parser set: task-list items
@@ -1240,13 +1238,27 @@ object AiRender {
                 val st = spanned.getSpanStart(m)
                 val en = spanned.getSpanEnd(m)
                 if (st < 0 || en <= st || st < pos) continue
-                if (st > pos) out.add(SpannableString(spanned, pos, st))
+                if (st > pos) out.add(copyRange(spanned, pos, st))
                 out.add(m)
                 pos = en
             }
-            if (pos < spanned.length) out.add(SpannableString(spanned, pos, spanned.length))
+            if (pos < spanned.length) out.add(copyRange(spanned, pos, spanned.length))
             if (out.isEmpty()) listOf(spanned) else out
         } catch (_: Throwable) { listOf(spanned) }
+    }
+
+    /** PURE — one range of a Spanned as its own SpannableString (every span
+     *  wholly or partly inside the range rides along, CLIPPED to it). */
+    private fun copyRange(src: Spanned, start: Int, end: Int): SpannableString {
+        val out = SpannableString(src.subSequence(start, end).toString())
+        for (span in src.getSpans(start, end, Any::class.java)) {
+            val s0 = maxOf(src.getSpanStart(span), start) - start
+            val s1 = minOf(src.getSpanEnd(span), end) - start
+            if (s1 > s0) {
+                try { out.setSpan(span, s0, s1, src.getSpanFlags(span)) } catch (_: Throwable) {}
+            }
+        }
+        return out
     }
 
     /** v1.4.28 — builds the drawn-grid [TableView] with theme-aware colors

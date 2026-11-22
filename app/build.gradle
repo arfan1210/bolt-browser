@@ -105,8 +105,14 @@ android {
         // the host re-arm — the fails-after-a-few-runs corpse), the
         // real-line table span, the robust QR gallery ladder + the
         // preview-transform fill assertion.
-        versionCode 141
-        versionName "1.4.27"
+        // v1.4.28 (2026-11-22) — the security + visibility round: the
+        // autofill auth gate + the vault access gate + the encrypted-only
+        // password backup (device credential + passphrase, AES-GCM), the
+        // view-based AI table renderer (the invisible span corpse), the
+        // vision-primary manga path (the wasm-incompatible vert models),
+        // and the QR gallery's full-resolution-first ladder.
+        versionCode 142
+        versionName "1.4.28"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

@@ -607,6 +607,8 @@ object BoltAi {
         val sp = View(a)
         sp.layoutParams = LinearLayout.LayoutParams(1, Fx.dp(a, 8).toInt())
         l.addView(sp)
+    }
+
     /** one chat bubble — user right/accent, AI left/surface. v1.3.76:
      *  SINGLE-TAP COPY (the field ask: "an option to like copy the prompts
      *  and replies with a single tap"). v1.3.92 — LONG-HOLD COPY (the
