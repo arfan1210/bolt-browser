@@ -164,7 +164,7 @@ need(ai is not None and ai.group(1) == "1280" and ai.group(2) == "75",
 # <=1600/90 OCR encode (encodeFor/encodeJpeg) — every grid cell OCRs at
 # NATIVE resolution through cropTile/encodeTile (JPEG q92, no downscale);
 # encodeAi (1280/75 above) still carries the vision tile cards.
-need("private fun encodeTile(t: Bitmap): Enc?" in scr_code
+need("private fun encodeTile(t: Bitmap, png: Boolean): Enc?" in scr_code  # v1.4.27 re-point (2026-11-22): the tile encoder gained the PNG variant param (the manga preprocess tile); the JPEG q92 law rides the else branch
      and "t.compress(Bitmap.CompressFormat.JPEG, 92, bo)" in scr_code,
      "the grid OCR tiles encode NATIVE-resolution q92 (no downscale)")
 need("2200" not in scr_code,

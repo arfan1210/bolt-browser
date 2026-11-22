@@ -230,12 +230,12 @@ need('"ai translate 400 raw cap=$c body="' in ab,
      "the RAW 400 body rides to Diag (shortErr hid the exact rejection; RAW)")
 need("while (r.first == 400) {" in ab_code,
      "ANY 400 walks the ladder-down (not just a body naming thinking)")
-need("AiBridge.textTranslate(a, lines, tl)" in st_code  # v1.4.23 re-point (2026-11-20): OCR-first hybrid — tiling demoted to the genuine-cut fallback (visionFallback); the fresh pins live in test_v1423 section B
+need("AiBridge.textTranslate(a, flat, tl, true)" in st_code  # v1.4.23 re-point (2026-11-20): OCR-first hybrid — tiling demoted to the genuine-cut fallback (visionFallback); the fresh pins live in test_v1423 section B  # v1.4.27 re-point (2026-11-22): the ONE-pipeline round: the call rides the CLUSTER list with markBreaks (the manga/bubble protocol became the shared one)
      and "visionFallback(a, bmp, g, tl," in st_code,
      "OCR FIRST, ONE pure-text request, the vision path demoted to the "
      "genuine-cut / OCR-blind fallback (the hybrid; the old proactive-"
      "tiles pin retired)")
-need("scr ai tile $i chars=" in st,  # v1.4.25 re-point (2026-11-21): the grid law's per-tile char-yield breadcrumb (the 2x2 split-ladder left with the box_2d road)
+need('"scr tile " + i + " chars="' in st,  # v1.4.25 re-point (2026-11-21): the grid law's per-tile char-yield breadcrumb (the 2x2 split-ladder left with the box_2d road)  # v1.4.27 re-point (2026-11-22): the merged pipeline renamed the breadcrumb (scr tile — every mode's per-tile yield rides it)
      "the per-tile yield breadcrumb: every grid cell's OCR yield rides "
      "the diag (shouldTile stays live as the MAX_TOKENS cut's contract; RAW)")
 need('getString("translateModel", "")' in ab,
@@ -252,7 +252,7 @@ need("function photoCtx(el){" in mh  # v1.4.23 re-point (2026-11-20): the uiCtx 
      and "t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE'" in mh,
      "the CONTENT walk: photo-classed ancestors (article/main/p/figure) "
      "within 6 levels keep their media un-inverted")
-need("function bannerish(el){" in mh and "(mx/mn)>=2.5" in mh,  # v1.4.23 re-point (2026-11-20): the uiCtx family is RETIRED — the DEFAULT-FLIP round; the fresh pins live in test_v1423 section A
+need("function bannerish(el){" in mh and "var th=(el.tagName==='IMG')?1.5:2.5;" in mh,  # v1.4.23 re-point (2026-11-20): the uiCtx family is RETIRED — the DEFAULT-FLIP round; the fresh pins live in test_v1423 section A  # v1.4.27 re-point (2026-11-22): the IMG banner threshold is 1.5 (the TBS 16:9-thumbnail round); every other element keeps 2.5
      "the CONTENT markers: banner-shaped (aspect >= 2.5) small media "
      "stays un-inverted; everything else small RIDES the flip (the "
      "uiCtx link-guess retired)")

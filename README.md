@@ -2024,6 +2024,141 @@ session, 2026-11-20):
 - (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
   candidate.
 
+
+**v1.4.27 — THE PICTURE-STACK + MERGED-PIPELINE ROUND** (the twentieth
+session, 2026-11-22): four fixes root-caused from the user's saved TBS
+DOM (a Business Standard page captured with the dark engine live) + the
+field report (photo-from-device QR, the camera's bottom-half-black
+preview, manga failing after a few runs and reading nothing zoomed-out,
+AI tables as a text slab).
+
+1. *Forced dark — THE NESTED-MEDIA EXEMPTION (the TBS picture corpse).*
+   Every story thumbnail on tbsnews.net read as an x-ray negative. The
+   saved DOM's evidence: 65 `<picture class="ratio ratio__16x9">` blocks
+   each wrapping an `<img class="ratio ratio__16x9 lazyloaded">` with NO
+   bolt class — the counter-invert applies to img, video, picture,
+   canvas and svg TOGETHER, so picture>img stacked html x picture x img
+   = 3 filters = ODD = net INVERTED (a standalone img is 2 = correct).
+   The fix is CSS-ONLY BY DESIGN: `picture img, picture video, picture
+   canvas, picture svg {filter:none!important;}` — media inside an
+   already-counter-inverted `<picture>` contributes NO second
+   counter-filter, so picture>img = html x picture = 2 = ORIGINAL. The
+   classifier and the v1.4.26 DIU round are untouched on this leg (the
+   DIU portal has no `<picture>` at all — the fixture walk proves the
+   isolation, and test_v1426.py still walks green against the current
+   source). The belt-and-braces for plain-img thumbnails: a REMOTE-URL
+   (http/https) IMG over 48 px with no icon-named ancestor is CONTENT
+   (remoteUrl), and the IMG banner-shape threshold dropped to a 1.5
+   aspect (16:9 thumbs are content at any size; data:URI square icons
+   never match either law — probe-pinned both in test_v1427 and in the
+   TBS/DIU fixture walk).
+
+2. *Translate — THE ONE-PIPELINE MERGE.* The old shape: AI Page = the
+   accurate textTranslate but per-LINE cards (and vision cards on FIXED
+   grid cells); Manga = bubble cards through a SEPARATE whole-page
+   OcrHost pass that failed after a few runs (a slow recognize stacked
+   the next run behind a stuck worker — the overwriting orphaned the old
+   callbacks, the stale 150 s timeout then fired into the NEW job, and
+   the whole-page upscale read nothing unless zoomed to 1-2 blocks).
+   The merged shape: EVERY mode (AI Page / Basic / Manga / Manga HD)
+   rides the SAME per-tile native-resolution grid pass; ALL collected
+   line boxes CLUSTER into bubble/paragraph regions across tiles
+   (bubblesOf — line boxes on opposite sides of a tile seam merge into
+   ONE region, probe-pinned) and ONE card places per CLUSTER (the
+   cluster's own extent, sampled local background, the median original
+   line height, line breaks preserved through the ' ~ ' markers) —
+   never fixed grid cells, never model box_2d. Translation rides the
+   ONE textTranslate the AI-Page path always used (with its 503/400
+   retry ladder, cap ladder and model chain) — the accuracy source AND
+   the failure fix. Manga is a PREPROCESSING VARIANT (the x2-nearest
+   grayscale hard-5/95 PNG preprocess PER TILE through
+   cropTileManga/encodeTile(png) + the jpn_vert/jpn_vertb models) —
+   the whole-page host run is RETIRED (six stage functions deleted). The
+   host lifecycle is the robust shared one: a run onto a busy page
+   RESETS it first (window.__reset terminates the stuck worker and
+   clears the chunk queue), the 150 s timeout is SEQUENCE-GUARDED (an
+   overtaking run's callbacks are never failed by a stale timer) and
+   also re-arms the page, and the host page itself fails fast ('busy')
+   when a job is still pending. Diag: per-tile yields + the cluster
+   count + WHICH path ran (ai/gtx). Probe: the stuck-worker re-arm
+   ladder + 5 consecutive runs succeeding — the REAL page script under
+   Node against a never-resolving recognize mock.
+
+3. *Bolt AI tables — REAL LINES.* The GFM table was an aligned
+   monospace text grid — no borders, no header band, no cell padding.
+   The TableSpan (a ReplacementSpan) draws the true grid on the canvas:
+   the outer border rides the same rules as every row/column boundary
+   (rows+1 horizontal + cols+1 vertical — a 3x3 table draws 4 + 4,
+   probe-pinned), the BOLD header row sits on its filled band, cells pad
+   (10dp/5dp), line/text colors are theme-aware, column widths come
+   from the content (an equal-split floor; one bounded type-shrink
+   against the width budget), and getSize grows the line's metrics to
+   the full table height so the TextView lays the grid out as one tall
+   line. renderTable stays the never-eat-a-reply fallback; the raw
+   markdown keeps riding the bubble's tag for long-press copy.
+
+4. *QR — (a) THE ROBUST GALLERY LADDER.* decodeUri decoded ONCE at
+   ~2000 px through the plain two-attempt decoder — a stylized
+   low-contrast QR occupying part of a large photo never survived. Now:
+   FULL resolution first (the smallest inSampleSize holding the decode
+   under the 8 MP memory law), each scale through decodeRobust — the
+   camera's full kit (plain + inverted ARGB, the luma contrast-stretch
+   + half-scale passes, the 90/180/270 rotations, and a TEN-WINDOW crop
+   ladder at two granularities: the 80% center + four ~55% quadrants,
+   then the five thirds) — then progressive downscales
+   (maxDim/1200/800). Probe: a 12%-contrast stylized QR in the corner of
+   a 1600x1200 photo decodes through the br-third window (the old
+   single pass cannot read it — pinned); rotate90Luma's index math was
+   itself caught by the gate's first run (the write-before-read corpse
+   class). (b) THE PREVIEW FILL ASSERTION: the transform re-derives on
+   the FIRST delivered frame (onSurfaceTextureUpdated) and on every
+   layout, computes against the ACTUAL pinned buffer dims + the
+   current view dims, ASSERTS the cover scale fills BOTH axes
+   (scaled content >= view on width and height), re-pins the buffer
+   once on mismatch (one-shot), and Diags view/buf/theta/scale so a
+   residual mismatch is readable in the field. The TextureView stays
+   MATCH_PARENT both axes.
+
+5. *The v1.4.27 gate* (scripts/test_v1427.py): the parity arithmetic
+   (3 = inverted corpse, 2 = original), the TBS fixture walk + the DIU
+   regression carrier in ONE harness (the hard constraint — the saved
+   DIU DOM must keep passing), the stuck-worker re-arm + 5-runs Node
+   probe on the REAL page script, the cross-tile cluster table, the
+   table rule geometry, the zxing stylized-photo probe, the fills law
+   + the one-shot re-pin ladder; 45 prior gates re-pinned to 141/1.4.27
+   (scripts/repin_gates_1427.py) and six dated re-points where the
+   merge legitimately moved pinned targets (encodeTile's PNG param, the
+   per-tile breadcrumb rename, the 1.5 IMG banner threshold, the
+   cluster-list textTranslate call, the merged aggregate guard, the
+   under-read/read verdicts); dual-published on both repos.
+
+**Plans / candidates for future versions (v1.4.27 edition):**
+- THE LAUNCH LAW stays forever (carried from every edition since
+  v1.4.23).
+- The picture round wants its field read-back: the census line on a
+  news site with picture-wrapped thumbnails (thumbnails readable, no
+  x-ray negatives) and NO DIU regression (late/keep unchanged there).
+- The merged pipeline wants its field read-back: `scr grid tiles=…
+  clusters=N path=ai|gtx` on a zoomed-out dense page (clusters
+  spanning tile seams), a manga page (cards INSIDE bubbles, line
+  breaks stacked), and 5 consecutive runs without a failure.
+- The table round wants a real AI reply with a wide GFM table: the
+  grid drawn with visible rules at every boundary, header bold on its
+  band, no clipping on a narrow screen.
+- The QR round wants the gallery read-back: a photo of a screen/code
+  decoding through the ladder (the diag could name the pass), and the
+  scanner's `qr preview view=… buf=… theta=… scale=…` line on a
+  bottom-half-black-shaped device showing fills (no MISMATCH).
+- (carried) The jlatexmath optional pack lands at ~289 KB one-time; the
+  EasyList/EasyPrivacy snapshots remain the next APK-size lever.
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate.
+
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

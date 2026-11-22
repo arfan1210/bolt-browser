@@ -443,15 +443,14 @@ need("AiBridge.visionTileTranslate(a, enc.b64, tl, enc.w, enc.h, ctx)" in st_cod
      "the per-tile VISION call is text-only (visionTileTranslate)")
 need("gridCard(bmp, rect, text)" in st_code and "internal fun gridCardRect(w: Int, h: Int, rect: IntArray): Rect" in st_code,
      "the FIXED grid cell places every vision card (gridCard/gridCardRect)")
-need('"scr ai tile $i chars=$tchars lines="' in st,
+need('"scr tile " + i + " chars=" + tc + " lines="' in st,  # v1.4.27 re-point (2026-11-22): the merged pipeline renamed the per-tile breadcrumb
      "the per-tile char-yield Diag breadcrumb (RAW)")
 need("visionFallback(a, bmp, g, tl, transcript)" in st_code
      and "AiBridge.shouldTile(AiBridge.lastError)" in st_code,
      "the MAX_TOKENS cut still hands the transcript to the vision grid")
 need('"scr ai vision ok cells="' in st,
      "the fallback's coverage Diag counts CELLS, not box lines")
-need("val low = chars < YIELD_FLOOR" in st_code
-     and "if (hybridBlocks.isEmpty() || low) {" in st_code,
+need("if (all.isEmpty() || chars < YIELD_FLOOR) {" in st_code,  # v1.4.27 re-point (2026-11-22): the merged decision's aggregate guard (the cluster list replaced hybridBlocks)
      "the aggregate low-yield floor still guards the whole screen")
 need("fun visionTileTranslate(ctx: Context, b64: String, tl: String, iw: Int, ih: Int," in ab_code,
      "AiBridge carries the grid vision call")

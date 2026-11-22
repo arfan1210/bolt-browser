@@ -175,10 +175,9 @@ need('"ben" to 855841L' in st and '"vie" to 531275L' in st,
      "the new packs' model sizes are the pinned tessdata_fast repo's own")
 need("private const val YIELD_FLOOR = 120" in st_code,
      "THE LOW-YIELD LAW: <120 chars on a full screen = not read")
-need("val low = chars < YIELD_FLOOR" in st_code
-     and "if (hybridBlocks.isEmpty() || low) {" in st_code,  # v1.4.25 re-point (2026-11-21): the grid hybrid's aggregate guard (per-tile verdicts ride TILE_FLOOR)
+need("if (all.isEmpty() || chars < YIELD_FLOOR) {" in st_code,  # v1.4.25 re-point (2026-11-21): the grid hybrid's aggregate guard (per-tile verdicts ride TILE_FLOOR)  # v1.4.27 re-point (2026-11-22): the merged decision's aggregate guard (the cluster list replaced hybridBlocks)
      "low yield -> the vision fallback (not the sparse-fragment hybrid)")
-need('" -> vision"' in st and '" -> hybrid"' in st,
+need('" -> under-read"' in st and '" -> read"' in st,  # v1.4.27 re-point (2026-11-22): the merged per-tile breadcrumb verdicts (under-read tiles are named honestly; the ai-only prefix left with the split)
      "the diag names the OCR yield AND the path that ran (RAW)")
 need('" src=" + srcPack(a)' in st,
      "the hybrid-ask diag names the source pack (RAW)")

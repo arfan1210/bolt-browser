@@ -241,7 +241,7 @@ need("internal fun gridOf(w: Int, h: Int): Array<IntArray>" in st_code
      "the grid geometry + card rects are PURE (probe-pinned)")
 need("AiBridge.shouldTile(AiBridge.lastError)" in st_code,
      "the MAX_TOKENS cut still hands off to the vision grid")
-need('"scr ai tile' in st,
+need('"scr tile' in st,  # v1.4.27 re-point (2026-11-22): the merged pipeline renamed the per-tile breadcrumb (every mode rides the same grid stage now)
      "the tile Diag breadcrumbs (enter + per-tile failure)")
 
 print("D — fix 4: the single-route image search")

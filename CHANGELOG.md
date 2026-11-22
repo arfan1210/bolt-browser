@@ -4,6 +4,127 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.27] — 2026-11-22
+
+**The picture-stack + merged-pipeline round: four field-rooted fixes —
+thumbnails that read as x-ray negatives because the counter-invert stacked
+three filters on picture-wrapped images, screen translate unified into ONE
+content-aware pipeline (cluster cards, one translation channel, a manga
+preprocessing variant and a host that re-arms instead of dying after a few
+runs), AI tables drawn as REAL ruled grids, and a QR round that gives the
+gallery picker the camera's full multi-pass kit plus a preview that
+asserts it fills the screen from the first delivered frame. Root-caused
+from the user's saved TBS DOM (the news-site fixture) and the field
+report. The launch smoke rung stays in the pipeline; the v1.4.26 DIU
+fixture still walks green.**
+
+### 1. FORCED DARK: PICTURE STACKING — the saved-TBS root-cause
+- Field shape: on tbsnews.net every story thumbnail rendered as an x-ray
+  negative. The saved DOM's evidence: 65 `<picture
+  class="ratio ratio__16x9">` blocks each wrapping an `<img
+  class="ratio ratio__16x9 lazyloaded">` with NO `__bolt` class — the
+  counter-invert applies to img, video, picture, canvas and svg TOGETHER,
+  so picture>img stacked html(invert) x picture(invert) x img(invert) = 3
+  filters = ODD = net inverted (a standalone img is 2 = correct).
+- Root cause: the CSS never accounted for NESTED media — any media family
+  member inside another one double-counter-inverts.
+- Fix (CSS-only — the classifier and the DIU portal round are untouched on
+  this leg): the NESTED-MEDIA EXEMPTION — `picture img, picture video,
+  picture canvas, picture svg {filter:none!important;}` — media inside an
+  already-counter-inverted `<picture>` contributes NO second
+  counter-filter, so picture>img = html x picture = 2 = ORIGINAL. The DIU
+  portal has no `<picture>` at all (the fixture walk proves the
+  isolation).
+- Belt-and-braces for plain-img thumbnails on other sites: a REMOTE-URL
+  (http/https) IMG larger than 48 px with no icon-named ancestor is
+  CONTENT, and the IMG banner-shape threshold drops to a 1.5 aspect so
+  16:9 thumbs are content at any size. The DIU portal's icons are
+  data:URI squares inside icon-named wrappers — untouched (probe-pinned).
+- Probe: the parity arithmetic (3 = inverted corpse, 2 = original) + the
+  TBS fixture walk (picture thumbnails stay media, remote/banner laws
+  hold) + the DIU regression carrier rides the same walk.
+
+### 2. TRANSLATE: THE ONE CONTENT-AWARE PIPELINE
+- Field shape: the AI Page mode read accurately but placed cards on fixed
+  grid cells; the Manga mode placed bubble cards through a SEPARATE
+  whole-page OcrHost pass that failed after a few runs (a slow recognize
+  stacked the next run behind a stuck worker, the overwriting orphaned
+  the old callbacks and the stale 150 s timeout fired into the NEW job) —
+  and its whole-page upscale read nothing unless the page was zoomed to
+  1-2 blocks.
+- Fix — ONE pipeline for EVERY mode (AI Page, Basic OCR, Manga, Manga HD):
+  every mode rides the SAME per-tile native-resolution grid pass (small
+  and zoomed-out text reads at native tile resolution); ALL collected
+  line boxes CLUSTER into bubbles/paragraphs across tiles (bubblesOf) and
+  ONE card places per CLUSTER region (the cluster's own extent, sampled
+  local background, the original line height, line breaks preserved
+  through the ' ~ ' markers) — never fixed grid cells, never model box_2d.
+  Translation rides the ONE textTranslate the AI-Page path always used
+  (with its 503/400 retry ladder, cap ladder and model chain) — the
+  accuracy source AND the failure fix. Manga/Manga HD are a
+  PREPROCESSING VARIANT of the same pipeline (the x2-nearest grayscale
+  hard-5/95 PNG preprocess PER TILE + the jpn_vert/jpn_vertb models), not
+  a separate placement or host path — the whole-page OcrHost run is
+  RETIRED. The host lifecycle is the robust shared one: a run onto a busy
+  page RESETS it first (window.__reset terminates the stuck worker), the
+  timeout is sequence-guarded (an overtaking run's callbacks are never
+  failed by a stale timer) and ALSO re-arms the page, and the host page
+  itself fails fast ('busy') when a job is still pending.
+- Diag: per-tile char yields, the cluster count and WHICH translate path
+  ran (ai / gtx) ride one line.
+- Probe: the cross-tile cluster table (line boxes on opposite sides of a
+  tile seam merge into ONE region), the stuck-worker re-arm ladder + 5
+  consecutive runs succeeding (the REAL page script under Node), and the
+  source pins of the one-road dispatch.
+
+### 3. BOLT AI TABLES: REAL LINES
+- Field shape: GFM tables rendered as an aligned monospace text grid — no
+  borders, no header band, no cell padding; a table read as a code slab.
+- Fix: the TableSpan — a custom ReplacementSpan that draws the true grid
+  on the canvas: the outer border rides the same rules as every
+  row/column boundary (rows+1 horizontal + cols+1 vertical rules — a 3x3
+  table draws 4 + 4), the BOLD header row sits on its filled band, cells
+  pad (10dp/5dp), line/text colors are theme-aware, column widths come
+  from the content (equal-split floor, one bounded type-shrink against the
+  width budget), and getSize grows the line's metrics to the full table
+  height so the TextView lays the grid out as one tall line. The raw
+  markdown keeps riding the bubble's tag for long-press copy; the
+  renderTable text grid stays the never-eat-a-reply fallback.
+- Probe: the rule geometry (a 3x3 draws 4 + 4 rules, all 9 cells, header
+  row bold) + the span/draw source pins.
+
+### 4. QR: THE GALLERY LADDER + THE PREVIEW FILL ASSERTION
+- (a) Field shape: picking a photo from the device never detected the QR
+  — the gallery path was one ~2000 px downsample through the plain
+  two-attempt decoder. Fix: FULL resolution first (the smallest inSampleSize
+  holding the decode under the 8 MP memory law), each scale through
+  decodeRobust — the camera's full multi-pass kit (plain + inverted ARGB,
+  the luma contrast-stretch + half-scale passes, the 90/180/270
+  rotations, and a ten-window crop ladder at two granularities for a code
+  that occupies part of the frame) — then progressive downscales
+  (maxDim/1200/800). Probe: a stylized 12%-contrast QR in the corner of a
+  1600x1200 photo decodes (the old single pass cannot read it), the pure
+  rotate/crop/luma passes pinned.
+- (b) Field shape: the scanner's camera showed a bottom-half-black panel.
+  Fix: the preview transform re-derives on the FIRST delivered frame
+  (onSurfaceTextureUpdated) AND on every layout, computes against the
+  ACTUAL pinned buffer dims + current view dims, ASSERTS the cover scale
+  fills BOTH axes (scaled content >= view on width and height), re-pins
+  the buffer once on mismatch, and Diags viewW/H, buffer dims, theta and
+  the cover scale so a residual mismatch is readable in the field. The
+  TextureView stays full-screen (MATCH_PARENT both axes). Probe: the
+  fills law (portrait 720x1600 with 640x480 and 1280x720 buffers) + the
+  one-shot re-pin ladder.
+
+### Gates
+- scripts/test_v1427.py: the four probes (the parity table + the TBS/DIU
+  fixture walks, the re-arm + 5-consecutive-runs Node probe on the real
+  page script, the table rule geometry, the zxing stylized-photo probe +
+  the fills law) and the source pins. 45 prior gates re-pinned to
+  141/1.4.27 (scripts/repin_gates_1427.py); dated re-points where the
+  merge legitimately moved pinned targets. The Robolectric launch smoke
+  rung stays before the build.
+
 ## [1.4.26] — 2026-11-21
 
 **The black-on-black + bubble round: four field-rooted fixes — forced dark

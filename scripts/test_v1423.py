@@ -97,7 +97,8 @@ need("function uiCtx(el){" not in mh and "function uiIcon(el){" not in mh,
      "the uiCtx/uiIcon context-guessing family is RETIRED")
 need("t==='ARTICLE'||t==='MAIN'||t==='P'||t==='FIGURE'" in mh,
      "photo-classed content: article/main/p/figure ancestors within 6 levels")
-need("(mx/mn)>=2.5" in mh, "banner-shaped content: aspect ratio >= 2.5 stays un-inverted")
+need("var th=(el.tagName==='IMG')?1.5:2.5;" in mh,  # v1.4.27 re-point (2026-11-22): the IMG banner threshold is 1.5 (the TBS 16:9-thumbnail round — probe-pinned in test_v1427); every other element keeps 2.5
+     "banner-shaped content: aspect >= 1.5 for IMGs, 2.5 otherwise (small media stays un-inverted)")
 need("function raiseCss(c)" in mh and "if(y>=102)return null;" in mh,
      "the UPWARD clamp exists: a pinned-dark glyph lifts to the 153 mid-gray")
 # v1.4.25 re-point (2026-11-21): the faint-glyph corpse — the raise is
@@ -291,13 +292,13 @@ need("fun visionTranslateX(ctx: Context, b64: String, tl: String, iw: Int, ih: I
      "the tile-context variant: the full-screen transcript rides tile requests")
 need("fun ocrBlocks(json: String, bmp: Bitmap, enc: Enc)" in st_code,
      "the shared OCR block parser (BASIC + AI hybrid, one parse law)")
-need("AiBridge.textTranslate(a, lines, tl)" in st_code,
+need("AiBridge.textTranslate(a, flat, tl, true)" in st_code,  # v1.4.27 re-point (2026-11-22): the ONE-pipeline round: the call rides the CLUSTER list with markBreaks
      "the hybrid: OCR reads the text, ONE text request translates it")
 need("private fun visionFallback(a: Activity, bmp: Bitmap, g: Int, tl: String," in st_code
      and "AiBridge.shouldTile(AiBridge.lastError)" in st_code,
      "the vision path is DEMOTED: fallback only, full-screen first, tiles on "
      "a genuine cut")
-need("val transcript = lines.joinToString(\"\\n\")" in st
+need("val transcript = flat.joinToString(\"\\n\")" in st  # v1.4.27 re-point (2026-11-22): the transcript rides the flattened cluster list (the merged pipeline)
      and "visionFallback(a, bmp, g, tl, transcript)" in st_code,
      "the MAX_TOKENS cut hands the OCR transcript to the fallback as context")
 need('"scr ai hybrid ok lines="' in st, "the hybrid delivery Diag line (RAW)")
