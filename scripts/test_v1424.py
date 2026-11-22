@@ -100,9 +100,9 @@ ar_code = strip(ar)
 bai_code = strip(bai)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+141\b", gradle) is not None, "versionCode 141")
-need(re.search(r'versionName\s+"1\.4\.27"', gradle) is not None,
-     'versionName "1.4.27"')
+need(re.search(r"versionCode\s+142\b", gradle) is not None, "versionCode 142")
+need(re.search(r'versionName\s+"1\.4\.28"', gradle) is not None,
+     'versionName "1.4.28"')
 need("<item>1.4.24|" in strings, "the 1.4.24 About-changelog entry landed")
 need("stale navigation snapshot" in strings.lower()
      or "resurrects the OLD page" in strings,

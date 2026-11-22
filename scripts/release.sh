@@ -609,6 +609,30 @@ python3 scripts/test_v1426.py
 # re-arm + 5-consecutive-runs Node probe on the REAL page script, the
 # table rule geometry, the zxing stylized-photo probe, the fills law
 python3 scripts/test_v1427.py
+
+# ---- 1z-28. v1.4.28 gate: THE SECURITY + VISIBILITY ROUND (the user's
+# security asks made law: THE AUTOFILL AUTH GATE — the device credential
+# before fillPwFromChip AND the account picker, the pwGate pref default
+# ON, the ~60 s unlock cache, a cancelled prompt fills/picks NOTHING;
+# THE VAULT ACCESS GATE — PasswordVaultActivity's entries stay UNBUILT
+# until onActivityResult(1013) answers RESULT_OK, a cancel finish()es;
+# THE ENCRYPTED PASSWORD BACKUP — the plaintext-zip corpse dies:
+# device-credential gate -> passphrase prompt -> passwords.vault
+# AES-256-GCM under PBKDF2-HmacSHA256 120k, the scheduled headless run
+# skips passwords honestly, the restore path gates + asks the passphrase
+# and the legacy plain passwords.json import stays behind the same gate)
++ the three bug fixes (THE VIEW-BASED AI TABLE RENDERER — the invisible
+TableSpan corpse: the TableMark marker + splitTables + the container
+bubble interleaving text segments with real TableView children whose
+onDraw paints the true grid, probe-pinned by PIXELS under Robolectric's
+native graphics; THE VISION-PRIMARY MANGA PATH + THE VERT-FAMILY TRIM —
+the wasm engine rejects the jpn_vert model family, so manga rides the
+bright-region bubble vision directly and "auto" drops to chi_sim+eng
+with the VISIBLE-FAIL law making every init/recognize failure + engine
+warning ride the diag uncapped; THE QR FULL-RESOLUTION-FIRST LADDER —
+sample 1 up to 24 MP before the 8 MP memory law, every scale through
+decodeRobust's rotations + center-crops)
+python3 scripts/test_v1428.py
 mark gates
 fi
 

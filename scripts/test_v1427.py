@@ -148,10 +148,14 @@ print()
 print("B — TRANSLATE: THE ONE-PIPELINE MERGE")
 
 # ---- B1. the one road (source pins) ----
-need("main.post { runOneStage(a, bmp, langs, g, false, t0) }" in st_raw
-     and "main.post { runOneStage(a, bmp, arrayOf(pack), g, true, t0) }" in st_raw,
-     "the AI and Manga adapters post the SAME shared grid stage (one "
-     "pipeline for every mode)")
+need("main.post { runOneStage(a, bmp, langs, g, false, t0) }" in st_raw,
+     "the AI adapter posts the shared grid stage "
+     "  # v1.4.28 re-point (2026-11-22): the manga=true half moved - the "
+     "wasm engine rejects the jpn_vert model family (chars=0 lines=0 for "
+     "every language), so the manga modes dispatch VISION-PRIMARY "
+     "(runMangaStage -> visionRegions, no OCR); the shared grid stage + "
+     "its manga preprocess variant stay in the source for a future "
+     "engine that can read vertical JP")
 need("private fun runOneStage(a: Activity, bmp: Bitmap, langs: Array<String>, g: Int,"
      in st_raw and "private fun mergedDone(" in st_raw,
      "the shared stage + the merged decision exist")
@@ -339,9 +343,13 @@ print()
 print("C — BOLT AI TABLES: THE REAL-LINE GRID")
 
 # ---- C1. the span + its laws (source pins) ----
-need("internal class TableSpan(" in ar_raw
-     and ": ReplacementSpan() {" in ar_raw,
-     "the TableSpan is a ReplacementSpan that draws the table on the canvas")
+need("internal class TableView(" in ar_raw
+     and " : android.view.View(ctx) {" in ar_raw,
+     "the table renders as a REAL VIEW whose onDraw paints the grid "
+     "  # v1.4.28 re-point (2026-11-22): the TableSpan ReplacementSpan "
+     "RENDERED NOTHING in the field (the invisible-table corpse), "
+     "replaced by the view-based renderer (TableView + splitTables + "
+     "fillMarkdown)")
 need("for (r in 0..rows.size) {" in ar_raw
      and "canvas.drawLine(x, top0 + r * rowH, x + totalW, top0 + r * rowH, line)" in ar_raw,
      "the HORIZONTAL rules: one per row boundary (0..rows.size inclusive)")
@@ -359,17 +367,23 @@ need("try { Prefs.get(c).isDark() } catch (_: Throwable) { false }" in ar_raw
 need("probe.measureText(cell)" in ar_raw,
      "column widths measured from the CONTENT")
 need("sb.append('\\u2009')" in ar_raw
-     and "sb.setSpan(span, st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)" in ar_raw,
-     "the span rides its slot char in the bubble text")
+     and "sb.setSpan(TableMark(rows), st, sb.length," in ar_raw,
+     "the marker rides its slot char in the bubble text "
+     "  # v1.4.28 re-point: the marker (not the drawn span) - splitTables "
+     "cuts the rendered text at the marks and the bubble container "
+     "interleaves segments with the table views")
 need("fun renderTable(rows: List<List<String>>): String {" in ar_raw
      and "val start = sb.length\n            sb.append(renderTable(rows))" in ar_raw,
      "renderTable stays the plain-text FALLBACK (the never-eat-a-reply law)")
-need("fm.ascent = -totalH.toInt()" in ar_raw,
-     "getSize grows the line's metrics to the full table height (the "
-     "TextView lays the grid out as one tall line)")
-need("t.tag = text" in open(os.path.join(ROOT,
+need("setMeasuredDimension(w, (totalH + 2f).toInt())" in ar_raw,
+     "onMeasure sizes the view to the full table height (a REAL view - "
+     "the framework guarantees an attached view's onDraw runs) "
+     "  # v1.4.28 re-point: the ReplacementSpan's fm-growth trick died "
+     "with the span")
+need("box.tag = text" in open(os.path.join(ROOT,
      "app/src/main/java/com/bolt/browser/util/BoltAi.kt"), encoding="utf8").read(),
-     "the raw markdown keeps riding the bubble's tag (long-press copy)")
+     "the raw markdown keeps riding the bubble's tag (long-press copy) "
+     "  # v1.4.28 re-point: the bubble is the CONTAINER now (box.tag)")
 
 # ---- C2. PURE: the drawn geometry (transcribed from TableSpan.draw) ----
 def table_grid(nrows, ncols, row_h=40.0, col_w=None):
@@ -584,8 +598,11 @@ need(not repinned2 and fills2,
 
 print()
 print("E — THE BOLT-AI + AiBridge unchanged halves")
-need("internal fun tableSpan(c: Context, rows: List<List<String>>): TableSpan?" in ar_raw,
-     "the TableSpan builder wires the theme colors + dp paddings")
+need("fun tableView(c: Context, rows: List<List<String>>): android.view.View {" in ar_raw
+     and "fun splitTables(spanned: Spanned): List<Any> {" in ar_raw,
+     "the TableView builder wires the theme colors + dp paddings (and "
+     "the split) "
+     "  # v1.4.28 re-point: tableSpan() retired with the span")
 need("fun textTranslate(ctx: Context, lines: List<String>, tl: String,\n"
      "                     markBreaks: Boolean): List<String?>?" in ab_raw,
      "the shared textTranslate (markBreaks variant) is the ONE translation "
@@ -810,9 +827,9 @@ need(sweep == 0, "the standing sweep repinned every gate to 141/1.4.27 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1427.py")),
      "the v1.4.27 sweep script is checked in (provenance)")
-need('versionName "1.4.27"' in open(BG, encoding="utf8").read()
-     and "versionCode 141" in open(BG, encoding="utf8").read(),
-     "the build carries versionName 1.4.27 / versionCode 141")
+need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
+     and "versionCode 142" in open(BG, encoding="utf8").read(),
+     "the build carries versionName 1.4.28 / versionCode 142")
 
 print()
 if failed:
