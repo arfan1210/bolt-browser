@@ -28,6 +28,12 @@ import android.text.TextPaint
 import android.text.style.ClickableSpan
 import android.view.View
 import android.widget.TextView
+import org.commonmark.ext.gfm.strikethrough.Strikethrough
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
+import org.commonmark.ext.gfm.tables.TableBlock
+import org.commonmark.ext.gfm.tables.TableCell
+import org.commonmark.ext.gfm.tables.TableRow
+import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.ext.footnotes.FootnoteDefinition
 import org.commonmark.ext.footnotes.FootnoteReference
 import org.commonmark.ext.footnotes.FootnotesExtension
@@ -1302,16 +1308,16 @@ object AiRender {
         }
 
         override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int,
-                             fm: Paint.FontMetrics?): Int {
+                             fm: Paint.FontMetricsInt?): Int {
             try {
                 layout(paint)
                 if (fm != null) {
                     // the line grows to the table's full height; the grid
                     // hangs from the baseline (draw uses y - totalH .. y)
-                    fm.ascent = -totalH
-                    fm.top = -totalH
-                    fm.descent = 0f
-                    fm.bottom = 0f
+                    fm.ascent = -totalH.toInt()
+                    fm.top = -totalH.toInt()
+                    fm.descent = 0
+                    fm.bottom = 0
                 }
                 return totalW.toInt().coerceAtLeast(1)
             } catch (_: Throwable) {
@@ -1360,7 +1366,7 @@ object AiRender {
                             val p = if (ri == 0) head else body
                             val cy = rowTop + rowH / 2f
                             canvas.drawText(cell, x + xx + padH,
-                                    cy - (p.ascent + p.descent) / 2f, p)
+                                    cy - (p.ascent() + p.descent()) / 2f, p)
                         }
                         xx += colW[ci]
                     }

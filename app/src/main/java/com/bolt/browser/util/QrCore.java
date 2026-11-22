@@ -228,20 +228,22 @@ public final class QrCore {
 
     /**
      * v1.4.27 — PURE (probe-pinned): rotate a luma plane 90 degrees
-     * clockwise. Out(x', y') = In(y, h-1-x) — the belt-and-braces pass for
-     * a photo whose code was scanned sideways (ZXing infers orientation
-     * from the finder patterns, but a stretched/exif-flipped photo can
-     * still lose them; two cheap rotations cost nothing on a one-shot
-     * decode). w x h -> h x w.
+     * CLOCKWISE (the source's bottom-left becomes the destination's
+     * top-left). dst(x', y') = src(x = y', y = H-1-x'): w x h -> h x w.
+     * The belt-and-braces pass for a photo whose code was scanned sideways
+     * (ZXing infers orientation from the finder patterns, but a
+     * stretched/exif-flipped photo can still lose them; the cheap
+     * rotations cost nothing on a one-shot decode).
      */
     public static byte[] rotate90Luma(byte[] y, int width, int height) {
         if (y == null || width <= 0 || height <= 0 || y.length < width * height) return null;
-        int hw = height, hh = width;
-        byte[] out = new byte[hw * hh];
+        int dw = height;                  // the rotated plane is h wide...
+        int dh = width;                   // ...and w high
+        byte[] out = new byte[dw * dh];
         for (int r = 0; r < height; r++) {
             for (int c = 0; c < width; c++) {
-                // (r, c) -> (c, height-1-r) in the rotated plane
-                out[(height - 1 - r) * hw + c] = y[r * width + c];
+                // src(row r, col c) -> dst(x' = c, y' = H-1-r)
+                out[c * dw + (height - 1 - r)] = y[r * width + c];
             }
         }
         return out;
@@ -310,17 +312,28 @@ public final class QrCore {
                 }
             }
         } catch (Throwable ignored) {}
-        // (3) the center-crops: the 80% center window + the four ~50%+ quadrant
-        // windows (a QR occupying part of a photo survives at CROP scale)
+        // (3) the CROPS: a QR occupying part of a photo keeps its module
+        // pixels only inside a crop, and HybridBinarizer's block grid is
+        // geometry-sensitive — so the ladder spans TWO granularities: the
+        // 80% center window + the four ~55% quadrant windows, then the
+        // five thirds (four corners + center, 1/3 x 1/3 each — a code
+        // a quarter of the frame sits tight inside one of them). Each
+        // through [decodeMulti]. Every pass is bounded and failure moves on.
         try {
             int m10 = width / 10;
             int v10 = height / 10;
+            int w3 = width / 3, h3 = height / 3;
             int[][] wins = {
                     {m10, v10, width - m10, height - v10},          // center 80%x80%
-                    {0, 0, width / 2 + m10, height / 2 + v10},       // top-left
+                    {0, 0, width / 2 + m10, height / 2 + v10},     // top-left
                     {width / 2 - m10, 0, width, height / 2 + v10},  // top-right
                     {0, height / 2 - v10, width / 2 + m10, height},// bottom-left
-                    {width / 2 - m10, height / 2 - v10, width, height} // bottom-right
+                    {width / 2 - m10, height / 2 - v10, width, height}, // bottom-right
+                    {0, 0, w3, h3},                                 // the tight thirds
+                    {2 * w3, 0, width, h3},
+                    {0, 2 * h3, w3, height},
+                    {2 * w3, 2 * h3, width, height},
+                    {w3, h3, 2 * w3, 2 * h3}
             };
             for (int[] win : wins) {
                 int[] crop = cropArgb(pixels, width, height, win[0], win[1], win[2], win[3]);

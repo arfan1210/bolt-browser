@@ -591,6 +591,24 @@ python3 scripts/test_v1425.py
 # probes: the pure targetOf/clampCss/bubblesOf/transform tables, TWO
 # compile-and-run Java probes on the real jars, the saved-DOM fixture walk
 python3 scripts/test_v1426.py
+
+# ---- 1z-27. v1.4.27 gate: THE PICTURE-STACK + MERGED-PIPELINE ROUND (the
+# saved TBS DOM's 65 picture-wrapped 16:9 thumbnails rendered as x-ray
+# negatives — the counter-invert stacked html x picture x img = 3 = odd;
+# the NESTED-MEDIA EXEMPTION is CSS-only so the DIU classifier leg is
+# untouched, with the remote-img + 1.5-banner thumbnail laws as the
+# belt-and-braces) + THE TRANSLATE ONE-PIPELINE MERGE (every mode rides the
+# same per-tile native-res grid pass; cluster cards on bubblesOf regions;
+# the ONE textTranslate with its ladders; manga = a per-tile preprocess
+# variant; the whole-page host run RETIRED + the OcrHost re-arm — the
+# fails-after-a-few-runs corpse) + THE REAL-LINE TABLE SPAN (rows+1/cols+1
+# rules, bold header band, cell padding, theme colors) + THE QR round (the
+# full-res-first robust gallery ladder + the preview transform's
+# first-frame re-derive + fills-both-axes assertion + the readable Diag) —
+# probes: the parity table + the TBS/DIU fixture walks, the stuck-worker
+# re-arm + 5-consecutive-runs Node probe on the REAL page script, the
+# table rule geometry, the zxing stylized-photo probe, the fills law
+python3 scripts/test_v1427.py
 mark gates
 fi
 
