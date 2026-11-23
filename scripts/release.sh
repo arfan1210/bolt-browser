@@ -45,9 +45,17 @@ REPUBLISH=0
 if [ "${1:-}" = "--republish" ]; then REPUBLISH=1; shift; fi
 VER="${1:?usage: release.sh [--republish] <ver> [notes-file]}"
 NOTES="${2:-}"
-BASE=/home/z/my-project
-REPO_DIR=$BASE/bolt-browser
-TOK="${GHTOKEN:-$(cat $BASE/.ghtoken)}"
+# v1.4.29 (2026-11-23) — path adaptation for relocated checkouts, NO
+# guard/gate dropped: every hard-coded /home/z path is now an env
+# override with the original as default (BOLT_BASE = the cache/SDK/gradle
+# root, BOLT_REPO_DIR = this repository's checkout). The token chain
+# stays GHTOKEN -> $BASE/.ghtoken -> the configured `gh` auth (never
+# echoed, never written).
+BASE=${BOLT_BASE:-/home/z/my-project}
+REPO_DIR=${BOLT_REPO_DIR:-$BASE/bolt-browser}
+TOK="${GHTOKEN:-$(cat $BASE/.ghtoken 2>/dev/null)}"
+TOK="${TOK:-$(gh auth token 2>/dev/null)}"
+[ -n "$TOK" ] || { echo "ERROR: no GitHub token (GHTOKEN / .ghtoken / gh auth)"; exit 1; }
 AUTH="Authorization: Bearer $TOK"
 ACC="Accept: application/vnd.github+json"
 API="https://api.github.com/repos/arfan1210/bolt-browser-releases"
@@ -633,6 +641,23 @@ python3 scripts/test_v1427.py
 # sample 1 up to 24 MP before the 8 MP memory law, every scale through
 # decodeRobust's rotations + center-crops)
 python3 scripts/test_v1428.py
+
+# ---- 1z-29. v1.4.29 gate: THE REACHABILITY + SIGN-IN ROUND (the three
+# field corpses: dense AI tables keep their NATURAL type and scroll
+# horizontally inside the chat (the 0.55x specks + clipped columns die);
+# the QR preview transform is derived in TextureView VIEW space (the
+# buffer-space matrix's rotated/misaligned + black-region corpse —
+# recomputed on buffer-size change + first frame, diag with MISMATCH);
+# popup windows ride REAL related child WebViews via WebViewTransport
+# kept attached through OAuth flows (window.opener/postMessage/
+# window.close() survive — the black page after Google consent dies),
+# the compiled popup policy opens recognized auth chains / prompts
+# ordinary popups secret-free / denies unsafe schemes, the child closes
+# on all four triggers and carries NO privileged Bolt bridges) — probes:
+# the compiled view-space geometry walk (portrait/landscape x four
+# quarter-turns + the old-matrix corpse demonstration) + the compiled
+# popup-policy matrix + the TableRender pixel/no-shrink/viewport suite
+python3 scripts/test_v1429.py
 mark gates
 fi
 
@@ -654,7 +679,8 @@ if have smoke; then
 else
 echo "== launch smoke (Robolectric: Application.onCreate -> launcher -> home) =="
 export GRADLE_USER_HOME=$BASE/.gradle-home
-$BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR testDebugUnitTest \
+GRADLE_BIN=${BOLT_GRADLE:-$BASE/gradle-8.9/bin/gradle}
+$GRADLE_BIN --no-daemon -q -p $REPO_DIR testDebugUnitTest \
   || { echo "ERROR: LAUNCH SMOKE FAILED — the app does not open; NOT publishing (README, THE LAUNCH LAW)"; exit 1; }
 echo "== launch smoke OK =="
 mark smoke
@@ -668,7 +694,7 @@ export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment
 # notes — a fresh ~/.gradle would re-resolve every dependency)
 export GRADLE_USER_HOME=$BASE/.gradle-home
-$BASE/gradle-8.9/bin/gradle --no-daemon -q -p $REPO_DIR assembleRelease
+$GRADLE_BIN --no-daemon -q -p $REPO_DIR assembleRelease
 APK=$REPO_DIR/app/build/outputs/apk/release/app-release.apk
 ls -la "$APK"
 
@@ -844,11 +870,11 @@ fi
 # that is the check that matters.
 echo "verifying the live releases (both repos)..."
 if [ $REPUBLISH -eq 0 ]; then LATEST_ARG=1; else LATEST_ARG=0; fi
-TOK_ARG="$TOK" python3 - "$VER" "$API" "$SRC_API" "$LATEST_ARG" << 'PYEOF'
+TOK_ARG="$TOK" DL_DIR_ARG="${BOLT_DOWNLOAD_DIR:-/home/z/my-project/download}" python3 - "$VER" "$API" "$SRC_API" "$LATEST_ARG" << 'PYEOF'
 import json, os, sys, hashlib, urllib.request
 ver, api, src_api, latest_arg, tok = (sys.argv[1], sys.argv[2], sys.argv[3],
                                       sys.argv[4], os.environ["TOK_ARG"])
-local = open(f"/home/z/my-project/download/Bolt-v{ver}.apk", "rb").read()
+local = open(os.path.join(os.environ["DL_DIR_ARG"], f"Bolt-v{ver}.apk"), "rb").read()
 
 def fetch_anon(url, tries=3):
     # the anonymous asset CDN occasionally 403s on rate limits — retry;

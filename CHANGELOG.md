@@ -4,6 +4,89 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.29] — 2026-11-23
+
+**The reachability + sign-in round: three user-reported field corpses.
+Wide AI tables keep their natural type and scroll horizontally inside the
+vertically scrolling chat (the dense table is fully readable on a phone —
+no more shrunken 0.55x specks and no more clipped right columns), the QR
+scanner preview transform is computed in TextureView's view space (the
+buffer-space matrix used to leave the preview rotated/misaligned with a
+black region), and popup windows ride real related child WebViews kept
+attached through the flow (window.opener/postMessage/window.close()
+OAuth callbacks survive — the black page after Google sign-in consent).
+Verified by the pinned pixel/table probes, the compiled view-space
+geometry probe (portrait/landscape × four quarter-turns) and the compiled
+popup-policy probe (scheme/auth/prompt matrix, secret-free display);
+device + account FIELD CHECKS for all three fixes are OUTSTANDING and
+stay on the future-plan list.**
+
+### 1. NATURAL-WIDTH TABLES: THE HORIZONTAL VIEWPORT
+- Field ask (user, 2026-11-23): "when table is used in bolt please fix
+  table not seen correctly … make the table look clean and scrollable …
+  and other text normal visible above and below like usual."
+- Law (AiRender): the cell type is NEVER shrunk to fit (the bounded
+  0.55x shrink regime is gone); `TableView.onMeasure` reports the grid's
+  NATURAL width (`want = (totalW + 2f).toInt()`); `addTable` hosts the
+  view in a `HorizontalScrollView` (wrap_content child) inside the
+  vertically scrolling chat — a dense table overflows the viewport and
+  scrolls horizontally to its final columns. Grid lines, the bold header
+  band, cell padding and the text/table interleaving order are unchanged.
+- Tests (TableRenderTest, Robolectric NATIVE graphics): the pixel probe
+  (borders + cell text) survives; `dense_table_overflowsViewport_textNotShrunk`
+  pins the natural width + the unshrunk type size (read back from the
+  view); `fill_denseTable_ridesHorizontalViewport` pins the viewport
+  host + the overflow; the order probe pins intro → table → outro.
+
+### 2. QR PREVIEW: THE VIEW-SPACE TRANSFORM
+- Field ask (user, 2026-11-23): "when we scan qr … camera preview not
+  showing properly … its rotated and misaligned and have some black
+  region in portrait mode at the bottom half (Realme C55)."
+- Law (util/QrPreviewGeom + QrScanActivity): `Matrix.setTransform()`
+  consumes VIEW-LOCAL geometry (TextureView stretches the buffer to the
+  view first), so the matrix is M = T(v/2) · S(s) · R(θ) · T(−b/2) ·
+  S(bw/vw, bh/vh) — the rightmost stretch-undo is the fix — with the
+  uniform cover-scale centered on the view; recomputed on SurfaceTexture
+  buffer-size change and first frame (the race is dead). The QR YUV
+  decode path is untouched. The diag line reports
+  `qr preview view=… buf=… sensor=… display=… theta=… content=… scale=…`
+  with a ` MISMATCH` suffix whenever the cover law is broken.
+- Tests: QrPreviewGeomTest + the compiled geometry probe walk portrait
+  and landscape across all four quarter-turns (bounds centered on the
+  view, both axes covered, matrix hull == content bounds) and DEMONSTRATE
+  the old buffer-space matrix leaving the real view uncovered (the
+  corpse, pinned so it cannot return as a "simplification").
+
+### 3. THE RELATED POPUP CHILD (OAUTH SIGN-IN)
+- Field ask (user, 2026-11-23): sign-in with Google on Imgur dies "at
+  the last step when we consent it shows a black screen."
+- Law (Tab/TabManager/BrowserActivity/PopupPolicy): multi-window is on
+  (`setSupportMultipleWindows(true)` +
+  `setJavaScriptCanOpenWindowsAutomatically(true)`); `onCreateWindow`
+  answers with a REAL related child WebView via `WebViewTransport`
+  (one at a time, 10 s never-navigated expiry) carrying the opener UA +
+  cookie policy; every child navigation runs the policy: recognized
+  Google/OAuth authorization and redirect chains OPEN through the
+  blocker, ordinary popups PROMPT (the dialog shows `displayTarget` —
+  scheme://host/path with query, fragment and userinfo stripped, so
+  authorization codes/state/tokens never surface in UI or logs), unsafe
+  schemes DENY + close; the child closes on all four triggers —
+  `onCloseWindow`, Back, tab switch, and a native close chip (named for
+  screen readers). The child carries NO privileged Bolt JS bridges
+  (window.opener + postMessage are its only channels) and popup children
+  never persist (TabManager.save skips them; `closeTransient` tears down
+  without the undo/trash flow).
+- Tests (PopupPolicyTest + the compiled policy probe): unsafe schemes
+  die; the Google authorize + callback shapes open; ordinary popups
+  prompt but never auto-open (promo_code decoys don't trip the
+  detectors); the always-allow pref and the blocker-off switch open;
+  `displayTarget` strips query/fragment/userinfo.
+- Status: source-level hypothesis verified by the policy/geometry/pixel
+  probes only — NO device, NO Imgur/Google test account here. Field
+  checks (Realme C55 QR preview; dense-table rendering on a phone;
+  the full Imgur → Google consent → callback flow) are OUTSTANDING.
+
+
 ## [1.4.28] — 2026-11-22
 
 **The security + visibility round: three user-requested security laws

@@ -4205,8 +4205,21 @@ public class BrowserActivity extends AppCompatActivity {
      *  switch (switcher tap, link, restore…) still stamps — the sort stays
      *  truthful for deliberate navigation. */
     protected void showTab(int idx, boolean viaSwipe) {
+        // v1.4.29 — THE POPUP-CHILD TEARDOWN LAW: the related OAuth child
+        // is a TRANSIENT flow surface — any switch to ANOTHER tab closes it
+        // cleanly (one of the four close triggers: onCloseWindow, Back,
+        // tab switch, the native close chip). The switch target is
+        // re-resolved by tid AFTER the close (the list shifts by one).
+        if (popupChild != null && idx >= 0 && idx < tm.tabs.size()
+                && tm.tabs.get(idx) != popupChild.tab) {
+            long wantTid = tm.tabs.get(idx).tid;
+            closePopupChild(false);
+            idx = indexOfTid(wantTid);
+            if (idx < 0) idx = 0;
+        }
         if (idx < 0 || idx >= tm.tabs.size()) idx = 0;
         tm.active = idx;
+        try { updatePopupChrome(); } catch (Throwable ignored) {}
         // v1.3.31: "sort by last visited" bookkeeping — stamped whenever a
         // tab becomes the shown one (persisted with the next debounced save)
         try {
@@ -4300,7 +4313,12 @@ public class BrowserActivity extends AppCompatActivity {
             hideErrorOverlay();   // v1.4.19: the home tab has no error face
         } else {
             JsBridge bridge = new JsBridge();
-            WebView w = t.buildWeb(this, new BoltClient(), new BoltChrome(), bridge, incognito);
+            // v1.4.29 — THE PRIVILEGED-BRIDGE LAW: a popup child carries NO
+            // Bolt JS bridge (window.opener + postMessage are its only
+            // channels) — its web came bridge-free from buildPopupChild
+            // and buildWeb must not add one to it either.
+            WebView w = t.buildWeb(this, new BoltClient(), new BoltChrome(),
+                    t.popupChild ? null : bridge, incognito);
             // v1.4.19 — THE REFUSAL PATH: buildWeb now returns null instead of
             // crashing when WebView construction is impossible (the incognito
             // data-dir collision — see Tab.buildWeb's construction guard).
@@ -4324,8 +4342,11 @@ public class BrowserActivity extends AppCompatActivity {
                 try { w.setWebViewClient(new BoltClient()); } catch (Throwable ignored) {}
                 try { w.setWebChromeClient(new BoltChrome()); } catch (Throwable ignored) {}
             }
-            try { w.addJavascriptInterface(bridge, "Bolt"); } catch (Throwable ignored) {}
-            bridge.attach(w);
+            // v1.4.29 — the child window stays bridge-free (see above)
+            if (!t.popupChild) {
+                try { w.addJavascriptInterface(bridge, "Bolt"); } catch (Throwable ignored) {}
+                bridge.attach(w);
+            }
             if (w.getParent() != null && w.getParent() != flContent)
                 ((ViewGroup) w.getParent()).removeView(w);
             if (w.getParent() != flContent) flContent.addView(w);
@@ -6907,45 +6928,406 @@ public class BrowserActivity extends AppCompatActivity {
             return true;
         }
 
-        // popup blocker
+        // v1.4.29 — THE RELATED-CHILD WINDOW (the OAuth black-page corpse).
+        // The old handler probed the popup URL with a throwaway WebView and
+        // answered with a dialog or a DETACHED tab — destroying the related
+        // child browsing context (window.opener / postMessage /
+        // window.close()) that OAuth flows live on, so Imgur's "Sign in
+        // with Google" returned to a black page after consent. Multi-window
+        // is ON now (Tab.buildWeb): every popup rides a REAL child WebView
+        // through WebView.WebViewTransport, kept attached while the flow
+        // runs and closed cleanly after it. The policy (PopupPolicy —
+        // pure, gate-compiled) opens recognized Google/OAuth authorization
+        // and redirect chains THROUGH the blocker, prompts for ordinary
+        // popups (with a secret-free URL display), and rejects unsafe
+        // schemes. No throwaway WebView exists on this path anymore.
         @Override
         public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                 android.os.Message resultMsg) {
-            if (!prefs.popupBlock()) return false;
-            // capture popup target URL with a throwaway WebView
-            final String[] popupUrl = {null};
-            WebView probe = new WebView(BrowserActivity.this);
-            probe.setLayoutParams(new ViewGroup.LayoutParams(-1, -1));
-            probe.setWebViewClient(new WebViewClient() {
-                @Override
-                public boolean shouldOverrideUrlLoading(WebView v, String url) {
-                    popupUrl[0] = url;
-                    return true;
-                }
-            });
+            return openPopupChild(view, resultMsg);
+        }
+
+        @Override
+        public void onCloseWindow(WebView window) {
+            // the page's own window.close() — the OAuth flow's goodbye
+            if (popupChild != null && window == popupChild.web) closePopupChild(true);
+        }
+    }
+
+    // ------------------------------------------------------------ v1.4.29 popup children (OAuth windows)
+
+    /** the live related child window (ONE at a time — nested popups from a
+     *  popup child are refused; OAuth flows never nest). */
+    protected static final class PopupChild {
+        final WebView web;
+        final Tab tab;
+        final Tab opener;
+        boolean shown = false;
+        String pendingUrl = null;
+        PopupChild(WebView web, Tab tab, Tab opener) {
+            this.web = web;
+            this.tab = tab;
+            this.opener = opener;
+        }
+    }
+
+    protected PopupChild popupChild;
+
+    /** the accessible native close action: a small "Close" chip riding
+     *  flRoot while a popup child is shown (the action is named for
+     *  screen readers via its contentDescription). */
+    protected TextView popupCloseChip;
+
+    /**
+     * THE POPUP GATE — onCreateWindow's body (v1.4.29). Creates the REAL
+     * related child WebView via WebViewTransport and hands it to the
+     * engine, so the opener relationship (window.opener / postMessage /
+     * window.close()) stays intact through the OAuth callback. The child
+     * starts UNATTACHED and bridge-free; its first navigation runs the
+     * policy (open / prompt / deny) below. The engine keeps a reference
+     * for the duration of the flow; popupChild + the tab keep ours.
+     */
+    protected boolean openPopupChild(WebView openerView, android.os.Message resultMsg) {
+        try {
+            Tab openerTab = tabOf(openerView);
+            if (openerTab != null && openerTab.popupChild) return false; // no nested popups
+            if (openerTab == null) openerTab = activeTab();
+            if (popupChild != null) closePopupChild(false);   // one at a time
+            final WebView child = buildPopupChild(openerTab);
+            if (child == null) return false;
+            Tab t = new Tab();
+            t.isHome = false;
+            t.popupChild = true;
+            final PopupChild pc = new PopupChild(child, t, openerTab);
+            child.setWebViewClient(new PopupClient(pc));
+            child.setWebChromeClient(new PopupChrome(pc));
+            popupChild = pc;
             WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-            transport.setWebView(probe);
+            transport.setWebView(child);
             resultMsg.sendToTarget();
+            try {
+                com.bolt.browser.util.Diag.log(this,
+                        "popup child opened (policy gate on first nav)");
+            } catch (Throwable ignored) {}
+            // a child that never navigates (window.open('') with nothing
+            // written into it) must not linger invisible forever
             ui.postDelayed(() -> {
-                String pu = popupUrl[0];
-                if (pu == null || pu.equals("about:blank")) return;
-                final String base = Fx.baseDomain(Fx.hostOf(activeTab().url));
-                new AlertDialog.Builder(BrowserActivity.this)
-                        .setTitle(R.string.popup_title)
-                        .setMessage(getString(R.string.popup_msg, pu.length() > 80 ? pu.substring(0, 80) + "…" : pu))
-                        .setPositiveButton(R.string.allow, (d, w) -> openNewTab(pu))
-                        .setNeutralButton(R.string.always_allow, (d, w) -> {
-                            prefs.setSite(base, "popupAllow", true);
-                            openNewTab(pu);
-                        })
-                        .setNegativeButton(R.string.block, null)
-                        .show();
-            }, 350);
+                if (popupChild == pc && !pc.shown) closePopupChild(false);
+            }, 10_000);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * THE CHILD BUILDER (v1.4.29). A bridge-free WebView configured like a
+     * tab's minus every privileged surface: NO "Bolt" bridge, NO
+     * "BoltWebAuthn", NO "BoltTx" relay, NO FrameHooks/ShadowGate arms —
+     * window.opener + postMessage are the child's only channels. The
+     * opener's USER AGENT (and the matching client-hints identity) carry
+     * over — OAuth providers fingerprint the client — and the cookie
+     * policy matches a normal tab (the consent cookies must land in the
+     * shared jar for the opener's callback to see them).
+     */
+    protected WebView buildPopupChild(Tab opener) {
+        try {
+            WebView w = new com.bolt.browser.ui.BoltWeb(this);
+            try { w.setBackgroundColor(Fx.webBg(this)); } catch (Throwable ignored) {}
+            WebSettings s = w.getSettings();
+            s.setJavaScriptEnabled(true);
+            s.setDomStorageEnabled(true);
+            s.setDatabaseEnabled(true);
+            // v1.4.29 — the viewport quirks ride [Tab.applyViewport], the
+            // same build-time config buildWeb uses (test_fs law: the
+            // setUseWideViewPort/setLoadWithOverviewMode literals never
+            // appear in BrowserActivity — they are load-time quirks, not
+            // live-document toggles)
+            Tab.applyViewport(s);
+            s.setSupportZoom(true);
+            s.setBuiltInZoomControls(true);
+            s.setDisplayZoomControls(false);
+            s.setMediaPlaybackRequiresUserGesture(false);
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            s.setSupportMultipleWindows(true);
+            s.setJavaScriptCanOpenWindowsAutomatically(true);
+            s.setAllowFileAccess(false);   // a popup child never opens files
+            s.setAllowContentAccess(false);
+            String ua = null;
+            try {
+                if (opener != null && opener.web != null)
+                    ua = opener.web.getSettings().getUserAgentString();
+            } catch (Throwable ignored) {}
+            if (ua != null && !ua.isEmpty()) {
+                s.setUserAgentString(ua);
+                try { com.bolt.browser.util.UaIdentity.applyFor(this, s, ua); }
+                catch (Throwable ignored) {}
+            }
+            try {
+                CookieManager cm = CookieManager.getInstance();
+                cm.setAcceptCookie(true);
+                if (android.os.Build.VERSION.SDK_INT >= 21)
+                    cm.setAcceptThirdPartyCookies(w, true);
+            } catch (Throwable ignored) {}
+            w.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            return w;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** the policy decision for one child navigation (pure logic in
+     *  PopupPolicy; the site pref + blocker switch are read here). */
+    protected int decidePopup(PopupChild pc, String url) {
+        String openerUrl = pc.opener != null && pc.opener.url != null ? pc.opener.url : "";
+        boolean siteAllow = prefs.siteBool(
+                Fx.baseDomain(Fx.hostOf(openerUrl)), "popupAllow", false);
+        return com.bolt.browser.util.PopupPolicy.decide(url, siteAllow, prefs.popupBlock());
+    }
+
+    /** attach the flow child as a visible tab (the user must SEE the
+     *  consent screen) — called on the first allowed navigation. */
+    protected void attachPopupChild(PopupChild pc, String url) {
+        if (pc.shown || popupChild != pc) return;
+        pc.shown = true;
+        pc.tab.url = com.bolt.browser.util.PopupPolicy.displayTarget(url);
+        tm.addTab(pc.tab);
+        showTab(tm.tabs.size() - 1);
+    }
+
+    /**
+     * THE ONE TEARDOWN PATH (v1.4.29) — the four close triggers all land
+     * here: onCloseWindow (the page's window.close()), Back, the tab
+     * switch, and the native close chip. The child's WebView is destroyed
+     * cleanly (loading stopped first — a mid-flight OAuth POST must never
+     * re-send), the tab row retires without trash/undo (flow state is not
+     * tab state), and the opener is re-shown on request.
+     */
+    protected void closePopupChild(boolean showOpener) {
+        PopupChild pc = popupChild;
+        if (pc == null) return;
+        popupChild = null;
+        try { updatePopupChrome(); } catch (Throwable ignored) {}
+        Tab t = pc.tab;
+        t.web = null;                 // the view is destroyed below, by us
+        try {
+            if (pc.web != null) {
+                pc.web.stopLoading();
+                pc.web.loadUrl("about:blank");
+                if (pc.web.getParent() instanceof ViewGroup)
+                    ((ViewGroup) pc.web.getParent()).removeView(pc.web);
+                pc.web.destroy();
+            }
+        } catch (Throwable ignored) {}
+        try { tm.closeTransient(t); } catch (Throwable ignored) {}
+        try {
+            com.bolt.browser.util.Diag.log(this, "popup child closed");
+        } catch (Throwable ignored) {}
+        if (showOpener && pc.opener != null) {
+            try {
+                int idx = indexOfTid(pc.opener.tid);
+                if (idx >= 0) showTab(idx);
+            } catch (Throwable ignored) {}
+        }
+        try { updateBars(); } catch (Throwable ignored) {}
+    }
+
+    protected int indexOfTid(long tid) {
+        synchronized (tm.tabs) {
+            for (int i = 0; i < tm.tabs.size(); i++)
+                if (tm.tabs.get(i).tid == tid) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * THE ORDINARY-POPUP PROMPT (v1.4.29). The message shows the
+     * SECRET-FREE display target (scheme://host/path — never a query or
+     * fragment; authorization codes, state and tokens stay out of the UI
+     * and out of every log). Allow continues the SAME child (the opener
+     * relationship survives); Always allow sets the site pref and
+     * continues; Block (or dismissing) closes the child cleanly.
+     */
+    protected void promptPopup(final PopupChild pc, final String url) {
+        if (popupChild != pc || isFinishing()) return;
+        final String base = Fx.baseDomain(Fx.hostOf(
+                pc.opener != null && pc.opener.url != null ? pc.opener.url : ""));
+        final Runnable cont = () -> {
+            if (popupChild != pc) return;
+            attachPopupChild(pc, url);
+            try { pc.web.loadUrl(url); } catch (Throwable ignored) {}
+        };
+        try {
+            new AlertDialog.Builder(BrowserActivity.this)
+                    .setTitle(R.string.popup_title)
+                    .setMessage(getString(R.string.popup_msg,
+                            com.bolt.browser.util.PopupPolicy.displayTarget(url)))
+                    .setPositiveButton(R.string.allow, (d, w) -> ui.post(cont))
+                    .setNeutralButton(R.string.always_allow, (d, w) -> {
+                        prefs.setSite(base, "popupAllow", true);
+                        ui.post(cont);
+                    })
+                    .setNegativeButton(R.string.block,
+                            (d, w) -> ui.post(() -> {
+                                if (popupChild == pc) closePopupChild(true);
+                            }))
+                    .setOnCancelListener(d -> ui.post(() -> {
+                        if (popupChild == pc) closePopupChild(true);
+                    }))
+                    .show();
+        } catch (Throwable t) {
+            closePopupChild(true);
+        }
+    }
+
+    /** the chip visibility follows the SHOWN tab (a child only ever shows
+     *  while it is the active tab — the tab-switch rule closes it). */
+    protected void updatePopupChrome() {
+        boolean show = false;
+        try { show = popupChild != null && activeTab() == popupChild.tab; }
+        catch (Throwable ignored) {}
+        if (show) showPopupCloseChip();
+        else hidePopupCloseChip();
+    }
+
+    protected void showPopupCloseChip() {
+        try {
+            if (popupCloseChip == null) {
+                TextView tv = new TextView(this);
+                tv.setText(R.string.popup_close);
+                tv.setContentDescription(getString(R.string.popup_close_desc));
+                tv.setTextColor(0xFFFFFFFF);
+                tv.setTextSize(13f);
+                tv.setPadding(Fx.dp(this, 14), Fx.dp(this, 8), Fx.dp(this, 14), Fx.dp(this, 8));
+                try {
+                    android.graphics.drawable.GradientDrawable bg =
+                            new android.graphics.drawable.GradientDrawable();
+                    bg.setColor(0xCC1F2430);
+                    bg.setCornerRadius(Fx.dp(this, 18));
+                    tv.setBackground(bg);
+                } catch (Throwable ignored) {}
+                tv.setOnClickListener(v -> closePopupChild(true));
+                popupCloseChip = tv;
+            }
+            if (popupCloseChip.getParent() == null) {
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT);
+                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+                lp.topMargin = Fx.dp(this, 64);
+                lp.rightMargin = Fx.dp(this, 12);
+                flRoot.addView(popupCloseChip, lp);
+            }
+            flRoot.bringChildToFront(popupCloseChip);
+        } catch (Throwable ignored) {}
+    }
+
+    protected void hidePopupCloseChip() {
+        try {
+            if (popupCloseChip != null && popupCloseChip.getParent() == flRoot)
+                flRoot.removeView(popupCloseChip);
+        } catch (Throwable ignored) {}
+    }
+
+    /** the child's WebViewClient (v1.4.29): the scheme guard + the first-
+     *  navigation policy + the secret-free tab metadata. */
+    protected class PopupClient extends WebViewClient {
+        final PopupChild pc;
+        PopupClient(PopupChild pc) { this.pc = pc; }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView v, String url) {
+            if (url == null) return false;
+            if (url.equals("about:blank")) return false;   // window.open's starter doc
+            if (!com.bolt.browser.util.PopupPolicy.isSafeScheme(url)) {
+                // unsafe scheme (javascript:/file:/content:/data:/intent:…)
+                // — reject outright and close the child
+                try {
+                    com.bolt.browser.util.Diag.log(BrowserActivity.this,
+                            "popup child nav DENIED (unsafe scheme)");
+                } catch (Throwable ignored) {}
+                ui.post(() -> closePopupChild(true));
+                return true;
+            }
+            int d = decidePopup(pc, url);
+            if (d == com.bolt.browser.util.PopupPolicy.OPEN) {
+                if (!pc.shown) ui.post(() -> attachPopupChild(pc, url));
+                return false;   // load in the child (POSTs + chains survive)
+            }
+            if (d == com.bolt.browser.util.PopupPolicy.PROMPT) {
+                if (pc.shown) return false;   // visible already: ordinary in-popup navigation
+                pc.pendingUrl = url;
+                ui.post(() -> promptPopup(pc, url));
+                return true;    // hold the load until the user answers
+            }
+            ui.post(() -> closePopupChild(true));
             return true;
         }
 
         @Override
-        public void onCloseWindow(WebView window) {}
+        public void onPageStarted(WebView v, String url, Bitmap favicon) {
+            super.onPageStarted(v, url, favicon);
+            // THE SECRET-FREE URL LAW: the tab's metadata url is the
+            // DISPLAY form (scheme://host/path) — the omnibox (updateBars)
+            // and every log surface then carry no authorization codes,
+            // state or tokens. The WebView keeps the real URL internally.
+            try {
+                pc.tab.url = com.bolt.browser.util.PopupPolicy.displayTarget(url);
+                pc.tab.loading = true;
+                updateBars();
+            } catch (Throwable ignored) {}
+        }
+
+        @Override
+        public void onPageFinished(WebView v, String url) {
+            super.onPageFinished(v, url);
+            try { pc.tab.loading = false; } catch (Throwable ignored) {}
+        }
+    }
+
+    /** the child's WebChromeClient (v1.4.29): window.close() + no nested
+     *  popups + the shared progress bar + titles. */
+    protected class PopupChrome extends WebChromeClient {
+        final PopupChild pc;
+        PopupChrome(PopupChild pc) { this.pc = pc; }
+
+        @Override
+        public void onCloseWindow(WebView window) {
+            if (popupChild == pc) closePopupChild(true);
+        }
+
+        @Override
+        public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                android.os.Message resultMsg) {
+            return false;   // a popup child never spawns nested popups
+        }
+
+        @Override
+        public void onReceivedTitle(WebView view, String title) {
+            try {
+                if (title != null) {
+                    pc.tab.title = title;
+                    tm.scheduleSave();
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        @Override
+        public void onProgressChanged(WebView view, int newProgress) {
+            // the shared progress bar (the child is a first-class surface)
+            try {
+                if (newProgress >= 100) {
+                    vProgress.setVisibility(View.GONE);
+                } else {
+                    vProgress.setVisibility(View.VISIBLE);
+                    int w = (int) (flRoot.getWidth() * newProgress / 100f);
+                    vProgress.getLayoutParams().width =
+                            Math.max(Fx.dp(BrowserActivity.this, 6), w);
+                    vProgress.requestLayout();
+                }
+            } catch (Throwable ignored) {}
+        }
     }
 
     /** v1.3.86 — recent download-attribute names (href → name), recorded by
@@ -14960,6 +15342,14 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         Tab t = activeTab();
+        // v1.4.29 — Back on the related popup child CLOSES the child
+        // cleanly (the flow's cancel) and returns to the opener — one of
+        // the four teardown triggers (onCloseWindow, Back, tab switch, the
+        // native close chip).
+        if (popupChild != null && t == popupChild.tab) {
+            closePopupChild(true);
+            return;
+        }
         if (t.web != null && t.web.canGoBack()) {
             // v1.3.84 — the audited history step, same as the toolbar back
             com.bolt.browser.util.HistoryNav.step(this, t.web, -1);

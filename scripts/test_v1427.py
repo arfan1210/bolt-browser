@@ -359,8 +359,11 @@ need("for (c in 0..cols) {" in ar_raw
 need("head.typeface = Typeface.DEFAULT_BOLD" in ar_raw
      and "canvas.drawRect(x, top0, x + totalW, top0 + rowH, band)" in ar_raw,
      "the header row rides the BOLD paint on its filled band")
-need("private val padH: Float" in ar_raw and "10f * dens, 5f * dens, maxW)" in ar_raw,
-     "cell padding: 10dp horizontal / 5dp vertical")
+need("private val padH: Float" in ar_raw and "10f * dens, 5f * dens)" in ar_raw,
+     "cell padding: 10dp horizontal / 5dp vertical "
+     "  # v1.4.29 re-point (2026-11-23): the maxW ctor arg retired with "
+     "the bounded shrink — the type never shrinks and the grid keeps its "
+     "natural width (the tiny/clipped dense-table corpse)")
 need("try { Prefs.get(c).isDark() } catch (_: Throwable) { false }" in ar_raw
      and "0x66FFFFFF.toInt() else 0x44000000" in ar_raw,
      "theme-aware rule/text colors (the dark/light branches)")
@@ -827,9 +830,9 @@ need(sweep == 0, "the standing sweep repinned every gate to 141/1.4.27 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1427.py")),
      "the v1.4.27 sweep script is checked in (provenance)")
-need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
-     and "versionCode 142" in open(BG, encoding="utf8").read(),
-     "the build carries versionName 1.4.28 / versionCode 142")
+need('versionName "1.4.29"' in open(BG, encoding="utf8").read()
+     and "versionCode 143" in open(BG, encoding="utf8").read(),
+     "the build carries versionName 1.4.29 / versionCode 143")  # v1.4.29 re-point (2026-11-23): 142/1.4.28 -> 143/1.4.29 (the reachability + sign-in round)
 
 print()
 if failed:

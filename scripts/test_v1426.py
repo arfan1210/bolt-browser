@@ -329,22 +329,58 @@ need("static byte[] stretchLuma(byte[] y, int width, int height)" in qc_raw
      and "static byte[] halfLuma(byte[] y, int width, int height)" in qc_raw,
      "QrCore: the stretch + half-scale stylized passes (pure, probe-pinned)")
 
-# the transform table (transcribed): the mapped buffer-corner HULL must
-# CONTAIN the view rect (cover) with one axis fitting EXACTLY (aspect-true)
+# the transform table (transcribed from QrPreviewGeom.matrix):
+#   v1.4.29 re-point (2026-11-23) — THE VIEW-SPACE RECIPE. The v1.4.26
+#   model computed the matrix in BUFFER coordinates, but
+#   TextureView.setTransform() transforms VIEW-LOCAL geometry (the buffer
+#   is first stretched to fill the view, then the matrix maps view coords
+#   to view coords): a buffer-space "fills view" check could pass when the
+#   APPLIED matrix did not cover the actual view — the rotated/misaligned
+#   + black-region corpse (the portrait Realme's black lower half). The
+#   transcribed model is now the view-space one
+#   M = T(v/2) . S(s) . R(theta) . T(-b/2) . S(bw/vw, bh/vh) — the
+#   rightmost stretch-undo is the fix — with the old buffer-space model
+#   DEMONSTRATED as non-covering when applied in view space. Every
+#   quarter-turn, portrait and landscape: the mapped content hull is
+#   CENTERED on the view and covers BOTH axes (edit together with
+#   util/QrPreviewGeom.java).
 def preview_matrix(bufw, bufh, vieww, viewh, theta):
+    """M = T(viewW/2, viewH/2) . S(s) . R(theta) . T(-bufW/2, -bufH/2)
+       . S(bufW/viewW, bufH/viewH) — applied to VIEW-space points."""
+    uw, uh = (bufw, bufh) if theta % 180 == 0 else (bufh, bufw)
+    s = max(vieww / uw, viewh / uh) if uw > 0 and uh > 0 and vieww > 0 and viewh > 0 else 0.0
+    if s <= 0.0:
+        return s, None
+    import math
+    a = math.radians(theta)
+    c, sn = math.cos(a), math.sin(a)
+    ex, ey = bufw / vieww, bufh / viewh
+
+    def m(p):
+        x, y = p[0] * ex, p[1] * ey              # F^-1: the implicit stretch undone
+        x, y = x - bufw / 2.0, y - bufh / 2.0    # buffer center
+        x, y = x * c - y * sn, x * sn + y * c    # rotate to upright
+        x, y = x * s, y * s                      # cover scale
+        return (x + vieww / 2.0, y + viewh / 2.0)
+
+    return s, [m((0, 0)), m((vieww, 0)), m((vieww, viewh)), m((0, viewh))]
+
+
+def old_buffer_matrix_applied_in_view_space(bufw, bufh, vieww, viewh, theta):
+    """THE CORPSE (the v1.4.26 recipe): the same math but WITHOUT the
+    stretch undo — mapped over VIEW points (TextureView semantics)."""
     uw, uh = (bufw, bufh) if theta % 180 == 0 else (bufh, bufw)
     s = max(vieww / uw, viewh / uh)
+    import math
+    a = math.radians(theta)
+    c, sn = math.cos(a), math.sin(a)
 
     def m(p):
         x, y = p[0] - bufw / 2.0, p[1] - bufh / 2.0
-        # postRotate(theta)
-        import math
-        a = math.radians(theta)
-        x, y = x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)
-        # postScale(s, s) + postTranslate(cx, cy)
+        x, y = x * c - y * sn, x * sn + y * c
         return (x * s + vieww / 2.0, y * s + viewh / 2.0)
 
-    return s, [m((0, 0)), m((bufw, 0)), m((bufw, bufh)), m((0, bufh))]
+    return [m((0, 0)), m((vieww, 0)), m((vieww, viewh)), m((0, viewh))]
 
 
 def hull(pts):
@@ -353,20 +389,49 @@ def hull(pts):
     return min(xs), max(xs), min(ys), max(ys)
 
 
+def centered_covering(vieww, viewh, pts, eps=1.0):
+    x0, x1, y0, y1 = hull(pts)
+    centered = (abs((x0 + x1) / 2.0 - vieww / 2.0) < eps
+                and abs((y0 + y1) / 2.0 - viewh / 2.0) < eps)
+    covers = x0 <= eps and x1 >= vieww - eps and y0 <= eps and y1 >= viewh - eps
+    return centered, covers
+
+
 # portrait phone, landscape sensor buffer, 90-degree recipe (the Realme case)
-s, pts = preview_matrix(1920, 1080, 1080, 2340, 90)
-x0, x1, y0, y1 = hull(pts)
-need(abs(y0) < 1e-6 and abs(y1 - 2340) < 1e-6 and x0 <= 0 and x1 >= 1080,
-     "the portrait transform: the upright height fills the view EXACTLY, "
-     "the width covers (no half-screen), corners on the hull")
-need(abs(s - 2340 / 1920.0) < 1e-9,
-     "the cover scale is aspect-true (2340/1920 for the 90-degree portrait case)")
+s, pts = preview_matrix(1920, 1080, 720, 1600, 90)
+cen, cov = centered_covering(720, 1600, pts)
+need(cen and cov,
+     "the portrait transform (view-space): the content hull is CENTERED "
+     "and covers BOTH view axes (no half-black panel)")
+need(abs(s - 1600 / 1920.0) < 1e-9,
+     "the cover scale is aspect-true (1600/1920 for the 90-degree portrait case)")
 # landscape
 s2, pts2 = preview_matrix(1920, 1080, 2340, 1080, 0)
-x0, x1, y0, y1 = hull(pts2)
-need(abs(x0) < 1e-6 and abs(x1 - 2340) < 1e-6 and y0 <= 0 and y1 >= 1080
-     and abs(s2 - 2340 / 1920.0) < 1e-9,
-     "the landscape case: same recipe, cover + aspect-true (width fills exactly)")
+cen2, cov2 = centered_covering(2340, 1080, pts2)
+need(cen2 and cov2 and abs(s2 - 2340 / 1920.0) < 1e-9,
+     "the landscape case: centered + covering + aspect-true (2340/1920)")
+# ALL four quarter-turns, both orientations: centered + covering
+allok = True
+for theta in (0, 90, 180, 270):
+    for vw, vh in ((720, 1600), (1600, 720), (1080, 2340), (2340, 1080)):
+        sN, ptsN = preview_matrix(1920, 1080, vw, vh, theta)
+        if ptsN is None:
+            allok = False
+            continue
+        cenN, covN = centered_covering(vw, vh, ptsN)
+        if not (cenN and covN):
+            allok = False
+need(allok,
+     "every quarter-turn x portrait/landscape: centered bounds and "
+     "coverage of both axes (the geometry tests' own words)")
+# THE CORPSE DEMONSTRATION: the old buffer-space matrix applied in view
+# space (TextureView semantics) does NOT cover the portrait view — the
+# black-region symptom — while the view-space matrix does
+dead = old_buffer_matrix_applied_in_view_space(1920, 1080, 720, 1600, 90)
+dcen, dcov = centered_covering(720, 1600, dead)
+need(not dcov,
+     "the OLD buffer-space recipe leaves the real view UNCOVERED when "
+     "applied in view space (the corpse DEMONSTRATED, not just asserted)")
 # the placeholder case: the transform APPLIES (never the old early return)
 s3, pts3 = preview_matrix(640, 480, 1080, 2340, 90)
 need(pts3 is not None and len(pts3) == 4,
@@ -855,9 +920,9 @@ need(sweep == 0, "the standing sweep repinned every gate to 140/1.4.26 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1426.py")),
      "the v1.4.26 sweep script is checked in (provenance)")
-need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
-     and "versionCode 142" in open(BG, encoding="utf8").read(),
-     "the build carries versionName 1.4.28 / versionCode 142")
+need('versionName "1.4.29"' in open(BG, encoding="utf8").read()
+     and "versionCode 143" in open(BG, encoding="utf8").read(),
+     "the build carries versionName 1.4.29 / versionCode 143")  # v1.4.29 re-point (2026-11-23): 142/1.4.28 -> 143/1.4.29 (the reachability + sign-in round)
      # v1.4.27 re-point (2026-11-22): the build pin + its label moved to
      # 141/1.4.27 (the picture-stack + merged-pipeline round)
 
