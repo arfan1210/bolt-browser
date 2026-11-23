@@ -53,8 +53,8 @@ NOTES="${2:-}"
 # echoed, never written).
 BASE=${BOLT_BASE:-/home/z/my-project}
 REPO_DIR=${BOLT_REPO_DIR:-$BASE/bolt-browser}
-TOK="${GHTOKEN:-$(cat $BASE/.ghtoken 2>/dev/null)}"
-TOK="${TOK:-$(gh auth token 2>/dev/null)}"
+TOK="${GHTOKEN:-$(cat $BASE/.ghtoken 2>/dev/null || true)}"
+TOK="${TOK:-$(gh auth token 2>/dev/null || true)}"
 [ -n "$TOK" ] || { echo "ERROR: no GitHub token (GHTOKEN / .ghtoken / gh auth)"; exit 1; }
 AUTH="Authorization: Bearer $TOK"
 ACC="Accept: application/vnd.github+json"
