@@ -143,6 +143,7 @@ maintainer's workspace + offline backup.
 | v1.4.28 | 3,155,927 B | the security + visibility round |
 | v1.4.29 | 3,158,499 B | the reachability round; sha256 `7f5e150c…3576f`; release ids 456367850 (source) / 456367966 (releases); /latest serves 143/1.4.29 |
 | v1.4.30 | 3,165,467 B | the field round (+6,968 B: the QR producer probe + the rotate button + the return leg + the AI web legs + popup hardening + the table re-fill); sha256 `2449f992…1784c`; release ids 456744685 (source) / 456744818 (releases); /latest serves 144/1.4.30 |
+| v1.4.31 | 3,177,569 B | the performance-and-quiet round (+12,102 B: the stripe calibration + the device table/seed, the three-door exit sweep, the trim-storm table, the single-injection rework, the passkey bootstrap + lazy full layer, the glass diet, the perf diag lines); sha256 `2b205f34…72cde`; release ids 457274128 (source) / 457274328 (releases); /latest serves 145/1.4.31 |
 
 Every release's signature verifies against the pinned cert above; every
 release is md5/sha-verified on the download-back of BOTH repos and the
@@ -439,20 +440,24 @@ Six fixes from the maintainer's Realme read-backs on v1.4.29:
    lessons, wipe story and open read-backs kept; the mechanics live
    in the gates.
 
-**v1.4.30 post-release: the known-good numbers.** APK 3,165,467 B
-(+6,968 B over v1.4.29's 3,158,499 B — the QR producer probe + the
-rotate button + the OAuth return leg + the AI web legs + popup
-hardening + the table re-fill); the FULL verification ran in this
-environment (the complete gates ladder incl. test_v1430, the full
-testDebugUnitTest Robolectric suite incl. the launch law), the signed
-build cert-verified against the pinned fingerprint, the 6,000,000 B
-size law held, dual-published in the mandated order (SOURCE first
-release id 456744685, RELEASES last id 456744818), md5-verified on
-both download-backs AND an anonymous re-download (sha256
-`2449f992d5cba129d6a4e969873183d6d86f57037526ab30fa0a46dfbf11784c`),
-and the checker's /latest endpoint serves v1.4.30. The field checks
-(the QR `producer=` read-back, the Imgur return leg, the Web
-citations) remain open — claimed nowhere.
+**v1.4.31 post-release: the known-good numbers.** APK 3,177,569 B
+(+12,102 B over v1.4.30's 3,165,467 B — the stripe calibration + the
+device table/seed + the three-door exit sweep + the trim-storm table +
+the single-injection rework + the passkey bootstrap + the glass diet +
+the perf diag lines); the FULL verification ran in this environment
+(the complete gates ladder incl. test_v1431 — 85/85 green, the full
+testDebugUnitTest Robolectric suite incl. the launch law — after the
+sandbox recycle re-fetched the android-all i6 jar into the machine-
+local robolectric-deps cache from the aliyun mirror), the signed build
+cert-verified against the pinned fingerprint, the 6,000,000 B size law
+held, dual-published in the mandated order (SOURCE first release id
+457274128, RELEASES last id 457274328), md5-verified on both
+download-backs AND an anonymous re-download (sha256
+`2b205f34c1a0e1e7a12a140f050b2707d4f8b3f055462a50caf897a3cfd72cde`),
+and both checkers' /latest endpoints serve v1.4.31. The field checks
+(the QR `mode=`/`net=` line, the diag door= cadence, the perf nav
+inj/bytes drop, the real passkey ceremony through the lazy layer, the
+banana-context conversation) remain open — claimed nowhere.
 
 Field state going INTO v1.4.30 (Realme, v1.4.29): AI tables VERIFIED
 GOOD; QR cover GOOD, rotation still off (the input this round fixes);
@@ -460,21 +465,40 @@ Imgur Google login succeeded but landed on google.com (the leg this
 round fixes); Bolt AI had no network (the legs this round add). None
 of v1.4.30's fixes are field-verified yet — the maintainer's device
 read-backs below are the acceptance test, and nothing here claims
-them.
+them. v1.4.31 builds on the same diagnostics; none of its fixes are
+field-verified yet either.
 
 **Open field read-backs (the acceptance list).**
-- The QR rotation line: on the reported device, `qr preview view=… buf=…
-  sensor=… display=… producer=… offset=… theta=… content=… scale=…` —
-  upright, full-cover, NO MISMATCH; the rotate button produces a
-  persisted, reproducible nudge if a device still misbehaves.
-- The Imgur return leg: the real Google consent on a test account ends
-  ON imgur (opener reloaded), the child closes itself or via the
-  watchdog, `popup return door=…` shows the path. Never paste cookies,
-  account details, codes, states or tokens into any report.
-- The Web citations: with the Web chip ON, a current-events question
-  returns a cited answer (Gemini: the Sources tail; other providers:
-  the SOURCES-block [n] markers), and the confirm appears exactly once
-  per run; incognito never asks.
+- The QR measured-implicit line (v1.4.31): `qr preview … mode=… net=…`
+  — upright, full-cover, no stretch, mode=measured (or table on the
+  Realme with the +270 seed showing in offset=), net≈1.0; the v1.4.30
+  line's `producer=`/`offset=`/`theta=` legs ride unchanged.
+- The exit-sweep cadence (v1.4.31): a session of tab switches produces
+  NO `cache guard exit … deep=1` lines while the browser stays in use;
+  the line appears once per true close (door=destroy) or after five
+  minutes away (door=delayed), and back/forward stops lagging after
+  trim storms (the `tabSleep … policy=idle3m-recent2` line names the
+  new policy).
+- The perf nav line (v1.4.31): `perf nav commit=… finish=… inj=…
+  bytes=…` — the inj/bytes numbers drop against the v1.4.30 BEFORE
+  ones (the single-injection evidence); `perf launch ms=` and
+  `perf blur ms= w= h=` ride alongside.
+- The real passkey ceremony (v1.4.31): a live passkey login still works
+  end to end through the ≤3 KB bootstrap (the ceremony parks, the full
+  layer loads once via Bolt.passkeyLoad and adopts); a real
+  GitHub/Google login is the acceptance test.
+- The Web context (v1.4.31): with the Web chip ON, "add apple and
+  orange to the table" AFTER a banana question answers with a
+  banana+apple+orange table and cited [n] sources — the banana corpse
+  closed on the device.
+- (carried) The Imgur return leg: the real Google consent on a test
+  account ends ON imgur (opener reloaded), the child closes itself or
+  via the watchdog, `popup return door=…` shows the path. Never paste
+  cookies, account details, codes, states or tokens into any report.
+- (carried) The Web citations: with the Web chip ON, a current-events
+  question returns a cited answer (Gemini: the Sources tail; other
+  providers: the SOURCES-block [n] markers), and the confirm appears
+  exactly once per run; incognito never asks.
 - (carried) The wide-table read-back on a phone; the popup prompt and
   always-allow pref exercises.
 
