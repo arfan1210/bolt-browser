@@ -680,6 +680,11 @@ else
 echo "== launch smoke (Robolectric: Application.onCreate -> launcher -> home) =="
 export GRADLE_USER_HOME=$BASE/.gradle-home
 GRADLE_BIN=${BOLT_GRADLE:-$BASE/gradle-8.9/bin/gradle}
+# v1.4.29 (2026-11-23) — honest fail-fast: name the real cause when the
+# build toolchain is absent (never report a missing Gradle as "the app
+# does not open"). Nothing is skipped — on a complete machine this check
+# is a no-op and the rung below runs unchanged.
+[ -x "$GRADLE_BIN" ] || { echo "ERROR: build toolchain missing — Gradle not found at $GRADLE_BIN (install Gradle 8.9 and/or set BOLT_GRADLE); NOT publishing"; exit 1; }
 $GRADLE_BIN --no-daemon -q -p $REPO_DIR testDebugUnitTest \
   || { echo "ERROR: LAUNCH SMOKE FAILED — the app does not open; NOT publishing (README, THE LAUNCH LAW)"; exit 1; }
 echo "== launch smoke OK =="
@@ -694,6 +699,16 @@ export JAVA_HOME=$JDK_DIR ANDROID_HOME=$BASE/sdk
 # GRADLE_USER_HOME: the workspace-shared cache (see README environment
 # notes — a fresh ~/.gradle would re-resolve every dependency)
 export GRADLE_USER_HOME=$BASE/.gradle-home
+# v1.4.29 (2026-11-23) — the keystore precondition (fail-fast, never a
+# bypass): the release signs with the OFFICIAL bolt.keystore only — the
+# same key as every release, so users update in place. Credentials come
+# from BOLT_STORE_FILE/BOLT_STORE_PASSWORD(/KEY_ALIAS/KEY_PASSWORD) or
+# the gitignored local.properties; no key file + password means NO
+# release (never a new key, never an unsigned APK).
+STORE_FILE="${BOLT_STORE_FILE:-$(grep -E '^bolt\.storeFile=' "$REPO_DIR/local.properties" 2>/dev/null | head -1 | cut -d= -f2-)}"
+STORE_PW="${BOLT_STORE_PASSWORD:-$(grep -E '^bolt\.storePassword=' "$REPO_DIR/local.properties" 2>/dev/null | head -1 | cut -d= -f2-)}"
+[ -n "$STORE_FILE" ] && [ -s "$STORE_FILE" ] && [ -n "$STORE_PW" ] \
+  || { echo "ERROR: signing credentials missing (BOLT_STORE_FILE/BOLT_STORE_PASSWORD or local.properties bolt.storeFile/bolt.storePassword) — the official bolt.keystore is required; NOT building (never a new key, never an unsigned APK)"; exit 1; }
 $GRADLE_BIN --no-daemon -q -p $REPO_DIR assembleRelease
 APK=$REPO_DIR/app/build/outputs/apk/release/app-release.apk
 ls -la "$APK"

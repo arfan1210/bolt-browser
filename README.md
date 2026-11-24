@@ -2329,14 +2329,21 @@ pre-Gradle probe toolchain (javac 8 + android-34 stubs + source-built
 zxing/commonmark jars); the Gradle/Robolectric suite (`testDebugUnitTest`
 incl. LaunchSmokeTest + TableRenderTest) and `assembleRelease` could NOT
 run here (the Android SDK/Gradle/dependency hosts are unreachable from
-the sandbox) and the official `bolt.keystore` is not present on this
-machine — per the release law the pipeline stops before signing rather
-than publish an unsigned APK or mint a new key.
+the sandbox — re-probed 2026-11-23: services.gradle.org, dl.google.com,
+maven.google.com and repo.maven.apache.org all refuse). The official
+`bolt.keystore` was supplied on 2026-11-23 and its file SHA-256 verified
+byte-exact against the recorded backup (0eadc7c2…3948 — which pins the
+signing cert SHA-256 bcd57eb4…8ae4); it lives OUTSIDE every repository
+and its credentials ride env vars or the gitignored local.properties
+only. Per the release law the pipeline still stops before signing here
+(no toolchain to build with) rather than publish an unsigned APK or
+mint a new key.
 
 **v1.4.29 pre-release numbers (this environment):** the gate suite runs
 on the pinned probes above; APK size and the Robolectric suite remain
 the v1.4.28 known-good values (3,155,927 B, suite green) until a
-keystore-equipped machine reruns `scripts/release.sh` end to end.
+keystore- and toolchain-equipped machine (the official bolt.keystore +
+Gradle 8.9 + Android SDK 34) reruns `scripts/release.sh` end to end.
 
 **Plans / candidates for future versions (v1.4.29 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
