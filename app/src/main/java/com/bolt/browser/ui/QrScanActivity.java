@@ -616,10 +616,26 @@ public class QrScanActivity extends AppCompatActivity {
      *  camera video". The transform is now the general recipe: rotate the
      *  buffer by (sensorOrientation - displayRotation + 360) % 360 (the
      *  classic JPEG-orientation formula — the angle that makes the image
-     *  upright for how the device is held) and center-crop scale so the
+     *  upright for how the device is held) and cover-scale so the
      *  upright content COVERS the view (aspect preserved, never squished).
      *  The YUV analysis path is untouched: ZXing infers rotation from the
-     *  finder patterns, so raw sensor frames still decode as-is. */
+     *  finder patterns, so raw sensor frames still decode as-is.
+     *
+     *  v1.4.29 — THE VIEW-SPACE FIX (the rotated-90° + part-of-the-screen
+     *  + black-region corpse): TextureView.setTransform() transforms the
+     *  VIEW's own local geometry — the buffer is ALREADY stretched to the
+     *  view bounds by the implicit buffer-to-view stretch before the
+     *  matrix sees it. The old matrix reasoned about raw BUFFER dimensions
+     *  (it omitted the stretch-undo step), so the matrix that shipped was
+     *  not the matrix the view applied: a buffer-space "fills the view"
+     *  check could pass while the APPLIED matrix covered only part of the
+     *  view (the reported 90° rotation + a large black lower region in
+     *  portrait). The matrix is now computed in the coordinates the
+     *  TextureView consumes:
+     *    M = T(viewCenter) · S(cover) · R(theta) · T(-bufCenter) · S(bw/vw, bh/vh)
+     *  — undo the implicit stretch (view coords -> buffer coords), run the
+     *  cover recipe in buffer coords, center in the view. Uniform scale
+     *  only (never squish), both axes covered, content centered. */
     private void applyPreviewTransform(int viewW, int viewH) {
         if (viewW == 0 || viewH == 0) return;
         try {
@@ -653,24 +669,38 @@ public class QrScanActivity extends AppCompatActivity {
                 pinRetried = true;
                 try { pinBuffer(); } catch (Throwable ignored) {}
                 try { Diag.log(this, "qr preview re-pin view=" + viewW + "x" + viewH +
-                        " buf=" + bufW + "x" + bufH + " theta=" + theta); } catch (Throwable ignored) {}
+                        " buf=" + bufW + "x" + bufH + " sensor=" + sensorOrientation +
+                        " theta=" + theta); } catch (Throwable ignored) {}
                 applyPreviewTransform(viewW, viewH);
                 return;
             }
             float cx = viewW / 2f, cy = viewH / 2f;
             Matrix matrix = new Matrix();
-            // buffer center -> view center, rotate to upright, scale to cover
-            matrix.postTranslate(-bw / 2f, -bh / 2f);
-            matrix.postRotate(theta);
-            matrix.postScale(s, s);
-            matrix.postTranslate(cx, cy);
+            // v1.4.29 — THE VIEW-SPACE MATRIX (the buffer-space corpse):
+            // setTransform() consumes view-local geometry whose content is
+            // the buffer ALREADY stretched to the view bounds, so the first
+            // op maps view coords BACK to buffer coords (undo the implicit
+            // stretch); then the classic recipe runs in buffer coords and
+            // centers in the view. Uniform scale only — aspect preserved;
+            // both axes covered (the fills assertion below); centered.
+            matrix.postScale(bw / viewW, bh / viewH);   // undo the implicit buffer->view stretch
+            matrix.postTranslate(-bw / 2f, -bh / 2f);   // buffer center -> origin
+            matrix.postRotate(theta);                    // upright
+            matrix.postScale(s, s);                      // cover BOTH axes
+            matrix.postTranslate(cx, cy);                // center in the view
             tvPreview.setTransform(matrix);
-            // v1.4.27 — THE READABLE RESIDUAL: view/buffer dims, the rotation
-            // and the cover scale ride the Diag — a mismatch left in the
-            // field is now readable from the log line instead of guesswork
+            // v1.4.27 — THE READABLE RESIDUAL (v1.4.29 format: view/buffer
+            // dims, sensor + display rotation, theta, the upright CONTENT
+            // size the applied matrix shows, and the cover scale — a field
+            // mismatch is readable from the log line; a covered transform
+            // carries no MISMATCH mark). No URLs, no tokens, nothing
+            // device-identifying rides this line.
             try {
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
-                        " buf=" + bw + "x" + bh + " theta=" + theta +
+                        " buf=" + Math.round(bw) + "x" + Math.round(bh) +
+                        " sensor=" + sensorOrientation + " display=" + degrees +
+                        " theta=" + theta +
+                        " content=" + Math.round(uw * s) + "x" + Math.round(uh * s) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
                         (fills ? "" : " MISMATCH"));
             } catch (Throwable ignored) {}

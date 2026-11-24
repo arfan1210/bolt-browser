@@ -2281,6 +2281,162 @@ against the current source; dual-published, md5-verified.
   candidate.
 
 
+**v1.4.29 — THE REACHABILITY ROUND** (the twenty-second session,
+2026-11-24): three fixes about content and flows that could not be
+reached — the rightmost columns of a dense AI table, the covered part of
+the QR preview, and the signed-in page after an Imgur Google consent
+popup. The hard constraints held: the v1.4.27/28 dark fixtures, the
+camera pipeline and the QR decode paths were untouched on their legs.
+
+1. *Bolt AI tables — THE NATURAL-WIDTH SCROLLER (the task's finding: the
+   custom renderer capped the width to the screen budget and could shrink
+   text to 0.55x, and the table sat width-filled in the chat child
+   without its own horizontal scrolling viewport).* The no-shrink law:
+   `TableView.layout` always measures at the FULL 14.5sp base — the
+   bounded-shrink block is deleted (the v1.4.28 gate's own pin on
+   `coerceAtLeast(0.55f)` is re-pointed with a dated note). The natural
+   content width is measured and EXPOSED
+   (`TableView.naturalWidthPx()`, plus `currentTextSizePx()` as the
+   no-shrink probe surface), and `addTable` sizes the view to exactly
+   that width inside a HorizontalScrollView the bubble hosts: a dense
+   table overflows honestly and scrolls to its last columns at full
+   size, a normal table measures exactly its content, the wrapper only
+   intercepts horizontal drags (the chat's vertical scrolling is the
+   parent container's job by construction), and grid lines/header
+   band/order are unchanged. Probe: `TableScrollTest` (Robolectric, real
+   measure/layout) pins the no-shrink law, the overflow + full-reach law,
+   the no-vertical-range law and the normal-table law; the v1.4.28 pixel
+   probe (`TableRenderTest`) rides green unchanged.
+
+2. *QR scanner — THE VIEW-SPACE PREVIEW TRANSFORM (the task's finding:
+   the old Camera2 transform reasoned about raw buffer dimensions, but
+   TextureView.setTransform() transforms view-local geometry; a
+   buffer-space "fills view" check could pass when the applied matrix did
+   not cover the actual view).* The matrix is now computed in the
+   coordinates the TextureView consumes:
+   `M = T(viewCenter) · S(cover) · R(theta) · T(-bufCenter) · S(bw/vw,
+   bh/vh)` — the first op UNDOES the implicit buffer-to-view stretch
+   (view coords back to buffer coords), the classic recipe runs in
+   buffer coords, the content is centered uniformly (never squished).
+   The recompute triggers stand unchanged (re-pin at openCamera /
+   createSession / a failed fills assertion, the first delivered frame
+   re-derive); the YUV decode path is untouched. The Diag line reads
+   `qr preview view=… buf=… sensor=… display=… theta=… content=… scale=…`
+   (+ `MISMATCH` only on a real cover failure). Probe: the v1.4.29 gate
+   transcribes the matrix and asserts, for portrait + landscape + ALL
+   FOUR quarter-turns, both-axes coverage, the one-axis-exactly fit and
+   the centered crop; the v1.4.26 gate's `preview_matrix` transcription
+   is re-pointed with a dated note (it modeled the old buffer-space
+   recipe).
+
+3. *OAuth popups — THE RELATED CHILD (the task's finding: buildWeb did
+   not enable multiple-window support; the popup handler could reject the
+   popup or use a throwaway WebView and a separate tab, losing the
+   related child browsing context and breaking window.opener /
+   postMessage / window.close()).* `Tab.buildWeb` now enables
+   `setSupportMultipleWindows(true)` (automatic no-gesture JS popups stay
+   blocked) and `onCreateWindow` builds a REAL related child through
+   `WebView.WebViewTransport`, kept attached (visible, on top of the
+   opener, with a native close chip) while the flow runs. The child is a
+   plain WebView: NO privileged Bolt bridge ("Bolt", "BoltWebAuthn",
+   "BoltTx") and no document-start hook injection ever enters it; it
+   carries the opener's UA + matching client-hints metadata (the
+   identity-agreement law) and the shared cookie jar with third-party
+   cookies accepted. The blocker policy classifies the child's first
+   real navigation: OAuth SHAPES (Tab.isAuthRequestUrl /
+   isAuthResponseUrl — now `public static`, the same classifier the
+   v1.3.100 auth-chain UA hold rides, so the two cannot drift), known IdP
+   base domains (Google accounts hosts, Apple, GitHub, Facebook) and the
+   opener's own base domain ride the child; ordinary popups keep the
+   v1.4.28 prompt (Allow / Always allow / Block); unsafe schemes are
+   refused. The child closes cleanly on onCloseWindow (window.close()),
+   Back (a child history step first), tab switch, the close chip and
+   onDestroy — exactly once, via one teardown. NO popup URL, code, state
+   or token is ever logged (lifecycle Diag lines only; the scheme-guard
+   line names no URL). Probe: the v1.4.29 gate pins the flag/transport/
+   no-bridge/close wiring/scheme-guard/no-URL-log laws and compiles +
+   runs the classifier against a decision table. FIELD STATUS: the live
+   Imgur Google consent flow was NOT reproduced in this session (no
+   device, no test account) — the fix is a strong source-level
+   hypothesis until device-tested, per the task's own framing.
+
+The standing sweep: `repin_gates_1429.py` repinned the version pins to
+143/1.4.29 (dated re-points where the round legitimately moved pinned
+targets: the v1.4.28 gate's 0.55x-shrink pin — the no-shrink law carries
+it now; the v1.4.26 gate's preview-matrix transcription — the view-space
+recipe carries it now; the v1.3.100 gate's classifier-visibility pin —
+the public modifier carries it now; the v1.3.60 fullscreen gate's
+viewport-toggle pin — SCOPED to the live path, the related popup child's
+BUILD-time quirks ride outside it now; all four dated in place). The
+v1.4.27 QR fills-law pins (the fills expression, the one-shot re-pin
+ladder, the first-frame re-derive) ride the suite UNCHANGED — the cover
+scale and the assertion are the same computation, now actually honored
+by the applied matrix.
+
+SESSION + ENVIRONMENT NOTES (2026-11-24): the /home/user/bolt-browser
+candidate workspace from the earlier pass was NOT accessible to this
+session (fresh sandbox), so the three fixes were implemented fresh on a
+clean checkout of upstream e31e142 from the task's findings, exactly as
+the task instructed. The toolchain was rebuilt here per
+scripts/setup_toolchain.sh's recipe (the grafted JDK 21 with javac,
+Gradle 8.9, Android SDK 34; the Robolectric android-all jar fetched from
+the Aliyun mirror into the machine-local maven layout the build.gradle
+expects). THE REPO-ORDER ADAPTATION the pipeline docs anticipate:
+repo.maven.apache.org 429'd this sandbox on every HEAD while the aliyun
+mirrors carried the artifacts, so settings.gradle's pluginManagement
+moved the aliyun mirrors above mavenCentral (the v1.4.23 dependency
+block's own adaptation, applied to the plugin classpath; dated in place —
+the chain is unchanged, only the order follows the environment).
+Verification in THIS session: the FULL 83-command gate suite
+(scripts/release.sh's gates section, run in order by the session's
+scripts/run_gates.py helper) ALL GREEN against the current source; the
+Robolectric suite ALL GREEN — LaunchSmokeTest (the launch law: the app
+OPENS), TableRenderTest (the v1.4.28 pixel probe) and the new
+TableScrollTest (3 tests, the natural-width/no-shrink/reach laws);
+`gradle assembleDebug` builds and installs (the standard Android debug
+key — a fresh clone's documented behavior). THE RELEASE BUILD STOPS AT
+SIGNING BY DESIGN: `assembleRelease` runs R8 fine and then
+`packageRelease` REFUSES with `SigningConfig "release" is missing
+required property "storeFile"` — bolt.keystore is absent from this
+sandbox and credentials cannot reconstruct it. NO signing, NO release
+artifact, NO publication happened; nothing was uploaded; no unsigned APK
+was shipped or staged. THE SECURITY DEBT of the prior chat: the exposed
+GitHub PAT was never used here and must be REVOKED on GitHub (it is
+compromised the moment it hit chat history); no push was performed in
+this session (no credential exists here), so the verified changes ride
+the local commit below and a future session with a NEW least-privilege
+credential (via GHTOKEN env or .ghtoken, never pasted anywhere) runs
+`bash scripts/release.sh 1.4.29` after the field checks it will
+honestly record. Field checks for the QR preview and the Imgur flow
+remain on the future-plan list — do not call them field-verified until
+a device/test-account run says so.
+
+**Plans / candidates for future versions (v1.4.29 edition):**
+- THE LAUNCH LAW stays forever (carried from every edition since
+  v1.4.23).
+- The QR preview wants its device read-back: the
+  `qr preview view=… buf=… sensor=… display=… theta=… content=… scale=…`
+  line on the reported portrait device with NO MISMATCH and an upright,
+  full-cover preview.
+- The popup child wants its account read-back: the real Imgur Google
+  consent + callback on a test account (redirect returns to Imgur, the
+  opener gets its callback, the child closes, no black page), plus the
+  ordinary-popup prompt, the always-allow pref and the unsafe-scheme
+  refusal exercises. Never paste cookies, account details, codes, state
+  or tokens into any report.
+- The table round wants its field read-back: a wide AI table on a phone
+  — full-size text, horizontal reach to the last column, vertical chat
+  scroll intact.
+- (carried) The jlatexmath optional pack lands at ~289 KB one-time; the
+  EasyList/EasyPrivacy snapshots remain the next APK-size lever.
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate.
+
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

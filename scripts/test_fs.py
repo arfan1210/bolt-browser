@@ -430,7 +430,15 @@ if "armFullscreenViewportAndAspect" in ba:
 if "restoreFullscreenViewport" in ba:
     failures.append("restoreFullscreenViewport still exists (dead code from "
                     "the removed decoupling)")
-if "setUseWideViewPort(" in ba or "setLoadWithOverviewMode(" in ba:
+# v1.4.29 re-point (2026-11-24): the related popup child (the Imgur Google
+# sign-in fix, BrowserActivity.buildPopupChild) builds a FRESH WebView at
+# popup time and gives it the same BUILD-time viewport quirks Tab.buildWeb
+# gives every tab — quirk prefs are load-time there too (the child has no
+# live document to re-evaluate them mid-page; the fullscreen law's target is
+# the LIVE path only). The check now scopes out that builder body; any other
+# viewport toggle in BrowserActivity still fails.
+ba_scope = re.sub(r"private WebView buildPopupChild\(WebView opener\) \{[\s\S]*?private class PopupChildClient", "", ba)
+if "setUseWideViewPort(" in ba_scope or "setLoadWithOverviewMode(" in ba_scope:
     failures.append("a live viewport-settings toggle appeared in "
                     "BrowserActivity -- quirk prefs do not re-run the "
                     "viewport policy of a live document (verified in "

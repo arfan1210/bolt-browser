@@ -8,6 +8,7 @@ app/build/
 *.keystore
 keystore.properties
 local.properties
+scripts/.gate-results.txt
 
 # IDE / OS
 .idea/

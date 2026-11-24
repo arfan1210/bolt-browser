@@ -4,6 +4,92 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.29] — 2026-11-24
+
+**The reachability round: three fixes about content and flows you could
+not reach — the rightmost columns of a dense AI table, the last quarter
+of the QR scanner's portrait preview, and the signed-in page at the end
+of Imgur's Google sign-in popup. The table's text never shrinks to fit
+anymore (it scrolls horizontally instead), the camera transform is
+computed in the coordinates the TextureView actually consumes, and popup
+OAuth flows run in a real attached related child (window.opener,
+postMessage and window.close survive; ordinary popups still prompt; no
+privileged bridge ever enters the popup). Field verification on a real
+device / with a real test account is still outstanding for the QR and
+popup fixes — the geometry, policy and lifecycle laws are probe-pinned.**
+
+### 1. BOLT AI TABLES: THE NATURAL-WIDTH SCROLLER
+- Corpse (v1.4.28 law taken too far): a dense AI table shrank its type
+  ONCE against the screen-width budget, bounded at 0.55x — small text
+  turned to specks — and the table view sat width-filled in the chat
+  child with no horizontal viewport of its own, so columns past the
+  right edge were unreachable on a phone.
+- Law: the cell type is NEVER scaled down (`measureAt` at the full 14.5sp
+  base, always). `TableView.naturalWidthPx()` measures and exposes the
+  grid's natural content width; `addTable` sizes the view to exactly that
+  width inside a HorizontalScrollView the bubble hosts. The wrapper
+  intercepts horizontal drags only — the chat's vertical scrolling is
+  untouched — and a normal-sized table measures exactly its content (no
+  dead space, no scrollbar). Grid lines, header band, colors and the
+  document order around the table are unchanged; any wrapper failure
+  falls back to the v1.4.28 direct add.
+- Probe: `TableScrollTest` (Robolectric, real measure/layout) pins the
+  no-shrink law, the overflow + full-reach law (scrollX reaches child
+  width − viewport), the no-vertical-range law, and the normal-table law.
+
+### 2. QR SCANNER: THE VIEW-SPACE PREVIEW TRANSFORM
+- Corpse: the old matrix reasoned about raw BUFFER dimensions, but
+  `TextureView.setTransform()` transforms VIEW-local geometry — the
+  buffer arrives already stretched to the view bounds. The buffer-space
+  "fills the view" check could pass while the APPLIED matrix covered only
+  part of the view: the preview appeared rotated 90° and confined to part
+  of a portrait screen, with a large black region.
+- Fix: the matrix is computed in the coordinates the TextureView consumes
+  — `M = T(center) · S(cover) · R(theta) · T(-bufCenter) · S(bw/vw, bh/vh)`
+  (undo the implicit stretch, rotate upright, uniform cover scale, center).
+  The recompute triggers stand (buffer re-pin after openCamera /
+  createSession / a failed fills assertion, and the first delivered
+  frame). The YUV decode path is untouched.
+- Probe: the gate transcribes the matrix and asserts, for portrait and
+  landscape and ALL FOUR quarter-turns, that the mapped content covers
+  BOTH axes, one axis fits exactly (aspect-true cover), and the crop is
+  centered. The Diag line now reads
+  `qr preview view=… buf=… sensor=… display=… theta=… content=… scale=…`
+  with `MISMATCH` only on a genuine cover failure.
+
+### 3. OAUTH POPUPS: THE RELATED CHILD (the Imgur Google sign-in corpse)
+- Corpse: `Tab.buildWeb()` never enabled WebView multi-window support, so
+  `onCreateWindow` was dead code; the throwaway-probe workaround (or a
+  separate tab) severed the related child browsing context and broke
+  window.opener / postMessage / window.close() — after Google's consent
+  the WebView returned to a black page instead of signed-in Imgur. (The
+  live Imgur flow is not yet field-reproduced: strong source-level
+  hypothesis until device-tested.)
+- Fix: `buildWeb` enables `setSupportMultipleWindows(true)` (automatic
+  JS popups stay blocked); `onCreateWindow` builds a REAL related child
+  WebView through `WebView.WebViewTransport`. The child is a plain
+  WebView — NO privileged Bolt bridge ("Bolt", "BoltWebAuthn", "BoltTx")
+  and no document-start hook injection rides into it — and carries the
+  opener's UA + matching client-hints metadata plus the shared cookie jar
+  (third-party accepted). The popup-blocker policy classifies the child's
+  first real navigation: recognized OAuth shapes (`client_id` +
+  `redirect_uri`/`response_type`, or a response landing — the SAME
+  classifier as the v1.3.100 auth-chain UA hold) and known IdP domains
+  (Google accounts hosts, Apple, GitHub, Facebook) or the opener's own
+  base domain ride the visible child; ordinary popups keep the v1.4.28
+  prompt (Allow / Always allow / Block); unknown schemes (intent:/,
+  javascript:, data:, …) are refused. The child closes cleanly on
+  window.close() (onCloseWindow), Back (a child history step first), a
+  tab switch, and a native close chip — and on activity death. No popup
+  URL, authorization code, state or token is ever logged; the Diag lines
+  name only lifecycle events.
+- Probe: the gate pins the multi-window flag, the transport law, the
+  no-bridge child, the close wiring, the scheme guard and the no-URL-log
+  law, and compiles + runs the classifier against a decision table
+  (authorize URLs, response landings, third-party popups, first-party
+  chains, unsafe schemes).
+
+
 ## [1.4.28] — 2026-11-22
 
 **The security + visibility round: three user-requested security laws

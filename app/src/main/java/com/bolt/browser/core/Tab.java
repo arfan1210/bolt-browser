@@ -364,6 +364,18 @@ public class Tab {
         s.setMediaPlaybackRequiresUserGesture(false); // allows notification-triggered play
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
+        // v1.4.29 — MULTI-WINDOW SUPPORT (the Imgur Google sign-in corpse):
+        // Chromium reports popup windows (window.open with a user gesture,
+        // target=_blank, OAuth consent popups) through
+        // WebChromeClient.onCreateWindow ONLY when the WebView declares
+        // multi-window support — without this flag BrowserActivity's popup
+        // handler was DEAD CODE, and the popup either silently no-op'd or
+        // (with the throwaway-probe workaround) lost the related child
+        // browsing context, breaking window.opener / postMessage /
+        // window.close() callbacks — the consent flow died on a black page.
+        // Automatic (no-gesture) JS popups stay blocked by the flag above;
+        // gesture popups reach the browser's related-child handler.
+        s.setSupportMultipleWindows(true);
         s.setAllowFileAccess(true); // needed to open saved offline .mht pages
         s.setAllowContentAccess(false);
         if (Prefs.get(c).dnt()) {
@@ -634,8 +646,12 @@ public class Tab {
      *  authorize, accounts.google.com/o/oauth2/auth, ...) — or a SAML
      *  redirect-binding SAMLRequest. Reached only from main-frame hooks
      *  (shouldOverrideUrlLoading / onPageStarted / onPageCommitVisible),
-     *  so an API iframe's client_id can never arm the hold. */
-    static boolean isAuthRequestUrl(String url) {
+     *  so an API iframe's client_id can never arm the hold.
+     *  v1.4.29: public — the popup child's blocker classifier
+     *  (BrowserActivity.isPopupOAuthUrl) reuses this EXACT shape law so
+     *  the auth-chain UA hold and the popup allowlist cannot drift apart
+     *  (edit both together is edit-one-place now). */
+    public static boolean isAuthRequestUrl(String url) {
         String q = urlQueryOf(url);
         return qHasAny(q, "samlrequest")
                 || (qHasAny(q, "client_id")
@@ -651,8 +667,10 @@ public class Tab {
      *  qwen's failed GitHub connect). Bias is deliberate: a false
      *  positive skips ONE heal (a page renders with the chain's UA until
      *  the next navigation — cosmetic, self-healing), a false negative
-     *  reloads a single-use page (fatal to the sign-in). */
-    static boolean isAuthResponseUrl(String url) {
+     *  reloads a single-use page (fatal to the sign-in).
+     *  v1.4.29: public — reused by the popup child's blocker classifier
+     *  (see isAuthRequestUrl above). */
+    public static boolean isAuthResponseUrl(String url) {
         String[] names = {"code", "error", "error_code", "error_description",
                 "id_token", "access_token", "token", "samlresponse",
                 "relaystate", "nonce", "iss"};

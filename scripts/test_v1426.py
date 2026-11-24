@@ -331,12 +331,20 @@ need("static byte[] stretchLuma(byte[] y, int width, int height)" in qc_raw
 
 # the transform table (transcribed): the mapped buffer-corner HULL must
 # CONTAIN the view rect (cover) with one axis fitting EXACTLY (aspect-true)
+# v1.4.29 re-point (2026-11-24): the applied transform moved to VIEW-SPACE
+# geometry — TextureView.setTransform() transforms the VIEW's own local
+# geometry (the buffer arrives already stretched to the view bounds), so the
+# matrix now STARTS by undoing the implicit buffer->view stretch. The
+# transcription below models the NEW recipe: the mapped VIEW-corner hull is
+# the content the view actually shows; the corpse (the old buffer-space
+# matrix) is DEMONSTRATED leaving black regions in test_v1429.py.
 def preview_matrix(bufw, bufh, vieww, viewh, theta):
     uw, uh = (bufw, bufh) if theta % 180 == 0 else (bufh, bufw)
     s = max(vieww / uw, viewh / uh)
 
     def m(p):
-        x, y = p[0] - bufw / 2.0, p[1] - bufh / 2.0
+        x, y = p[0] * bufw / vieww, p[1] * bufh / viewh   # undo the stretch
+        x, y = x - bufw / 2.0, y - bufh / 2.0
         # postRotate(theta)
         import math
         a = math.radians(theta)
@@ -344,7 +352,7 @@ def preview_matrix(bufw, bufh, vieww, viewh, theta):
         # postScale(s, s) + postTranslate(cx, cy)
         return (x * s + vieww / 2.0, y * s + viewh / 2.0)
 
-    return s, [m((0, 0)), m((bufw, 0)), m((bufw, bufh)), m((0, bufh))]
+    return s, [m((0, 0)), m((vieww, 0)), m((vieww, viewh)), m((0, viewh))]
 
 
 def hull(pts):
@@ -855,8 +863,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 140/1.4.26 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1426.py")),
      "the v1.4.26 sweep script is checked in (provenance)")
-need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
-     and "versionCode 142" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.29"' in open(BG, encoding="utf8").read()
+     and "versionCode 143" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
      # v1.4.27 re-point (2026-11-22): the build pin + its label moved to
      # 141/1.4.27 (the picture-stack + merged-pipeline round)

@@ -1262,8 +1262,11 @@ object AiRender {
     }
 
     /** v1.4.28 — builds the drawn-grid [TableView] with theme-aware colors
-     *  and dp paddings; the width budget is the screen's own width (the
-     *  view shrinks its type once, bounded, when the content overflows).
+     *  and dp paddings; the width budget is the screen's own width.
+     *  v1.4.29 — THE NO-SHRINK LAW: the view NEVER scales its type down to
+     *  fit the budget — a too-wide table honestly overflows its viewport
+     *  and [addTable] wraps it in a HorizontalScrollView so the rightmost
+     *  columns stay reachable at full size.
      *  A construction failure falls to a plain TextView carrying the
      *  [renderTable] monospace grid (the never-eat-a-reply law). */
     fun tableView(c: Context, rows: List<List<String>>): android.view.View {
@@ -1344,13 +1347,39 @@ object AiRender {
     }
 
     /** one table view of a split bubble (its own margins inside the
-     *  bubble). */
+     *  bubble).
+     *  v1.4.29 — THE NATURAL-WIDTH SCROLLER (the wide-table corpse: dense
+     *  AI tables shrank to 0.55x specks and/or clipped their rightmost
+     *  columns on narrow screens): the table is sized to its NATURAL
+     *  width ([TableView.naturalWidthPx] — the full-size content width,
+     *  never shrunk) and wrapped in a HorizontalScrollView the bubble's
+     *  width can host. The wrapper only intercepts HORIZONTAL drags, so
+     *  the chat's existing vertical scrolling is untouched, and the
+     *  rightmost columns are always reachable by scrolling. A normal-sized
+     *  table measures exactly its content (no dead space, no scrollbar);
+     *  grid lines, header band, colors and the document order around the
+     *  table are unchanged. Any failure in the wrapper falls back to the
+     *  v1.4.28 direct add (never eat a table). */
     private fun addTable(c: Context, box: android.widget.LinearLayout, m: TableMark) {
-        val v = tableView(c, m.rows)
+        var host: android.view.View = tableView(c, m.rows)
+        try {
+            if (host is TableView) {
+                host.hostedInScroller = true
+                val natural = host.naturalWidthPx()
+                val hs = android.widget.HorizontalScrollView(c)
+                hs.isVerticalScrollBarEnabled = false
+                hs.isHorizontalScrollBarEnabled = true
+                hs.addView(host, android.widget.FrameLayout.LayoutParams(
+                        natural, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+                host = hs
+            }
+        } catch (_: Throwable) {
+            host = tableView(c, m.rows)
+        }
         val lp = android.widget.LinearLayout.LayoutParams(-1, -2)
         lp.topMargin = Fx.dp(c, 6)
         lp.bottomMargin = Fx.dp(c, 6)
-        box.addView(v, lp)
+        box.addView(host, lp)
     }
 
     /**
@@ -1388,6 +1417,11 @@ object AiRender {
         private var textSize = 0f
         private var laid = false
 
+        /** v1.4.29 — set by the scroller host ([addTable]): the view then
+         *  measures to its NATURAL width ([hostedInScroller] in onMeasure). */
+        @JvmField
+        var hostedInScroller: Boolean = false
+
         /** the geometry, at one type size (col widths = widest cell + 2x
          *  padH, the equal-split floor, row height = font box + 2x padV). */
         private fun measureAt(paint: Paint, size: Float) {
@@ -1421,26 +1455,64 @@ object AiRender {
             laid = true
             cols = 1
             for (r in rows) cols = maxOf(cols, r.size)
-            val base = paint.textSize
-            measureAt(paint, base)
-            // the width budget: shrink the type ONCE (bounded at 0.55x —
-            // under that a dense table honestly overflows rather than
-            // turning into unreadable specks)
-            if (totalW > maxW && totalW > 0f) {
-                val f = (maxW / totalW).coerceAtLeast(0.55f)
-                measureAt(paint, base * f)
-            }
+            // v1.4.29 — THE NO-SHRINK LAW (the tiny-text corpse): the cell
+            // type is NEVER scaled down against the width budget — the
+            // v1.4.28 bounded 0.55x shrink turned dense AI tables into
+            // unreadable specks. The grid always measures at the FULL base
+            // size; a too-wide table overflows its viewport honestly and
+            // the bubble's HorizontalScrollView (see [addTable]) scrolls
+            // the rest into reach.
+            measureAt(paint, paint.textSize)
+        }
+
+        /** v1.4.29 — the probe paint: the SAME base size onMeasure/onDraw
+         *  compute with (14.5sp), so every caller lays out identical
+         *  geometry. */
+        private fun baseProbe(): Paint {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            p.textSize = 14.5f * resources.displayMetrics.scaledDensity
+            return p
+        }
+
+        /** v1.4.29 — measures the grid at the FULL type size and returns
+         *  the table's NATURAL content width in px (+2 for the clip guard).
+         *  Exposed for the [addTable] wrapper (the HorizontalScrollView's
+         *  child is sized to this exact width, so the grid never clips
+         *  inside it) and for the tests. Never throws (worst case maxW). */
+        fun naturalWidthPx(): Int {
+            return try {
+                if (!laid) layout(baseProbe())
+                Math.max(1, Math.ceil((totalW + 2f).toDouble()).toInt())
+            } catch (_: Throwable) { maxW }
+        }
+
+        /** v1.4.29 — the CURRENT cell type size in px (the no-shrink law's
+         *  probe surface: it always equals the 14.5sp base — a dense table
+         *  no longer rides a shrunken metrics pass). */
+        fun currentTextSizePx(): Float {
+            return try {
+                if (!laid) layout(baseProbe())
+                textSize
+            } catch (_: Throwable) { 0f }
         }
 
         override fun onMeasure(widthSpec: Int, heightSpec: Int) {
             try {
-                val p = Paint(Paint.ANTI_ALIAS_FLAG)
-                p.textSize = 14.5f * resources.displayMetrics.scaledDensity
+                val p = baseProbe()
                 layout(p)
-                // measured content width, bounded by [maxW] + the clip
-                // guard so the outer rules never shave on a hairline
-                val want = Math.min(totalW + 2f, maxW.toFloat()).toInt()
-                val w = resolveSize(want, widthSpec)
+                // v1.4.29 — the measured width: when the table is hosted in
+                // the bubble's HorizontalScrollView ([addTable] sets
+                // [hostedInScroller] AND sizes the child to the natural
+                // width), the view reports its NATURAL width — the wrapper
+                // owns the viewport and scrolls the overflow, so the grid
+                // never clips inside it (real Android's EXACTLY child spec
+                // agrees with this; a shadow/host that measures the child
+                // AT_MOST or UNSPECIFIED must not clip it either).
+                // [maxW] only caps a DIRECTLY-hosted view (no scroller
+                // around it — the v1.4.28 direct-add fallback path).
+                val natural = Math.ceil((totalW + 2f).toDouble()).toInt()
+                val w = if (hostedInScroller) natural
+                        else resolveSize(Math.min(natural, maxW), widthSpec)
                 setMeasuredDimension(w, (totalH + 2f).toInt())
             } catch (_: Throwable) {
                 setMeasuredDimension(maxW, Fx.dp(context, 60))
@@ -1449,8 +1521,7 @@ object AiRender {
 
         override fun onDraw(canvas: Canvas) {
             try {
-                val p = Paint(Paint.ANTI_ALIAS_FLAG)
-                p.textSize = 14.5f * resources.displayMetrics.scaledDensity
+                val p = baseProbe()
                 layout(p)
                 val body = Paint(p)
                 body.color = textColor

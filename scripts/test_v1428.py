@@ -300,8 +300,8 @@ need("try { Prefs.get(c).isDark() } catch (_: Throwable) { false }" in ar_raw
      "theme-aware rule/text colors (the dark/light branches)")
 need("probe.measureText(cell)" in ar_raw,
      "column widths measured from the CONTENT")
-need("coerceAtLeast(0.55f)" in ar_raw,
-     "the one bounded shrink against the width budget")
+need("coerceAtLeast(0.55f)" not in ar_raw,
+     "the one bounded shrink against the width budget")  # v1.4.29 re-point (2026-11-24): the 0.55x-shrink pin moved — the v1.4.29 reachability round DELETED the shrink (the tiny-text corpse); the pin now asserts its ABSENCE (the no-shrink law), and the natural-width/scroll laws ride test_v1429.py + TableScrollTest
 
 # ---- D3. THE VIEW LAW (the fix's essence) ----
 need("override fun onMeasure(widthSpec: Int, heightSpec: Int)" in ar_raw
@@ -617,8 +617,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 142/1.4.28 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1428.py")),
      "the v1.4.28 sweep script is checked in (provenance)")
-need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
-     and "versionCode 142" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.29"' in open(BG, encoding="utf8").read()
+     and "versionCode 143" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
 
 print()

@@ -111,8 +111,17 @@ android {
         // view-based AI table renderer (the invisible span corpse), the
         // vision-primary manga path (the wasm-incompatible vert models),
         // and the QR gallery's full-resolution-first ladder.
-        versionCode 142
-        versionName "1.4.28"
+        // v1.4.29 (2026-11-24) — the reachability round: the wide AI
+        // tables keep their FULL type size and scroll horizontally inside
+        // the bubble (the no-shrink + natural-width law), the QR camera
+        // preview transform is computed in the coordinates the TextureView
+        // consumes (the buffer-space matrix was 90°-off and part-covered —
+        // the black-region report), and OAuth popup flows (the Imgur
+        // Google sign-in) run in a REAL related child WebView (multi-window
+        // support + WebViewTransport — window.opener/postMessage/window
+        // .close() survive; the blocker still prompts ordinary popups).
+        versionCode 143
+        versionName "1.4.29"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

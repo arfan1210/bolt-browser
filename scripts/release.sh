@@ -633,6 +633,29 @@ python3 scripts/test_v1427.py
 # sample 1 up to 24 MP before the 8 MP memory law, every scale through
 # decodeRobust's rotations + center-crops)
 python3 scripts/test_v1428.py
+
+# ---- 1z-29. v1.4.29 gate: THE REACHABILITY ROUND (three fixes about
+# content and flows that could not be reached: THE NATURAL-WIDTH TABLE
+# SCROLLER — the no-shrink law (the 0.55x corpse deleted), the measured +
+# exposed natural width, the HorizontalScrollView sized to the natural
+# width (horizontal reach to the last columns, vertical chat scrolling
+# untouched), the TableScrollTest geometry probe; THE VIEW-SPACE QR
+# PREVIEW TRANSFORM — the matrix starts by undoing the implicit
+# buffer->view stretch (setTransform consumes view-local geometry; the
+# buffer-space corpse DEMONSTRATED leaving black regions), the
+# sensor/display/content diag, the four-quarter-turn coverage table, the
+# v1.4.27 fills law + first-frame re-derive unchanged; THE RELATED
+# POPUP CHILD — multi-window support in buildWeb, the WebViewTransport
+# child (window.opener/postMessage/window.close survive), the no-bridge
+# child, the UA/cookie carry-over, the OAuth-shape + IdP-host +
+# first-party allowlist reusing Tab's classifiers (now public static),
+# the scheme guard, the clean close doors, the no-URL-log law, the
+# compiled classifier decision table) — probes: the view-space geometry
+# table (portrait + landscape + all four quarter-turns: both-axes
+# coverage, one-axis-exactly, centered crop), the extracted REAL
+# classifier compiled + run (ride/prompt/unsafe tables), the Robolectric
+# TableScrollTest geometry probe
+python3 scripts/test_v1429.py
 mark gates
 fi
 

@@ -10,12 +10,21 @@ pluginManagement {
         // official repos were the rate-limited ones — v1.3.31's lesson, now
         // symmetric): the environment flips which repo is healthy, the
         // fallback chain serves either way.
+        // v1.4.29 (2026-11-24): the health flip struck the PLUGIN classpath —
+        // repo.maven.apache.org 429'd every HEAD (hundreds of plugin-dep
+        // probes = minutes of dead latency per configuration) while aliyun
+        // carried the artifacts, so the aliyun mirrors move ABOVE
+        // mavenCentral here (exactly the v1.4.23 dependency block's
+        // adaptation, now applied to pluginManagement; google() stays above
+        // the aliyun GOOGLE mirror for the Android artifacts it serves
+        // authoritatively). The chain is unchanged; only the order follows
+        // the environment.
         google()
-        mavenCentral()
-        gradlePluginPortal()
         maven { url 'https://maven.aliyun.com/repository/central' }
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        gradlePluginPortal()
+        mavenCentral()
     }
 }
 dependencyResolutionManagement {
