@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 144" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.30"' in gradle, 'versionName "1.4.30"')
+need("versionCode 145" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.31"' in gradle, 'versionName "1.4.31"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -195,11 +195,16 @@ need("t.saveHist(t.web);" in ba_code,
 _sleepSlice = ba_code.split("protected void sleepTab(Tab t) {")[1].split("detachTabsForSwitch")[0]
 need("t.sleeping = true;" in _sleepSlice,
      "the trim path sets the sleep flags (scroll + history restore on wake)")
-need("boolean realPressure = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE;" in ba_code
-     and "if (anyMedia && realPressure)" in ba_code,
+# v1.4.31 re-point (2026-11-25): the trigger law moved into the PURE
+# trimSleepDecision table (trim × role × rank × idle) — the level>=60
+# gate lives INSIDE it now, and the pass sleeps only idle background
+# tabs (the trim-storm policy); the anyMedia conjunction is gone.
+need("static boolean trimSleepDecision(int level, String role, int rank, long idleMs)" in ba_code
+     and "TRIM_MEMORY_MODERATE" in ba_code.split("static boolean trimSleepDecision")[1].split("\n    }")[0],
      "THE SOFTENED TRIGGER: the sleep pass runs from level >= 60 — the "
      "device's level=15 app switches no longer destroy background tabs "
-     "(the thumbnail drop keeps its cheap old gate)")
+     "(the thumbnail drop keeps its cheap old gate; v1.4.31: the gate "
+     "is the PURE trimSleepDecision table, the media conjunction gone)")
 need("t.saveHist(view);" in ba_code.split("onRenderProcessGone")[1],
      "the renderer-death path captures state BEFORE destroy (the history "
      "lives in the browser process — render death does not take it)")
@@ -331,7 +336,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 144") == 1,
+need(gradle.count("versionCode 145") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

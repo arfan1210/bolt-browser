@@ -67,6 +67,12 @@ object ShadowGate {
 
     /** WebViews already carrying the document-start registration. */
     private val ARMED = WeakHashMap<WebView, Boolean>()
+    /** v1.4.31 — the one-attempt map (see the law note inside arm()). */
+    private val TRIED = WeakHashMap<WebView, Boolean>()
+
+    /** v1.4.31 — process-wide fallback-eval counter for the perf nav line. */
+    @JvmField var evalCount: Int = 0
+    @JvmField var evalBytes: Long = 0
 
     /**
      * Register GATE_JS as a document-start script on this WebView — every
@@ -79,19 +85,22 @@ object ShadowGate {
     @JvmStatic
     fun arm(w: WebView?) {
         if (w == null) return
-        synchronized(ARMED) {
-            if (ARMED.containsKey(w)) return
-            ARMED[w] = true
+        // v1.4.31 — THE SINGLE-INJECTION LAW (mirrors FrameHooks): TRIED
+        // marks the one attempt, ARMED a SUCCESSFUL registration
+        synchronized(TRIED) {
+            if (TRIED.containsKey(w)) return
+            TRIED[w] = true
         }
         try {
             if (androidx.webkit.WebViewFeature.isFeatureSupported(
                             androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                         w, GATE_JS, Collections.singleton("*"))
+                synchronized(ARMED) { ARMED[w] = true }
             }
         } catch (ignored: Throwable) {
             // old WebView / registration race: injectNow still covers the
-            // main frame at the two onPage moments
+            // main frame at the onPage moment
         }
     }
 
@@ -100,12 +109,18 @@ object ShadowGate {
      * braces beside the document-start registration — covers WebViews
      * without DOCUMENT_START_SCRIPT support and documents that predate
      * arm(). Idempotent: the __boltShrArmed guard makes re-runs no-ops.
-     * Called at the same two moments as FrameHooks.injectNow
-     * (onPageStarted + onPageCommitVisible, ALWAYS, incognito included).
+     * Called at the same moment as FrameHooks.injectNow
+     * (onPageStarted — v1.4.31 keeps ONE fallback per document, ALWAYS,
+     * incognito included).
+     * v1.4.31 — THE SINGLE-INJECTION LAW: a WebView whose registration
+     * succeeded never re-evaluates the script here.
      */
     @JvmStatic
     fun injectNow(web: WebView?) {
         if (web == null) return
+        if (ARMED.containsKey(web)) return
+        evalCount++
+        evalBytes += GATE_JS.length
         try {
             web.post {
                 try { web.evaluateJavascript(GATE_JS, null) } catch (ignored: Throwable) {}

@@ -425,6 +425,16 @@ public class Tab {
         // is otherwise unreadable from outside by design. Same rules as the
         // two above: before first loadUrl, once per WebView, never throws.
         com.bolt.browser.util.ShadowGate.arm(w);
+        // v1.4.31 — THE SINGLE-INJECTION LAW: the media core joins the
+        // document-start registrations (fourth and last hook) — the
+        // evaluateJavascript twins at onPageStarted/onPageCommitVisible
+        // become no-ops on WebViews where this landed (one script parse
+        // per document per hook instead of two, and main-frame-only
+        // coverage widens to every frame). Same rules as the three above:
+        // before first loadUrl, once per WebView, never throws; on
+        // WebViews without the feature the onPageStarted fallback keeps
+        // one guarded evaluate per document.
+        com.bolt.browser.media.MediaHook.arm(w, com.bolt.browser.util.Prefs.get(c));
         // v1.3.24: bolt's own on-device authenticator — the CEREMONY backend.
         // Exposed as window.BoltWebAuthn (probed by webauthn_compat.js, bound
         // ahead of the native engine). Available at document start in every

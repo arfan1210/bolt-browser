@@ -85,8 +85,8 @@ settings = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.jav
 readme = read("README.md")
 
 print("A — version pins")
-need("versionCode 144" in gradle and 'versionName "1.4.30"' in gradle,
-     "build.gradle pins 144 / 1.4.30")
+need("versionCode 145" in gradle and 'versionName "1.4.31"' in gradle,
+     "build.gradle pins 145 / 1.4.31")
 need('<item>1.4.30|' in strings,
      "the About changelog carries the 1.4.30 line at [0] (newest first)")
 i30 = strings.find("<item>1.4.30|")
@@ -139,14 +139,17 @@ need('" producer=" + producerRot + " offset=" + rotOffset' in qsa
      "the diag carries producer= offset= theta= (MISMATCH still marks ONLY "
      "a real cover failure)")
 # the v1.4.29 view-space laws ride unchanged
-need("matrix.postScale(bw / viewW, bh / viewH);" in qsa
-     and qsa.find("matrix.postScale(bw / viewW, bh / viewH);") <
+# v1.4.31 re-point (2026-11-25): the v1.4.29 ORDER law rides, with the
+# undo now the measured/table/fill three-mode form (the law: the undo
+# is the FIRST ops in every mode; the recipe tail is byte-identical)
+need(qsa.find("matrix.postScale(undoSx, undoSy);") >= 0
+     and qsa.find("matrix.postScale(undoSx, undoSy);") <
      qsa.find("matrix.postTranslate(-bw / 2f, -bh / 2f);") <
      qsa.find("matrix.postRotate(theta);") <
      qsa.find("matrix.postScale(s, s);") <
      qsa.find("matrix.postTranslate(cx, cy);"),
      "the v1.4.29 view-space matrix ORDER rides unchanged (undo the "
-     "stretch -> center -> rotate -> cover -> center)")
+     "implicit mapping -> center -> rotate -> cover -> center)")
 need("fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f" in qsa,
      "the v1.4.27 fills-both-axes assertion rides unchanged")
 need("st.setDefaultBufferSize(bufW, bufH);" in qsa,

@@ -1220,4 +1220,38 @@
   log('compat layer active — chrome', CONFIG.chromeMajor, '/ android', CONFIG.platformVersion,
       '/ nativePKC', nativePKC, '/ stub', stubbedPKC,
       '/ bridge', !!resolveBridge())
+
+  /* =====================================================================
+   * 11. THE BOOTSTRAP ADOPTION (bolt v1.4.31, THE PASSKEY LAZY LAW)
+   * =====================================================================
+   * The <=3KB bootstrap (webauthn_bootstrap.js) rode document start and
+   * PARKED the first real credentials create/get calls in
+   * window.__BOLT_WEBAUTHN_PENDING while this full layer traveled in
+   * through Bolt.passkeyLoad. Adopt the parked ceremonies now: the real
+   * wrappers above are live, so each entry re-enters through the SAME
+   * path a fresh call would take. The flag goes up FIRST — page code
+   * arriving mid-drain reaches the real implementations directly.
+   */
+  try {
+    window.__BOLT_WEBAUTHN_FULL__ = true
+    var adoptQ = window.__BOLT_WEBAUTHN_PENDING
+    if (adoptQ && adoptQ.length) {
+      var drained = adoptQ.slice()
+      adoptQ.length = 0
+      log('adopting parked ceremonies:', drained.length)
+      for (var adi = 0; adi < drained.length; adi++) {
+        ;(function (entry) {
+          try {
+            var fn = entry.kind === 'create'
+              ? navigator.credentials.create
+              : navigator.credentials.get
+            Promise.resolve(fn.call(navigator.credentials, entry.options))
+              .then(entry.resolve, entry.reject)
+          } catch (eAdoptCall) {
+            try { entry.reject(eAdoptCall) } catch (eRej) {}
+          }
+        })(drained[adi])
+      }
+    }
+  } catch (eAdopt) { log('adoption failed', eAdopt) }
 })()

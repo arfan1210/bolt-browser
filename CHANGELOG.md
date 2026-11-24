@@ -4,6 +4,140 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.31] — 2026-11-25
+
+**The performance-and-quiet round — every fix traced to a line in the
+v1.4.30 field diagnostics. The QR preview's implicit buffer-to-view
+mapping is now MEASURED once per scan session (a hidden CPU stripe
+pattern posted through the camera's own Surface and read back with
+getBitmap) instead of assumed anisotropic-fill — the exact inverse is
+the undo, and the stretch (3.784× on the reported device) is gone by
+construction; a device table carries the Realme when measurement cannot
+run (cover-undo + the +270 rotation seed, the user's rotate button
+still wins over everything). The cache guard stopped sweeping at every
+onStop (the "cache guard exit … deep=1" × 15-in-90-minutes storm): exit
+runs only on real close (destroy), a user request (user), or five
+minutes after leaving (delayed, cancelled by onResume). The trim-storm
+tab-sleep policy only sleeps background tabs idle >3 minutes and never
+the two most recently used. boOffer shows at most once per process and
+per version after a dismissal. Every page hook injects ONCE per
+document (document-start registrations where supported, one guarded
+fallback per document otherwise — the perf nav diag line proves the
+drop). webauthn_compat.js rides as a ≤3 KB bootstrap with the full ~55 KB
+layer lazy-loaded once per WebView on the first real ceremony. The glass
+backdrop downscales ≤1/4, hashes, and blurs off-main. CacheGuard's
+foreground cadence is trim-driven + a 30-minute idle-only audit with a
+file-visit budget. And Bolt AI with Web ON carries the conversation
+history end to end: the search query covers the earlier turns, a bounded
+transcript rides above the SOURCES block, and the material is appended —
+"add apple and orange" after a banana question finally knows the table.**
+
+### 1. QR PREVIEW: THE MEASURED-IMPLICIT LAW (the stretch corpse)
+- Corpse (v1.4.30 diag): producer=0 always, cover GOOD at offset=270 —
+  but the preview stretched ~3.8×. The v1.4.29-30 matrix's first op
+  assumed the implicit buffer→view mapping is the anisotropic FILL
+  (postScale(bw/vw, bh/vh)); the field device renders UNIFORM COVER, so
+  the undo's own anisotropy (bw/vw)/(bh/vh) = 3.784 WAS the stretch.
+- Law: MEASURE, DON'T ASSUME. Once per scan session, after the capture
+  session configures and BEFORE the repeating request starts, a stripe
+  test pattern (7 vertical red + 7 horizontal green lines at 1/8
+  intervals) is posted through the session's own preview Surface and
+  the delivered frame is read back with TextureView.getBitmap. The
+  stripe-run positions solve the implicit affine per axis (view = i*buf
+  + t), whole-pattern-verified; the undo becomes the exact inverse
+  [1/i, 0, −t/i; 0, 1/i, −t/i]. The rest of the recipe (T(−bufCenter)
+  R(theta) S(cover) T(center)) is untouched.
+- L2 fallback chain: measurement unsupported/failed → the device table
+  (Build.MODEL): RMX2020 = cover-undo (uniform 1/max(vw/bw, vh/bh));
+  everyone else keeps the fill-undo. diag mode=measured|table|fill and
+  net= (the undo's own anisotropy — 3.784 on the corpse, ~1.0 after).
+- L3 the rotation seed: RMX2020 (sensor=90, display=0) starts at +270 —
+  the field-proven upright angle — persisted under the same (sensor,
+  display) key; a saved user offset still wins; long-press resets to
+  the DEVICE DEFAULT (not 0).
+
+### 2. THE EXIT-SWEEP CADENCE LAW (the tab-hist storm corpse)
+- Corpse: "cache guard exit … deep=1" fired at EVERY onStop — 15× in 90
+  minutes — because v1.3.79 swept immediately on backgrounding, and the
+  user felt back/forward lag while the guard walked the disk mid-switch.
+- Law: exit() runs on three doors only — destroy (onDestroy), user
+  (Settings "Clean now"), delayed (the 5-minute onStop runnable,
+  cancelled by onResume). The door rides the diag line
+  (`cache guard exit door=…`). The startup sweep and the pending-exit
+  finisher are unchanged — the ~20 MB promise still holds at true close;
+  a kill inside the 5-minute window is what the marker pair exists for.
+
+### 3. THE TRIM-STORM POLICY + THE boOffer CHURN LAW
+- TabSleep on trim: level ≥60 sleeps ONLY background tabs idle >3 min,
+  NEVER the active/shown tab, NEVER a media tab, NEVER the two most
+  recently used (recency rank by lastVisitedAt). Thumbnails drop first;
+  the warm saveState wake and the cold-blob last resort are unchanged.
+  The decision is a PURE table (trimSleepDecision) compiled by the gate.
+- boOffer: at most ONE automatic offer per process, and never again in
+  the same app version after "Not now"/cancel (the Settings row always
+  works). The whitelist checks are untouched.
+
+### 4. THE SINGLE-INJECTION LAW + THE PASSKEY LAZY LAW
+- Corpse: MediaHook.core was evaluated at onPageStarted AND
+  onPageCommitVisible; FrameHooks.injectNow + ShadowGate.injectNow ran
+  at both moments; every document paid two full parses per hook.
+- Law: one feature-detect per WebView (DOCUMENT_START_SCRIPT). Supported:
+  the script is REGISTERED once at document start (MediaHook.core now
+  joins FrameHooks/ShadowGate/PasskeyCompat there — the evaluate twins
+  become no-ops). Unsupported: ONE guarded fallback per document (at
+  onPageStarted). Cosmetic CSS is cached per (host, list-generation)
+  (FilterEngine.generation()), injected at commit with the finish pass
+  as a backstop for documents that never commit. Userscript phases run
+  on ONE reused daemon executor instead of a fresh thread per phase.
+- The perf nav diag line (`perf nav commit=… finish=… inj=… bytes=…`)
+  carries the per-document injection evidence; `perf launch ms=` and
+  `perf blur ms= w= h=` join it.
+- Passkeys: webauthn_compat.js (~55 KB per frame at document start) is
+  replaced by webauthn_bootstrap.js (≤3 KB: the capability matrix, the
+  parse*FromJSON pair, the availability probes, and a parked-ceremony
+  queue). The first REAL credentials.create/get calls Bolt.passkeyLoad
+  once; the full layer is injected once per WebView and adopts the
+  parked ceremony. Popup children carry no bridge and never load it
+  (BRIDGE-FREE CHILD LAW unchanged).
+
+### 5. THE GLASS SNAPSHOT DIET + THE CACHEGUARD FOREGROUND CADENCE
+- updateBlurSnapshots: the strip is downscaled ≤1/4 FIRST; GlassAdapt
+  reads the downscaled copy; a content hash skips unchanged strips; the
+  <31 StackBlur runs OFF-main on the small bitmap (the "perf blur"
+  line records its input dims); 31+ keeps the full bitmap (RenderEffect
+  owns the blur). The 400 ms throttle and the hidden-chrome skip are
+  already law (dated pins).
+- CacheGuard: the 6-minute foreground walk is replaced by a trim-driven
+  check (onTrimMemory ≥ MODERATE, internally rate-limited) + a
+  30-minute IDLE-ONLY audit (loading/media sessions skip); every
+  mid-session pass carries a 60k-entry file-visit budget; startup and
+  exit sweeps stay unbounded.
+
+### 6. BOLT AI WEB: THE CONTEXT LAW (the banana corpse)
+- The model request always carries the standing MAX_TURNS history, Web
+  ON or OFF — the web leg only APPENDS its material to the last user
+  turn, never replaces or drops a turn.
+- The retrieval query covers the conversation: the current prompt plus
+  topic words from the previous two user turns and the last assistant
+  reply (bounded, deduped, stop-word-dropped — "banana" rides).
+- A bounded transcript (the last 4 turns, ≤2k chars) sits above the
+  numbered SOURCES block with an explicit combine-and-cite instruction.
+- The once-per-process confirm, the incognito ban and the
+  no-key/no-query diag rule are unchanged.
+
+### 7. THE GATES + THE PIPELINE
+- test_v1431.py: version pins; the compiled REAL stripe solver
+  (fill/cover/fit synthetic bitmaps solve exactly; implicit∘undo =
+  identity at 1e-6 in all three undo modes); the REAL trimSleepDecision
+  table; the REAL needsFallbackEval decision; the device-table +
+  offset-seed pins; the three-door cadence pins; the bootstrap size pin
+  (≤3,072 bytes); the lazy-once pins; the transcribed searchQueryFrom +
+  buildContextBlock probes (the banana/apple/orange conversation); the
+  web body-builder probe asserting history survival; the perf-line
+  pins. repin_gates_1431.py sweeps every prior gate to 145/1.4.31 with
+  dated notes (the v1.3.77/79 exit-cadence pins and the v1.4.29/30
+  matrix pins re-pointed where this round legitimately moved them).
+
 ## [1.4.30] — 2026-11-24
 
 **The field round: the QR rotation the v1.4.29 view-space fix could not

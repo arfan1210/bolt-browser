@@ -21,7 +21,76 @@ import com.bolt.browser.util.Prefs;
  *  This JS is mirrored by scripts/test_media_hook.js (mock-DOM tests). */
 public class MediaHook {
 
-    /** Core script injected at onPageStarted + onPageCommitVisible. */
+    // ---- v1.4.31 — THE SINGLE-INJECTION LAW (the duplicate-injection
+    // corpse: core() was evaluated at onPageStarted AND onPageCommitVisible
+    // — two full script parses per document, plus the FrameHooks/ShadowGate
+    // twins, all on every navigation). The core is registered as a
+    // DOCUMENT-START script once per WebView (the same mechanism the other
+    // three hooks use — which also widens main-frame-only coverage to
+    // EVERY frame); the evaluateJavascript twin becomes a no-op when the
+    // registration succeeded, and WebViews without the feature keep ONE
+    // guarded fallback per document (at onPageStarted only).
+
+    /** the one-attempt map: a registration is attempted once per WebView. */
+    private static final java.util.WeakHashMap<android.webkit.WebView, Boolean> TRIED =
+            new java.util.WeakHashMap<>();
+    /** the succeeded map: the twins no-op only when a registration LANDED. */
+    private static final java.util.WeakHashMap<android.webkit.WebView, Boolean> ARMED =
+            new java.util.WeakHashMap<>();
+
+    /** v1.4.31 — process-wide fallback-eval counter for the perf nav line
+     *  (what the client adds up per document: how many fallback evaluates
+     *  actually fired, and how many bytes they carried). */
+    public static volatile int evalCount = 0;
+    public static volatile long evalBytes = 0;
+
+    /** v1.4.31 — PURE (gate-compiled): the single-injection decision —
+     *  evaluate the fallback ONLY when this WebView has no successful
+     *  document-start registration. */
+    static boolean needsFallbackEval(boolean docStartArmed) {
+        return !docStartArmed;
+    }
+
+    /** v1.4.31 — register the core script at document start, ONCE per
+     *  WebView, before its first loadUrl (called from Tab.buildWeb beside
+     *  FrameHooks/ShadowGate/PasskeyCompat). Never throws. */
+    public static void arm(android.webkit.WebView w, Prefs p) {
+        if (w == null) return;
+        synchronized (TRIED) {
+            if (TRIED.containsKey(w)) return;
+            TRIED.put(w, Boolean.TRUE);
+        }
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                        w, core(p), java.util.Collections.singleton("*"));
+                synchronized (ARMED) { ARMED.put(w, Boolean.TRUE); }
+            }
+        } catch (Throwable ignored) {
+            // old WebView / registration race: the onPageStarted fallback
+            // keeps one guarded evaluateJavascript per document
+        }
+    }
+
+    /** v1.4.31 — the ONE evaluateJavascript fallback per document for
+     *  WebViews without DOCUMENT_START_SCRIPT support (the commit-time
+     *  twin is gone; the script's own __boltCore guard keeps re-runs
+     *  harmless). No-op when the registration succeeded. */
+    public static void injectCore(android.webkit.WebView w, Prefs p) {
+        if (w == null) return;
+        boolean armed;
+        synchronized (ARMED) { armed = ARMED.containsKey(w); }
+        if (!needsFallbackEval(armed)) return;
+        String js = core(p);
+        evalCount++;
+        evalBytes += js.length();
+        try { w.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+    }
+
+    /** Core script injected at onPageStarted (v1.4.31: one fallback per
+     *  document on non-document-start WebViews) or registered at document
+     *  start. */
     public static String core(Prefs p) {
         String settings = mediaSettingsJson(p);
         return "(function(){\n"

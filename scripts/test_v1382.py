@@ -87,7 +87,8 @@ need("@JvmStatic\n    fun component(ctx: Context, idx: Int): ComponentName?" in 
      "the component resolver must exist for the guard's walk")
 
 print("E3 — the update-time sweep")
-need("ScreenTranslate.modelDiet(app)" in guard and "CacheGuard.exit(app)" in guard,
+# v1.4.31 re-point (2026-11-25): the door labels (exit(app, "update"))
+need("ScreenTranslate.modelDiet(app)" in guard and 'CacheGuard.exit(app, "update")' in guard,
      "the receiver must run the model diet AND the close-out sweep")
 need(re.search(r"@JvmStatic\s*\n\s*fun modelDiet\(a: Context\)", st),
      "modelDiet must be public + @JvmStatic for the receiver")
@@ -118,7 +119,8 @@ need(appj.index("if (!pn.endsWith(\":incognito\"))") < appj.index("LauncherGuard
 print("E6 — the storage meter")
 need("showStorageReport" in items and "Storage" in items,
      "the Privacy screen must carry the Storage row")
-need("CacheGuard.report(this)" in items and "CacheGuard.exit(this)" in items,
+# v1.4.31 re-point (2026-11-25): door=user for the Clean-now sweep
+need("CacheGuard.report(this)" in items and 'CacheGuard.exit(this, "user")' in items,
      "the dialog must show the live report and Clean now must sweep")
 need(re.search(r"@JvmStatic\s*\n\s*fun report\(ctx: Context\): String", cg),
      "CacheGuard.report must be the public blocking measurer")
@@ -128,7 +130,7 @@ print("version pin")
 # current pin — test_v1384.py; the E1-E6 contracts above still hold: the
 # guard, the enable-first flip, the sweep wiring, the allowlists, the
 # startup heal, the storage meter).
-need('versionName "1.4.30"' in gradle and "versionCode 144" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need('versionName "1.4.31"' in gradle and "versionCode 145" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "build.gradle must be bumped to 1.3.98 / 111 (test_v1386.py owns the pin)")
 
 print()

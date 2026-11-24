@@ -1222,9 +1222,25 @@ object AiBridge {
                 || hay.contains("tool") || hay.contains("quota")
     }
 
-    /** the keyless retrieval round: search -> SOURCES block -> the bare
-     *  call. No results = the bare call on the untouched history (the
-     *  model answers from its weights and says what it lacks). */
+    /** v1.4.31 — THE WEB-CONTEXT LAW (the banana corpse: Web ON behaved
+     *  as if the conversation did not exist — the search query read only
+     *  the CURRENT prompt and the injected block REPLACED the turn's
+     *  opening, so "add apple and orange to the table" lost the banana
+     *  table it was referring to). Three legs, all probe-pinned:
+     *  (a) the model request ALWAYS carries the standing MAX_TURNS
+     *      history, Web ON or OFF — the web leg only APPENDS the context
+     *      + SOURCES material to the last user turn, never replaces or
+     *      drops any turn;
+     *  (b) the retrieval query covers the conversation: the current
+     *      prompt + topic words from the previous two user turns and the
+     *      last assistant reply (bounded, deduped, stop-word-dropped) —
+     *      "banana" rides the search even when the prompt says only
+     *      "add apple and orange";
+     *  (c) a bounded TRANSCRIPT (the last 4 turns, <=2k chars) sits ABOVE
+     *      the SOURCES block with an explicit combine-and-cite
+     *      instruction.
+     *  The once-per-process confirm, the incognito ban and the
+     *  no-key/no-query diag rule are untouched. */
     private fun keylessRound(ctx: Context, history: List<Msg>,
             call: (List<Msg>) -> String?): String? {
         val q = searchQueryFrom(history)
@@ -1235,11 +1251,13 @@ object AiBridge {
             return call(history)
         }
         try { Diag.log(ctx, "ai web keyless n=" + sources.size) } catch (_: Throwable) {}
-        val block = buildSourcesBlock(sources)
+        // (a) history survives untouched; the block APPENDS to the last
+        // user turn (the original prompt text stays whole, before it)
+        val block = buildContextBlock(history, sources)
         val h2 = ArrayList<Msg>(history)
         for (i in h2.indices.reversed()) {
             if (h2[i].role != "assistant") {
-                h2[i] = Msg(h2[i].role, block + "\n\n" + h2[i].text)
+                h2[i] = Msg(h2[i].role, h2[i].text + "\n\n" + block)
                 break
             }
         }
@@ -1247,7 +1265,9 @@ object AiBridge {
     }
 
     /** the SOURCES block: numbered results (the cite-[n] instruction) +
-     *  the fetched page text of the top 2 (the depth). */
+     *  the fetched page text of the top 2 (the depth). The trailing
+     *  "say so plainly." marker is LOAD-BEARING (searchQueryFrom strips a
+     *  previous block with it — web turns never compound). */
     internal fun buildSourcesBlock(sources: List<WebSource>): String {
         val sb = StringBuilder()
         sb.append("WEB SOURCES (retrieved just now for this question):\n")
@@ -1267,23 +1287,113 @@ object AiBridge {
         return sb.toString()
     }
 
-    /** the question to search for: the LAST non-assistant turn with a
-     *  previous SOURCES block stripped (a web turn never compounds);
-     *  newlines flattened; capped. PURE (probe-pinned). */
+    /** v1.4.31 — (c) the bounded context block: the recent-turn transcript
+     *  ABOVE the SOURCES block, with the combine-and-cite instruction.
+     *  PURE (probe-pinned): transcript = the last 4 turns, 2k chars total
+     *  (each turn truncated at 700). */
+    internal fun buildContextBlock(history: List<Msg>,
+            sources: List<WebSource>): String {
+        val sb = StringBuilder()
+        sb.append("CONVERSATION CONTEXT (the most recent turns — use them ")
+        sb.append("for continuity; the current question refers to this):\n")
+        var budget = 2000
+        var shown = 0
+        for (m in history.takeLast(4)) {
+            if (budget <= 0 || shown >= 4) break
+            val role = if (m.role == "assistant") "assistant" else "user"
+            var txt = m.text.replace("\n", " ").trim()
+            if (txt.length > 700) txt = txt.take(700) + "…"
+            if (txt.length > budget) txt = txt.take(budget) + "…"
+            budget -= txt.length
+            shown++
+            sb.append(role).append(": ").append(txt).append("\n")
+        }
+        sb.append("\n")
+        sb.append(buildSourcesBlock(sources))
+        sb.append("\nCombine the conversation context above with these ")
+        sb.append("sources when answering (the question may refer to an ")
+        sb.append("earlier turn, e.g. an object named there); write [n] ")
+        sb.append("after facts taken from source n.")
+        return sb.toString()
+    }
+
+    /** v1.4.31 — (b) the question to search for, NOW CONTEXT-AWARE (PURE,
+     *  probe-pinned): the current prompt (the LAST non-assistant turn,
+     *  any previous SOURCES/CONTEXT block stripped via the "say so
+     *  plainly." marker — a web turn never compounds) + topic words from
+     *  the previous two user turns and the last assistant reply. Words:
+     *  >=3 chars, stop-word-dropped, deduped, first-seen order; the
+     *  context contributes at most 10 words and the whole query is
+     *  capped at 240 chars. "add apple and orange to the table" after a
+     *  banana question searches WITH banana. */
     internal fun searchQueryFrom(history: List<Msg>): String {
         try {
-            var txt = ""
+            var cur = ""
+            var curIdx = -1
             for (i in history.indices.reversed()) {
-                if (history[i].role != "assistant") { txt = history[i].text; break }
+                if (history[i].role != "assistant") {
+                    cur = history[i].text; curIdx = i; break
+                }
             }
             val marker = "say so plainly."
-            val k = txt.lastIndexOf(marker)
-            var t = if (k >= 0) txt.substring(k + marker.length) else txt
+            val k = cur.lastIndexOf(marker)
+            var t = if (k >= 0) cur.substring(k + marker.length) else cur
             t = t.replace("\n", " ").trim()
+            // the context topic words (the conversation's own subject matter)
+            val ctxWords = LinkedHashSet<String>()
+            var users = 0
+            for (i in history.indices.reversed()) {
+                if (i == curIdx || i >= history.size) continue
+                val m = history[i]
+                if (m.role == "user") {
+                    users++
+                    collectTopicWords(m.text, ctxWords, 6)
+                    if (users >= 2) break
+                } else if (m.role == "assistant" && ctxWords.size < 10) {
+                    collectTopicWords(m.text, ctxWords, 4)
+                }
+            }
+            if (ctxWords.isNotEmpty()) {
+                val extra = ctxWords.joinToString(" ")
+                t = (t + " " + extra).trim()
+            }
             return t.take(240)
         } catch (_: Throwable) {
             return ""
         }
+    }
+
+    /** v1.4.31 — the topic-word extractor (PURE): words >= 3 chars that
+     *  are not stop-words, lowercased, deduped, first-seen order, capped
+     *  at [cap] additions. */
+    private val STOPWORDS = hashSetOf(
+            "the", "and", "for", "are", "but", "not", "you", "your", "with",
+            "this", "that", "have", "has", "had", "was", "were", "been",
+            "their", "them", "they", "from", "will", "would", "could",
+            "should", "into", "than", "then", "there", "here", "what",
+            "when", "where", "which", "who", "how", "why", "can", "may",
+            "all", "any", "about", "out", "off", "over", "under", "again",
+            "once", "only", "just", "also", "very", "some", "such", "more",
+            "most", "make", "made", "makes", "add", "added", "adds",
+            "please", "now", "give", "show", "like", "want", "need",
+            "table", "list", "answer", "question", "reply", "tell", "say",
+            "did", "does", "doing", "its", "his", "her", "our", "she",
+            "him", "one", "two", "get", "got", "put", "use", "using",
+            "same", "other", "because", "while", "after", "before")
+
+    private fun collectTopicWords(text: String, out: LinkedHashSet<String>, cap: Int) {
+        try {
+            val words = text.lowercase().split(Regex("[^a-z0-9\\u00c0-\\u0248]+"))
+            var added = 0
+            for (w in words) {
+                if (added >= cap || out.size >= 12) break
+                if (w.length < 3 || w in STOPWORDS) continue
+                if (w !in out) {
+                    out.add(w)
+                    added++
+                }
+            }
+        } catch (_: Throwable) {}
     }
 
     // ---------------- v1.4.30 — L2 internals (probe-pinned PUREs) ----

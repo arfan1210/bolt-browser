@@ -685,6 +685,29 @@ python3 scripts/test_v1429.py
 # htmlToText chrome-stripping, groundingSources/sourcesTail,
 # groundRefusal), the TableScrollTest re-fill + copy-through probes
 python3 scripts/test_v1430.py
+
+# ---- 1z-31. v1.4.31 gate: THE PERFORMANCE-AND-QUIET ROUND (seven fixes
+# off the v1.4.30 field diagnostics: the QR preview's implicit buffer->view
+# mapping is MEASURED once per scan session — a stripe pattern posted
+# through the session's own Surface, solved per axis, whole-pattern-
+# verified, undone exactly — with the RMX2020 device table (cover-undo +
+# the +270 rotation seed) as the fallback; the cache guard stopped
+# sweeping at bare onStop (destroy / user / delayed doors, cancelled by
+# onResume); the trim-storm sleep policy (idle >3 min, never the recent
+# two); boOffer once-per-process + per-version dismiss; the single-
+# injection law (one document-start registration per WebView, ONE guarded
+# fallback per document, cosmetic CSS cached per (host, generation));
+# the passkey lazy law (<=3KB bootstrap + the once-per-WebView full
+# layer); the glass snapshot diet + the CacheGuard trim-driven/30-min
+# cadence; the Web-CONTEXT law (history always rides, the search query
+# covers the conversation, the bounded transcript + SOURCES block
+# APPENDS)) — probes: the compiled REAL stripe solver over fill/cover/
+# fit synthetic rasters + the implicit-o-undo identity law at 1e-6, the
+# compiled REAL trimSleepDecision + needsFallbackEval tables, the
+# bootstrap size pin, the transcribed searchQueryFrom/buildContextBlock
+# probes (the banana/apple/orange conversation) and the web body-builder
+# history-survival probe
+python3 scripts/test_v1431.py
 mark gates
 fi
 

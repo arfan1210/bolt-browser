@@ -414,8 +414,26 @@ object FrameHooks {
             "}catch(e){}" +
             "}catch(e){}})();"
 
-    /** WebViews already carrying the document-start registration. */
+    /** WebViews already carrying the document-start registration.
+     *  v1.4.31 — THE SINGLE-INJECTION LAW: ARMED now means the
+     *  registration SUCCEEDED (the old map marked "attempted", which made
+     *  the belt-and-braces twin unavoidable); TRIED means an attempt was
+     *  made (once per WebView). injectNow() becomes a NO-OP when ARMED —
+     *  the evaluateJavascript twin cost a JS parse per call at
+     *  onPageStarted AND onPageCommitVisible (twice per document, per
+     *  hook, per page); the registration already covers every frame of
+     *  every future navigation. */
+    private val TRIED = WeakHashMap<WebView, Boolean>()
     private val ARMED = WeakHashMap<WebView, Boolean>()
+
+    /** v1.4.31 — process-wide fallback-eval counter for the perf nav line. */
+    @JvmField var evalCount: Int = 0
+    @JvmField var evalBytes: Long = 0
+
+    /** v1.4.31 — true when this WebView's document-start registration
+     *  SUCCEEDED (the evaluateJavascript twins are no-ops then). */
+    @JvmStatic
+    fun docStartArmed(w: WebView?): Boolean = w != null && ARMED.containsKey(w)
 
     /**
      * Register HOOK_JS as a document-start script on this WebView — every
@@ -430,15 +448,16 @@ object FrameHooks {
     @JvmStatic
     fun arm(w: WebView?) {
         if (w == null) return
-        synchronized(ARMED) {
-            if (ARMED.containsKey(w)) return
-            ARMED[w] = true
+        synchronized(TRIED) {
+            if (TRIED.containsKey(w)) return
+            TRIED[w] = true
         }
         try {
             if (androidx.webkit.WebViewFeature.isFeatureSupported(
                             androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                         w, HOOK_JS, Collections.singleton("*"))
+                synchronized(ARMED) { ARMED[w] = true }
             }
         } catch (ignored: Throwable) {
             // old WebView / registration race: injectNow still covers the
@@ -452,12 +471,18 @@ object FrameHooks {
      * document-start registration — covers WebViews without
      * DOCUMENT_START_SCRIPT support and documents that predate arm().
      * Idempotent: the __boltFH guard makes re-runs no-ops. This replaces
-     * v1.3.57's ClipboardWrite.injectNow at the same two call moments
-     * (onPageStarted + onPageCommitVisible, ALWAYS, incognito included).
+     * v1.3.57's ClipboardWrite.injectNow at the call moments
+     * (onPageStarted — v1.4.31 keeps ONE fallback per document).
+     * v1.4.31 — THE SINGLE-INJECTION LAW: a WebView whose registration
+     * succeeded never re-evaluates the script here — the twin was a
+     * per-document JS parse that the registration already covers.
      */
     @JvmStatic
     fun injectNow(web: WebView?) {
         if (web == null) return
+        if (docStartArmed(web)) return
+        evalCount++
+        evalBytes += HOOK_JS.length
         try {
             web.post {
                 try { web.evaluateJavascript(HOOK_JS, null) } catch (ignored: Throwable) {}

@@ -291,9 +291,12 @@ def main():
     if "ShadowGate.arm(w)" not in tab:
         print("FAIL: Tab.buildWeb does not arm the ShadowGate")
         return 1
-    if act.count("ShadowGate.injectNow(view)") < 2:
-        print("FAIL: ShadowGate is not re-injected at onPageStarted AND "
-              "onPageCommitVisible")
+    # v1.4.31 re-point (2026-11-25): THE SINGLE-INJECTION LAW — the
+    # commit-time twin is gone; the ONE guarded fallback per document
+    # lives at onPageStarted (injectNow no-ops on armed WebViews)
+    if act.count("ShadowGate.injectNow(view)") < 1:
+        print("FAIL: ShadowGate is not re-injected at onPageStarted "
+              "(the one fallback per document lost)")
         return 1
     print("OK: K15 the shadow gate is registered document-start in every frame")
 

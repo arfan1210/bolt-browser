@@ -65,8 +65,8 @@ chlog = read("CHANGELOG.md")
 rels = read("scripts/release.sh")
 
 print("A — version pins")
-need("versionCode 144" in gradle and 'versionName "1.4.30"' in gradle,
-     "build.gradle pins 144 / 1.4.30")
+need("versionCode 145" in gradle and 'versionName "1.4.31"' in gradle,
+     "build.gradle pins 145 / 1.4.31")
 need('<item>1.4.29|' in strings,
      "the About changelog carries the 1.4.29 line at [0] (newest first)")
 i29 = strings.find("<item>1.4.29|")
@@ -143,14 +143,20 @@ print("C — QR: THE VIEW-SPACE PREVIEW TRANSFORM (v1.4.30 re-point, dated "
       "the persisted user offset, still always a quarter-turn; the "
       "producer probe + the rotate button are pinned by test_v1430.py)")
 # the matrix: the stretch-undo is the FIRST op (view coords -> buffer coords)
-need("matrix.postScale(bw / viewW, bh / viewH);" in qsa
-     and qsa.find("matrix.postScale(bw / viewW, bh / viewH);") <
+# v1.4.31 re-point (2026-11-25): THE MEASURED-IMPLICIT LAW — the undo's
+# FORM changed (three modes: measured inverse affine / table cover /
+# fill) but the ORDER law is intact: the undo (in whichever mode) is
+# still the FIRST ops, then T(-bufCenter) -> R(theta) -> S(cover) ->
+# T(center). The measured/table modes pin their own order below.
+need(qsa.find("matrix.postScale(undoSx, undoSy);") >= 0
+     and qsa.find("matrix.postScale(undoSx, undoSy);") <
      qsa.find("matrix.postTranslate(-bw / 2f, -bh / 2f);") <
      qsa.find("matrix.postRotate(theta);") <
      qsa.find("matrix.postScale(s, s);") <
      qsa.find("matrix.postTranslate(cx, cy);"),
-     "the matrix ORDER is the law: undo the implicit stretch -> center -> "
-     "rotate -> cover -> center (setTransform consumes view-local geometry)")
+     "the matrix ORDER is the law: undo the implicit mapping (measured/"
+     "table/fill) -> center -> rotate -> cover -> center (setTransform "
+     "consumes view-local geometry)")
 need("setTransform() transforms the" in qsa or
      "TextureView.setTransform() transforms" in qsa,
      "the corpse is named: the old matrix reasoned about raw buffer dims")

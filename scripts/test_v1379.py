@@ -99,8 +99,14 @@ need("fun pendingExit(" in cg and "fun completePendingExit(" in cg,
      "the interrupted-sweep markers/finisher missing")
 need("postDelayed(cacheBgSweep, 45 * 1000L)" not in act,
      "the 45 s death-window sweep is gone (OEM killers end the process first)")
-need("CacheGuard.exit(BrowserActivity.this)" in act,
-     "onStop must fire the exit sweep immediately")
+# v1.4.31 re-point (2026-11-25): THE EXIT-SWEEP CADENCE LAW — onStop no
+# longer fires the sweep immediately (that cadence was the "cache guard
+# exit … deep=1"-at-every-backgrounding storm); it arms the 5-minute
+# delayed sweep (door=delayed), cancelled by onResume, with onDestroy
+# (door=destroy) the real-close door.
+need('CacheGuard.exit(BrowserActivity.this, "delayed")' in act
+     and "ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L);" in act,
+     "onStop arms the 5-minute delayed sweep (the v1.4.31 cadence law)")
 need('File(a.cacheDir, "ocrfast")' in read(APP / "util/ScreenTranslate.kt"),
      "OCR models must live in cacheDir (re-downloadable = cache)")
 need("public boolean deepCleanExit() { return b(\"deepCleanExit\", true); }" in prefs,

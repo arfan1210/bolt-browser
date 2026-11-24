@@ -196,7 +196,10 @@ class UpdateHealReceiver : BroadcastReceiver() {
                 Diag.log(app, "update heal v$vn (launcher + model diet + sweep)")
             } catch (_: Throwable) {}
             try { ScreenTranslate.modelDiet(app) } catch (_: Throwable) {}
-            try { CacheGuard.exit(app) } catch (_: Throwable) {}
+            // v1.4.31 — door=update: the package-replaced sweep names its
+            // own door in the diag (not one of the three exit doors, but
+            // an honest label for the field)
+            try { CacheGuard.exit(app, "update") } catch (_: Throwable) {}
             try { pr.finish() } catch (_: Throwable) {}
         }, "bolt-update-heal").start()
     }

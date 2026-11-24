@@ -320,35 +320,54 @@ public class BrowserActivity extends AppCompatActivity {
 
     // ---- v1.3.77 cache-guard loops (the storage law: under 50 MB total,
     // ideally under 40 while using, around 20 after closing) ----
-    /** v1.3.77 — THE FOREGROUND AUDIT LOOP: a heavy video session never
-     *  pauses the app, so an onResume-only audit could not see the caches
-     *  grow mid-session. Every 3 minutes while resumed the guard
-     *  re-measures (its own 2-minute rate limit dedupes a just-fired
-     *  trim). Cancelled in onStop. */
+    /** v1.3.77 — THE FOREGROUND AUDIT LOOP. v1.4.31 — THE CADENCE LAW (the
+     *  trim-storm corpse): the 6-minute disk walk every live session kept
+     *  paying is REPLACED by two honest triggers — onTrimMemory(>=60)
+     *  (memory pressure is the moment a cache measure is worth its I/O)
+     *  and THIS 30-minute IDLE-ONLY audit (loading/media sessions skip —
+     *  a walk while a video buffers fights the page for I/O). Each pass
+     *  carries a file-visit budget inside CacheGuard (the storm corpse:
+     *  audits walked tens of thousands of entries back to back). The
+     *  startup sweep and the exit doors are UNCHANGED. Cancelled in onStop. */
     protected final Runnable cacheAuditTick = new Runnable() {
         @Override public void run() {
             try {
-                android.webkit.WebView cw = null;
-                synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
-                    for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+                boolean busy = false;
+                synchronized (tm.tabs) {   // v1.4.11: the thread law
+                    for (Tab t : tm.tabs) {
+                        if (t == null || t.web == null) continue;
+                        if (t.mediaPlaying || t.holdsMedia) { busy = true; break; }
+                        try { if (t.web.getProgress() < 100) { busy = true; break; } } catch (Throwable ignored2) {}
+                    }
                 }
-                com.bolt.browser.util.CacheGuard.check(BrowserActivity.this, false, cw);
+                if (!busy) {
+                    android.webkit.WebView cw = null;
+                    synchronized (tm.tabs) {
+                        for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+                    }
+                    com.bolt.browser.util.CacheGuard.check(BrowserActivity.this, false, cw);
+                }
             } catch (Throwable ignored) {}
-            // v1.3.79: 3 -> 6 minutes — every tick walks thousands of cache
-            // files on disk (a recurring wakeup that keeps the device out of
-            // deep idle; the battery report). The exit/startup sweeps still
-            // bound everything; this loop only catches long live sessions.
-            ui.postDelayed(this, 6 * 60 * 1000L);
+            ui.postDelayed(this, 30 * 60 * 1000L);
         }
     };
     /** v1.3.77 — THE DELAYED CLOSE-OUT SWEEP: five minutes after the
      *  browser leaves the screen (the swipe-away case keeps the process
      *  alive with no onDestroy ever coming), every cache subtree is
      *  emptied physically — "around 20 MB after closing" must hold even
-     *  when death arrives without a callback. Cancelled by onResume. */
+     *  when death arrives without a callback. Cancelled by onResume.
+     *  v1.4.31 — THE EXIT-SWEEP CADENCE (the tab-hist storm corpse):
+     *  this delayed runnable is AGAIN the ONLY onStop exit door — the
+     *  v1.3.79 immediate-onStop sweep ran the full close-out + deep diet
+     *  on every tab switch that parked the activity ("cache guard exit
+     *  … deep=1" 15× in 90 minutes; the user felt back/forward lag while
+     *  the guard walked the disk mid-switch). v1.3.79's OEM-kill concern
+     *  is covered by the marker pair + the cold-start pending-exit
+     *  finisher, not by racing the sweep against the reaper. Door diag:
+     *  cache exit door=delayed. */
     protected final Runnable cacheBgSweep = new Runnable() {
         @Override public void run() {
-            try { com.bolt.browser.util.CacheGuard.exit(BrowserActivity.this); }
+            try { com.bolt.browser.util.CacheGuard.exit(BrowserActivity.this, "delayed"); }
             catch (Throwable ignored) {}
         }
     };
@@ -356,6 +375,50 @@ public class BrowserActivity extends AppCompatActivity {
      *  and no battery-optimization whitelist — consumed by onResume to show
      *  the one-time background-survival offer (BackgroundSurvival). */
     protected boolean pendingBoOffer = false;
+
+    // ---- v1.4.31 — THE PERF NAV DIAG (the field asks WHERE a navigation's
+    // time and JS volume go; the single-injection law needs its BEFORE/AFTER
+    // evidence). Per-document accumulators, reset at onPageStarted, read at
+    // commit/finish: commit/finish latency + the injection count and byte
+    // volume of the document (the hook fallbacks count themselves inside
+    // their helpers; the client's own evaluates ride evalInj).
+    protected long docStartMs;
+    protected long docCommitMs;
+    protected int docInj;
+    protected long docInjBytes;
+    protected int docHookEval0;
+    protected long docHookBytes0;
+
+    /** v1.4.31 — a counted injection for the perf nav line. */
+    protected void evalInj(WebView view, String js) {
+        docInj++;
+        docInjBytes += js == null ? 0 : js.length();
+        try { view.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+    }
+
+    private static int hookEvalSnapshot() {
+        try { return com.bolt.browser.media.MediaHook.evalCount
+                + com.bolt.browser.util.FrameHooks.evalCount
+                + com.bolt.browser.util.ShadowGate.evalCount; }
+        catch (Throwable t) { return 0; }
+    }
+
+    private static long hookBytesSnapshot() {
+        try { return com.bolt.browser.media.MediaHook.evalBytes
+                + com.bolt.browser.util.FrameHooks.evalBytes
+                + com.bolt.browser.util.ShadowGate.evalBytes; }
+        catch (Throwable t) { return 0; }
+    }
+
+    /** v1.4.31 — THE USERSCRIPT EXECUTOR: one reused daemon thread for
+     *  every injectUserscripts phase of every document (start/end/idle —
+     *  the old code spawned a fresh thread per phase per navigation). */
+    private static final java.util.concurrent.ExecutorService US_EXEC =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "usinj");
+                t.setDaemon(true);
+                return t;
+            });
     protected final List<String> scriptMenuCmds = new ArrayList<>(); // GM_registerMenuCommand names
 
     // ---- v1.3.38 new-feature state ----
@@ -471,6 +534,7 @@ public class BrowserActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        createdUpMs = android.os.SystemClock.uptimeMillis();
         Fx.theme(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_browser);
@@ -777,8 +841,21 @@ public class BrowserActivity extends AppCompatActivity {
         try {
             ui.removeCallbacks(cacheBgSweep);
             ui.removeCallbacks(cacheAuditTick);
-            ui.postDelayed(cacheAuditTick, 6 * 60 * 1000L);   // v1.3.79: 3 -> 6 min (battery)
+            // v1.4.31 — the 30-minute idle-only audit (the trim-driven
+            // check below covers the pressure moments; see cacheAuditTick)
+            ui.postDelayed(cacheAuditTick, 30 * 60 * 1000L);
         } catch (Throwable ignored) {}
+        // v1.4.31 — THE PERF LAUNCH LINE (one-shot per activity instance):
+        // onCreate -> first onResume, the honest launch number the field
+        // reads against the known-good round. BEFORE/AFTER pairs live in
+        // the release report, never a claim of field verification.
+        if (!perfLaunchLogged && createdUpMs > 0) {
+            perfLaunchLogged = true;
+            try {
+                com.bolt.browser.util.Diag.log(this, "perf launch ms="
+                        + (android.os.SystemClock.uptimeMillis() - createdUpMs));
+            } catch (Throwable ignored) {}
+        }
         // v1.3.17: stop pretending the window is visible — the real VISIBLE
         // dispatch passes through the filter unchanged, so releasing here is
         // safe even mid-rotation (the flag survives onPause→onStop→onResume
@@ -1103,33 +1180,23 @@ public class BrowserActivity extends AppCompatActivity {
         // audit loop. PiP never lands here (paused-but-visible skips
         // onStop), so a floating video keeps its caches; a truly-closed
         // browser does not.
-        // v1.3.79 — THE DEATH-WINDOW KILL: the 45 s delay was a bet that
-        // the process lives 45 s after swipe-away. On this browser's own
-        // field hardware (realme/ColorOS — the same OEM killer the
-        // v1.3.27-28 background-survival work documented killing at ~80 s
-        // WITH the whitelist) the kill lands in SECONDS: the Handler
-        // runnable dies with the process and the sweep never runs — which
-        // is exactly the v1.3.78 report ("51mb with 46mb in app data,
-        // even after 10 minutes of closing the app fully"). The sweep now
-        // fires IMMEDIATELY at onStop on its own thread (1-3 s of deletes,
-        // comfortably inside any post-stop lifetime), with two fallbacks:
-        // screen-off uses a 60 s arm (locking the screen is not "closing";
-        // the next cold start catches a death inside that window), and the
-        // start/done marker pair lets the next cold start finish a sweep
-        // that a racing kill still interrupted.
+        // v1.4.31 — THE EXIT-SWEEP CADENCE LAW (the tab-hist storm corpse):
+        // onStop NO LONGER sweeps. It arms the 5-minute delayed close-out
+        // (cacheBgSweep, door=delayed) — cancelled by onResume when the
+        // user comes back — and that is the ONLY onStop door. A real exit
+        // still sweeps: onDestroy (door=destroy) or the user's own exit
+        // path. The v1.3.79 immediate-onStop sweep ("the kill lands in
+        // seconds") is retired as a cadence bug: it fired the full
+        // close-out + deep diet on EVERY backgrounding (15× in 90 min on
+        // the field device), racing the user's own tab switches. A kill
+        // that lands inside the 5-minute window is EXACTLY what the
+        // .boltexit-start/.boltexit-done marker pair + the next cold
+        // start's pending-exit finisher exist for (v1.3.79's own
+        // mechanism) — the ~20 MB promise still holds at true close.
         try {
             ui.removeCallbacks(cacheAuditTick);
             ui.removeCallbacks(cacheBgSweep);
-            boolean screenOn = true;
-            try {
-                android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
-                if (pm != null) screenOn = pm.isInteractive();
-            } catch (Throwable ignored) {}
-            if (screenOn) {
-                com.bolt.browser.util.CacheGuard.exit(BrowserActivity.this);
-            } else {
-                ui.postDelayed(cacheBgSweep, 60 * 1000L);
-            }
+            ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L);
         } catch (Throwable ignored) {}
         // v1.3.79 — prefs flush: the debounced writer's window closes here
         // (synchronous, small — the one lifecycle moment disk waits for us)
@@ -1551,8 +1618,9 @@ public class BrowserActivity extends AppCompatActivity {
         // guard's own thread (files a dying renderer still holds open are
         // skipped — the next cold start finishes them). Runs for incognito
         // too (before its early return below): incognito wipes MORE, never
-        // less.
-        try { com.bolt.browser.util.CacheGuard.exit(this); } catch (Throwable ignored) {}
+        // less. v1.4.31 — door=destroy: onDestroy is the real-close door
+        // of the exit-sweep cadence law.
+        try { com.bolt.browser.util.CacheGuard.exit(this, "destroy"); } catch (Throwable ignored) {}
         if (incognito) {
             wipeIncognito();
             return;
@@ -4575,12 +4643,7 @@ public class BrowserActivity extends AppCompatActivity {
         // the list and rebuild (v1.4.21: through saveState/restoreState —
         // the back/forward list survives) on their next show (the v1.3.19
         // renderer-death machinery, now used proactively — Chrome's
-        // tab-discard strategy). Bolt's renderer footprint shrinks by
-        // hundreds of MB BEFORE lmkd has to shoot the whole process, so the
-        // media renderer keeps its RAM and the music keeps playing. At
-        // TRIM_COMPLETE while backgrounded — the last level before the whole
-        // process is a candidate — even the ACTIVE tab's WebView is released;
-        // it restores from its captured state on return.
+        // tab-discard strategy).
         // v1.4.21 — THE SOFTENED TRIGGER (the field root cause: the device
         // fired trimMemory level=15 on EVERY app switch, so background tabs
         // slept on each switch and their back history died with the
@@ -4589,45 +4652,90 @@ public class BrowserActivity extends AppCompatActivity {
         // now runs from TRIM_MEMORY_MODERATE (60) up — level 15
         // (RUNNING_CRITICAL) and UI_HIDDEN (20) keep every tab's renderer;
         // the thumbnail drop above (cheap, regenerates) keeps its old gate.
+        // v1.4.31 — THE TRIM-STORM POLICY (the "tab hist restore … cold"
+        // corpse: the device fired level=80 storms and the media-era rule
+        // slept EVERY background tab each storm — every switch paid a cold
+        // restore and back/forward lagged). The pass now sleeps only the
+        // tabs the pressure actually justifies, decided by the PURE
+        // trimSleepDecision table (probe-pinned):
+        //   level >= 60 (MODERATE) is the trigger;
+        //   NEVER the active tab, the shown tab, or a media tab;
+        //   NEVER the two most recently used background tabs (recency
+        //     rank 0/1 by lastVisitedAt);
+        //   ONLY background tabs idle MORE than 3 minutes;
+        //   thumbnails are dropped FIRST (the pass above, which fires at
+        //     lower levels too), the sleep captures saveState warm (the
+        //     wake restores the back/forward list) and the cold blob is
+        //     the last resort — both legs unchanged.
         int slept = 0;
         try {
-            boolean realPressure = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE;
-            boolean anyMedia = false;
-            synchronized (tm.tabs) {   // v1.4.11: the thread law — iteration under the monitor
-                for (Tab t : tm.tabs) {
-                    if (t != null && (t.mediaPlaying || t.holdsMedia)) { anyMedia = true; break; }
-                }
+            List<Tab> sleepSnap;
+            synchronized (tm.tabs) { sleepSnap = new ArrayList<>(tm.tabs); }
+            // recency ranks among the background tabs — the most recent
+            // two are exempt (the storm corpse: sleeping them is what
+            // made every tab switch pay "tab hist restore … cold")
+            List<long[]> bg = new ArrayList<>();
+            for (int i = 0; i < sleepSnap.size(); i++) {
+                Tab t = sleepSnap.get(i);
+                if (t == null || i == tm.active || i == shownTabIndex) continue;
+                bg.add(new long[]{i, Math.max(0L, t.lastVisitedAt)});
             }
-            if (anyMedia && realPressure) {
-                boolean lastDitch = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
-                        && activityBackground;
-                // v1.4.11: the thread law — sleepTab() destroys a WebView
-                // (long teardown), so iterate a SNAPSHOT taken under the
-                // monitor, never the live list
-                List<Tab> sleepSnap;
-                synchronized (tm.tabs) { sleepSnap = new ArrayList<>(tm.tabs); }
-                for (int i = 0; i < sleepSnap.size(); i++) {
-                    Tab t = sleepSnap.get(i);
-                    if (t == null || t.web == null) continue;
-                    boolean media = t.mediaPlaying || t.holdsMedia;
-                    boolean active = (i == tm.active);
-                    if (media) continue;                         // NEVER touch the music
-                    if (active && !lastDitch) continue;          // keep the return-to page
-                    if (i == shownTabIndex && !lastDitch) continue; // attached & visible right now
-                    sleepTab(t);
-                    slept++;
+            bg.sort((x, y) -> Long.compare(y[1], x[1]));   // most recent first
+            java.util.HashMap<Integer, Integer> rank = new java.util.HashMap<>();
+            for (int r = 0; r < bg.size(); r++) rank.put((int) bg.get(r)[0], r);
+            long nowMs = System.currentTimeMillis();
+            for (int i = 0; i < sleepSnap.size(); i++) {
+                Tab t = sleepSnap.get(i);
+                if (t == null || t.web == null) continue;
+                String role = (t.mediaPlaying || t.holdsMedia) ? "media"
+                        : (i == tm.active) ? "active"
+                        : (i == shownTabIndex) ? "shown" : "bg";
+                long lastAt = t.lastVisitedAt > 0 ? t.lastVisitedAt : nowMs;
+                Integer rk = rank.get(i);
+                if (!trimSleepDecision(level, role, rk == null ? -1 : rk, nowMs - lastAt)) {
+                    continue;
                 }
+                sleepTab(t);
+                slept++;
             }
         } catch (Throwable ignored) {}
         if (slept > 0) {
             try {
                 com.bolt.browser.util.Diag.log(this, "tabSleep level=" + level
-                        + " tabs=" + slept + " bg=" + activityBackground);
+                        + " tabs=" + slept + " bg=" + activityBackground
+                        + " policy=idle3m-recent2");
             } catch (Throwable ignored) {}
             tm.scheduleSave();
         }
         // pressure may have changed which tabs should yield — re-pin now
         applyRendererPolicies("trim");
+        // v1.4.31 — THE TRIM-DRIVEN CACHE CHECK (the foreground-cadence
+        // law): memory pressure is the moment a cache measure is worth its
+        // I/O. CacheGuard.check rate-limits internally (one pass per 2
+        // minutes) so the storm cannot spam it, and every mid-session pass
+        // carries a file-visit budget. The 30-minute idle audit + the exit
+        // doors keep their own legs.
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            try {
+                android.webkit.WebView cw = null;
+                synchronized (tm.tabs) {
+                    for (Tab t : tm.tabs) if (t.web != null) { cw = t.web; break; }
+                }
+                com.bolt.browser.util.CacheGuard.check(this, false, cw);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    /** v1.4.31 — PURE (gate-compiled): the trim-storm sleep decision.
+     *  (trim level × role × recency rank × idle) -> sleep/keep.
+     *  level: the onTrimMemory level; role: active|shown|media|bg;
+     *  rank: the tab's recency rank among background tabs (0 = most
+     *  recent, -1 = not background); idleMs: time since last use. */
+    static boolean trimSleepDecision(int level, String role, int rank, long idleMs) {
+        if (level < android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) return false;
+        if (!"bg".equals(role)) return false;              // active/shown/media NEVER
+        if (rank >= 0 && rank < 2) return false;           // never the recent two
+        return idleMs > 3L * 60L * 1000L;                  // idle > 3 min only
     }
 
     /** v1.3.27 — destroy a sleeping tab's WebView but KEEP the tab (it
@@ -5108,6 +5216,24 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
+    /** v1.4.31 — THE GLASS SNAPSHOT DIET executor: the downscale, the
+     *  luminance, the content hash and the <31 StackBlur all run OFF the
+     *  main thread (one daemon worker); results post back to the UI. */
+    private static final java.util.concurrent.ExecutorService BLUR_EXEC =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "bolt-blur");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /** v1.4.31 — the last displayed strip's content hash per edge (0/1 =
+     *  top/bottom): an unchanged strip skips the blur + the re-display. */
+    private final int[] lastGlassHash = new int[2];
+
+    /** v1.4.31 — the launch-time measure (the perf launch diag line). */
+    private long createdUpMs = 0;
+    private boolean perfLaunchLogged = false;
+
     private void snapBlur(ImageView iv, boolean topEdge) {
         if (iv == null || flContent == null || flContent.getWidth() <= 0) return;
         try {
@@ -5120,14 +5246,78 @@ public class BrowserActivity extends AppCompatActivity {
             com.bolt.browser.util.PixelSnap.copyRect(this, r, b -> {
                 try {
                     if (b == null) return;
-                    noteGlassLum(topEdge, com.bolt.browser.util.GlassAdapt.luminance(b));
-                    android.graphics.Bitmap show = b;
-                    if (Build.VERSION.SDK_INT < 31)
-                        show = com.bolt.browser.util.StackBlur.blur(b, 12);  // RenderEffect is 31+
-                    iv.setImageBitmap(show);
+                    final android.graphics.Bitmap fb = b;
+                    final ImageView fiv = iv;
+                    final boolean top = topEdge;
+                    // v1.4.31 — THE GLASS SNAPSHOT DIET (the audit-first
+                    // verdict): the strip was blurred at FULL resolution
+                    // on the MAIN thread (the <31 StackBlur) every pass.
+                    // Now: downscale <=1/4 first, luminance reads the
+                    // downscaled copy, the content hash skips unchanged
+                    // strips, the StackBlur runs off-main on the small
+                    // bitmap. 31+ keeps the full bitmap (RenderEffect owns
+                    // the blur — feeding it a quarter-scale bitmap would
+                    // change the look); its diet legs are lum/hash/off-main.
+                    final int tw = Math.max(1, b.getWidth() / 4);
+                    final int th = Math.max(1, b.getHeight() / 4);
+                    BLUR_EXEC.execute(() -> {
+                        android.graphics.Bitmap small = null;
+                        try {
+                            small = android.graphics.Bitmap.createScaledBitmap(fb, tw, th, true);
+                            final float lum = com.bolt.browser.util.GlassAdapt.luminance(small);
+                            final int hash = contentHash(small);
+                            synchronized (lastGlassHash) {
+                                if (hash == lastGlassHash[top ? 0 : 1]) {
+                                    try { small.recycle(); } catch (Throwable ignored) {}
+                                    runOnUiThread(() -> {
+                                        try { noteGlassLum(top, lum); } catch (Throwable ignored) {}
+                                    });
+                                    return;
+                                }
+                            }
+                            final android.graphics.Bitmap show;
+                            if (Build.VERSION.SDK_INT < 31) {
+                                long t0 = android.os.SystemClock.uptimeMillis();
+                                show = com.bolt.browser.util.StackBlur.blur(small, 12);
+                                long ms = android.os.SystemClock.uptimeMillis() - t0;
+                                try {
+                                    com.bolt.browser.util.Diag.log(BrowserActivity.this,
+                                            "perf blur ms=" + ms + " w=" + small.getWidth()
+                                                    + " h=" + small.getHeight());
+                                } catch (Throwable ignored2) {}
+                                try { small.recycle(); } catch (Throwable ignored2) {}
+                                try { fb.recycle(); } catch (Throwable ignored2) {}
+                            } else {
+                                show = fb;   // RenderEffect is 31+ — the full bitmap stays
+                            }
+                            synchronized (lastGlassHash) { lastGlassHash[top ? 0 : 1] = hash; }
+                            runOnUiThread(() -> {
+                                try {
+                                    noteGlassLum(top, lum);
+                                    fiv.setImageBitmap(show);
+                                } catch (Throwable ignored2) {}
+                            });
+                        } catch (Throwable ignored) {
+                        }
+                    });
                 } catch (Throwable ignored) {}
             });
         } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.31 — the strip content hash: dims + a strided pixel walk over
+     *  the DOWNSCALED bitmap (a few thousand samples, off-main). */
+    private static int contentHash(android.graphics.Bitmap b) {
+        try {
+            int w = b.getWidth(), h = b.getHeight();
+            int[] px = new int[w * h];
+            b.getPixels(px, 0, w, 0, 0, w, h);
+            int hash = w * 131 + h;
+            for (int i = 0; i < px.length; i += 4) hash = hash * 1000003 ^ px[i];
+            return hash;
+        } catch (Throwable t) {
+            return 0;
+        }
     }
 
     /** v1.3.40: window rect of the content strip adjacent to the given
@@ -6018,7 +6208,7 @@ public class BrowserActivity extends AppCompatActivity {
             // v1.3.23: passkey compat fallback — only fires when document-start
             // registration was unavailable (old WebView); the script is
             // idempotent so double injection is harmless.
-            PasskeyCompat.injectNow(view);
+            PasskeyCompat.injectNow(view, getApplicationContext());
             // leaving the page while a fullscreen video is up must restore the bars
             exitFullscreenVideo();
             // v1.3.61 — the new page starts with a clean pseudo state too
@@ -6075,10 +6265,20 @@ public class BrowserActivity extends AppCompatActivity {
             vProgress.getLayoutParams().width = Fx.dp(BrowserActivity.this, 20);
             vProgress.requestLayout();
             vProgress.setVisibility(View.VISIBLE);
-            // core injection (bridge + media hook + userscripts); onPageStarted
-            // can land in the outgoing document, so re-inject at commit too
-            String core = MediaHook.core(prefs);
-            view.evaluateJavascript(core, null);
+            // v1.4.31 — the perf nav accumulators reset for this document
+            docStartMs = android.os.SystemClock.uptimeMillis();
+            docCommitMs = -1;
+            docInj = 0;
+            docInjBytes = 0;
+            docHookEval0 = hookEvalSnapshot();
+            docHookBytes0 = hookBytesSnapshot();
+            // core injection (bridge + media hook + userscripts).
+            // v1.4.31 — THE SINGLE-INJECTION LAW: the core rides the
+            // document-start registration when the WebView supports it
+            // (Tab.buildWeb → MediaHook.arm); this call is a no-op there,
+            // and ONE guarded fallback per document on WebViews without
+            // the feature (the commit-time twin is gone).
+            com.bolt.browser.media.MediaHook.injectCore(view, prefs);
             // v1.3.58 — frame hooks (supersedes v1.3.57's ClipboardWrite):
             // the blob:null field log proved Gemini mints its download blobs
             // inside an OPAQUE-ORIGIN (sandboxed) iframe — no main-frame
@@ -6090,15 +6290,13 @@ public class BrowserActivity extends AppCompatActivity {
             // wraps URL.createObjectURL to hold the Blob OBJECT in the
             // minting frame and relays needBlob/copyText across frames via
             // postMessage (the one channel that crosses opaque origins).
-            // This evaluateJavascript is the belt-and-braces main-frame
-            // re-arm for the same moments as the media core — ALWAYS,
-            // incognito included.
+            // v1.4.31 — this call is a no-op on armed WebViews (the
+            // registration covers every frame of every navigation) and the
+            // ONE main-frame fallback per document otherwise.
             com.bolt.browser.util.FrameHooks.injectNow(view);
-            // v1.3.72 — shadow gate re-arm (see Tab.buildWeb): the
-            // attachShadow wrap must be in place before page scripts mint
-            // roots; onPageStarted can land in the outgoing document, so
-            // re-inject at commit too (the __boltShrArmed guard makes
-            // re-runs no-ops)
+            // v1.3.72 — shadow gate (see Tab.buildWeb): the attachShadow wrap
+            // must be in place before page scripts mint roots.
+            // v1.4.31 — same single-injection law as the two above.
             com.bolt.browser.util.ShadowGate.injectNow(view);
             if (!incognito) injectUserscripts(view, url, "start");
         }
@@ -6106,6 +6304,8 @@ public class BrowserActivity extends AppCompatActivity {
         @Override
         public void onPageCommitVisible(WebView view, String url) {
             super.onPageCommitVisible(view, url);
+            // v1.4.31 — the perf nav commit latency (onPageStarted→commit)
+            try { docCommitMs = android.os.SystemClock.uptimeMillis() - docStartMs; } catch (Throwable ignored) {}
             // v1.3.98 — THE UA HEAL, COMMIT HALF: onPageStarted carries the
             // INITIAL url of a redirect chain, so a redirect INTO a
             // desktop-flagged site still committed a mobile-UA document (the
@@ -6120,13 +6320,14 @@ public class BrowserActivity extends AppCompatActivity {
                     view.reload();
                 }
             } catch (Throwable ignored) {}
-            // the new document definitely exists now — re-run the core + any
-            // document-start userscripts that missed the early window
-            view.evaluateJavascript(MediaHook.core(prefs), null);
-            // v1.3.58 — frame hooks re-arm (see onPageStarted)
-            com.bolt.browser.util.FrameHooks.injectNow(view);
-            // v1.3.72 — shadow gate re-arm (see onPageStarted)
-            com.bolt.browser.util.ShadowGate.injectNow(view);
+            // v1.4.31 — THE SINGLE-INJECTION LAW: the commit-time twins of
+            // MediaHook.core / FrameHooks.injectNow / ShadowGate.injectNow
+            // are GONE. The document-start registrations (Tab.buildWeb)
+            // cover every frame of every navigation on supporting WebViews;
+            // the ONE guarded fallback per document lives at onPageStarted.
+            // A second full-script parse at commit bought nothing the
+            // script guards had not already made a no-op — it cost a parse
+            // per hook per document on every navigation.
             // v1.3.80 — ADBLOCK COSMETIC AT FIRST PAINT: the cosmetic pass
             // used to run ONLY at onPageFinished, so ads painted fully and
             // were hidden a beat later (the classic ad-flash). Commit-visible
@@ -6210,13 +6411,52 @@ public class BrowserActivity extends AppCompatActivity {
                         && siteMode != 0);
         }
 
-        /** the CSS payload for a host: list selectors (when the adblock is
-         *  on) + the user's own per-site rules + zaps. */
-        protected String adblockCssFor(String host, String base) {
-            return FilterEngine.get().cssFor(host,
-                    prefs.siteFilters(base), prefs.siteZaps(base),
-                    adblockListsOn(base));
+        /** v1.4.31 — THE COSMETIC CACHE: cssFor() walks the filter lists
+         *  per host per call, and the commit + finish passes rebuilt the
+         *  SAME string twice per document. Cached per
+         *  (host | list-generation | listsOn | site-rules) with a small
+         *  LRU; the generation counter bumps when the lists reload. */
+        private final java.util.LinkedHashMap<String, String> cssCache =
+                new java.util.LinkedHashMap<String, String>(32, 0.75f, true) {
+            protected boolean removeEldestEntry(java.util.Map.Entry<String, String> e) {
+                return size() > 32;
+            }
+        };
+
+        /** the cosmetic payload cache key. */
+        private String cssCacheKey(String host, String base, boolean listsOn) {
+            String f = "";
+            String z = "";
+            try {
+                f = String.valueOf(prefs.siteFilters(base));
+                z = String.valueOf(prefs.siteZaps(base));
+            } catch (Throwable ignored) {}
+            return host + "|" + com.bolt.browser.adblock.FilterEngine.get().generation()
+                    + "|" + listsOn + "|" + f.hashCode() + "|" + z.hashCode();
         }
+
+        /** the CSS payload for a host: list selectors (when the adblock is
+         *  on) + the user's own per-site rules + zaps. v1.4.31: cached. */
+        protected String adblockCssFor(String host, String base) {
+            boolean on = adblockListsOn(base);
+            String key = cssCacheKey(host, base, on);
+            synchronized (cssCache) {
+                String hit = cssCache.get(key);
+                if (hit != null) return hit;
+            }
+            String css = FilterEngine.get().cssFor(host,
+                    prefs.siteFilters(base), prefs.siteZaps(base), on);
+            synchronized (cssCache) { cssCache.put(key, css); }
+            return css;
+        }
+
+        /** v1.4.31 — the commit-pass marker: which (view → host|generation)
+         *  already received the cosmetic pass. The finish pass is a
+         *  BACKSTOP — it injects only when the commit pass never ran for
+         *  THIS document (an exotic WebView that skips commit), never as
+         *  a second injection of the same payload. */
+        private final java.util.WeakHashMap<WebView, String> cosmeticDone =
+                new java.util.WeakHashMap<>();
 
         /** the procedural :has-text() payload for a host (same rule). */
         protected String adblockProcFor(String host, String base) {
@@ -6224,7 +6464,12 @@ public class BrowserActivity extends AppCompatActivity {
                     prefs.siteFilters(base), adblockListsOn(base));
         }
 
-        /** v1.3.80 — the early cosmetic pass (see onPageCommitVisible). */
+        /** v1.3.80 — the early cosmetic pass (see onPageCommitVisible).
+         *  v1.4.31 — COMMIT IS THE INJECTION MOMENT (the finish pass is a
+         *  backstop for documents that never commit); the payload is
+         *  cached per (host, list-generation) so the second build of the
+         *  same document's css costs a map hit, and the commit marker
+         *  tells the finish pass to skip. */
         protected void injectAdblockCosmetic(WebView view, String url) {
             try {
                 if (url == null || !url.startsWith("http")) return;
@@ -6232,28 +6477,44 @@ public class BrowserActivity extends AppCompatActivity {
                 String base = Fx.baseDomain(host);
                 String css = adblockCssFor(host, base);
                 if (!css.isEmpty())
-                    view.evaluateJavascript(MediaHook.cssInjectOnce("bolt-adcss", css), null);
+                    evalInj(view, MediaHook.cssInjectOnce("bolt-adcss", css));
                 String proc = adblockProcFor(host, base);
-                if (!proc.isEmpty()) view.evaluateJavascript(proc, null);
+                if (!proc.isEmpty()) evalInj(view, proc);
+                try { cosmeticDone.put(view, cosmeticMark(url)); } catch (Throwable ignored) {}
             } catch (Throwable ignored) {}
         }
 
+        /** the commit marker for a document url (host + generation). */
+        private String cosmeticMark(String url) {
+            return Fx.hostOf(url == null ? "" : url) + "|"
+                    + com.bolt.browser.adblock.FilterEngine.get().generation();
+        }
+
         /** inject userscripts for the given phase: "start" (document-start),
-         *  "end" (DOMContentLoaded-ish) or "idle" (after the page settled). */
+         *  "end" (DOMContentLoaded-ish) or "idle" (after the page settled).
+         *  v1.4.31 — ONE REUSED EXECUTOR (US_EXEC, on the activity — an
+         *  inner class cannot hold a static); the corpse: every phase of
+         *  every document spawned a fresh `usinj` thread — three threads
+         *  per navigation churning on the match walk. The match walk
+         *  result is counted into the perf nav line. */
         protected void injectUserscripts(final WebView view, final String url, final String phase) {
             if (url == null || !url.startsWith("http")) return;
-            new Thread(() -> {
-                try {
-                    List<UserscriptEngine.Script> list =
-                            UserscriptEngine.forUrl(getApplicationContext(), url, phase);
-                    for (UserscriptEngine.Script s : list) {
-                        final String js = UserscriptEngine.wrap(s);
-                        ui.post(() -> {
-                            try { view.evaluateJavascript(js, null); } catch (Throwable ignored) {}
-                        });
-                    }
-                } catch (Throwable ignored) {}
-            }, "usinj").start();
+            try {
+                US_EXEC.execute(() -> {
+                    try {
+                        List<UserscriptEngine.Script> list =
+                                UserscriptEngine.forUrl(getApplicationContext(), url, phase);
+                        for (UserscriptEngine.Script s : list) {
+                            final String js = UserscriptEngine.wrap(s);
+                            docInj++;
+                            docInjBytes += js.length();
+                            ui.post(() -> {
+                                try { view.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+                            });
+                        }
+                    } catch (Throwable ignored) {}
+                });
+            } catch (Throwable ignored) {}
         }
 
         @Override
@@ -6331,7 +6592,17 @@ public class BrowserActivity extends AppCompatActivity {
             try {
                 String host = Fx.hostOf(url);
                 String base = Fx.baseDomain(host);
+                // v1.4.31 — THE COSMETIC BACKSTOP: the commit pass already
+                // injected this document's payload (the commit marker); the
+                // finish pass injects ONLY when commit never ran for THIS
+                // document (an exotic WebView that skips commit-visible) —
+                // never as a second injection of the same payload. The
+                // payload itself rides the (host, list-generation) cache.
+                boolean committed = url != null && url.startsWith("http")
+                        && cosmeticMark(url).equals(cosmeticDone.get(view));
                 String css = adblockCssFor(host, base);
+                if (!committed && !css.isEmpty())
+                    evalInj(view, MediaHook.cssInjectOnce("bolt-adcss", css));
                 // v1.3.39 PER-SITE DARK (menu-3 #5): the page-menu chip stores
                 // a per-site override on top of the global dark-web toggle.
                 // v1.3.40: algorithmic darkening (API 33+) is a NO-OP while
@@ -6396,15 +6667,28 @@ public class BrowserActivity extends AppCompatActivity {
                     runWebDarkPass(view, url);
                 }
                 String proc = adblockProcFor(host, base);
-                if (!proc.isEmpty()) view.evaluateJavascript(proc, null);
+                if (!committed && !proc.isEmpty()) evalInj(view, proc);
             } catch (Throwable ignored) {}
             if (!incognito) {
                 String title = view.getTitle() == null ? "" : view.getTitle();
                 prefs.addHistory(title, url);
             }
             // re-apply saved media settings (SPA navigations reset them)
-            view.evaluateJavascript("window.__boltSetMedia && window.__boltSetMedia('"
-                    + MediaHook.mediaSettingsJson(prefs).replace("'", "\\'") + "')", null);
+            evalInj(view, "window.__boltSetMedia && window.__boltSetMedia('"
+                    + MediaHook.mediaSettingsJson(prefs).replace("'", "\\'") + "')");
+            // v1.4.31 — THE PERF NAV LINE (one line per finished document):
+            // commit latency (onPageStarted→onPageCommitVisible), finish
+            // latency (onPageStarted→onPageFinished), and the document's
+            // injected JS volume (count + chars, hook fallbacks included).
+            // The single-injection law's evidence channel — the field reads
+            // the AFTER numbers against the v1.4.30 BEFORE ones.
+            try {
+                long fin = android.os.SystemClock.uptimeMillis() - docStartMs;
+                int inj = docInj + (hookEvalSnapshot() - docHookEval0);
+                long bytes = docInjBytes + (hookBytesSnapshot() - docHookBytes0);
+                Diag.log(BrowserActivity.this, "perf nav commit=" + Math.max(0L, docCommitMs)
+                        + " finish=" + fin + " inj=" + inj + " bytes=" + bytes);
+            } catch (Throwable ignored) {}
             // userscripts: document-end now, document-idle shortly after
             if (!incognito) {
                 injectUserscripts(view, url, "end");
@@ -8219,6 +8503,29 @@ public class BrowserActivity extends AppCompatActivity {
         @JavascriptInterface
         public String getMedia() {
             return MediaHook.mediaSettingsJson(prefs);
+        }
+
+        /** v1.4.31 — THE PASSKEY LAZY DOOR: the <=3KB bootstrap (document
+         *  start, every frame) parks the first REAL credentials call and
+         *  asks for the full ~55KB compat layer exactly once — HERE — and
+         *  the full layer's adoption block drains the parked ceremony. The
+         *  bridge is attached per-WebView so the load lands in the page
+         *  that asked (the active tab is the fallback when no page has
+         *  pinned this bridge instance). The popup child carries no Bolt
+         *  bridge, so it never loads the full layer (BRIDGE-FREE CHILD
+         *  LAW) — its parked ceremonies reject after the bounded wait. */
+        @JavascriptInterface
+        public void passkeyLoad() {
+            WebView w = attached;
+            if (w == null) {
+                Tab t = activeTab();
+                if (t != null) w = t.web;
+            }
+            if (w == null) return;
+            try {
+                com.bolt.browser.util.PasskeyCompat.loadFull(
+                        getApplicationContext(), w);
+            } catch (Throwable ignored) {}
         }
 
         /** v1.3.87 — THE AI EXPORTER's page→Java handoff: the picker has

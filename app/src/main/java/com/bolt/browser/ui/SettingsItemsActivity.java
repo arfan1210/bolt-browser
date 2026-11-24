@@ -319,7 +319,9 @@ public class SettingsItemsActivity extends BaseListActivity {
                 .setNegativeButton(R.string.cancel, null)
                 .show();
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            com.bolt.browser.util.CacheGuard.exit(this);
+            // v1.4.31 — door=user: the exit-sweep cadence law names this
+            // user-initiated sweep in the diag (cache exit door=user)
+            com.bolt.browser.util.CacheGuard.exit(this, "user");
             Fx.toast(this, "Cleaning temporary data…");
             d.dismiss();
         });

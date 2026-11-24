@@ -111,8 +111,13 @@ ok('cssInjectOnce("bolt-adcss", css)' in BA,
 ok("adblockListsOn(String base)" in BA and "prefs.adblockEnabled()" in BA
    and 'prefs.siteBool(base, "noAds", false)' in BA,
    "adblockListsOn mirrors the network interceptor's on/off decision")
-ok("cssFor(host,\n                    prefs.siteFilters(base), prefs.siteZaps(base),\n                    adblockListsOn(base))" in BA,
-   "cssFor payload gated on the adblock actually being on")
+# v1.4.31 re-point (2026-11-25): the payload rides the (host, list-
+# generation) cache — the gating still comes from adblockListsOn(base),
+# now feeding both the cache key and the on argument
+ok("FilterEngine.get().cssFor(host," in BA
+   and "prefs.siteFilters(base), prefs.siteZaps(base), on)" in BA
+   and "boolean on = adblockListsOn(base);" in BA,
+   "cssFor payload gated on the adblock actually being on (cached)")
 
 print("A7 idempotent injection")
 ok("cssInjectOnce(String id, String css)" in MH and "getElementById('" in MH

@@ -278,9 +278,12 @@ if gm < 0:
 # rescue caller), so the count stays 28
 # v1.4.25 (2026-11-21): 28 -> 29 — pwFillResult (the password fill
 # outcome: toast + Diag, never silent — the deliberate bridge addition)
-if ba.count("@JavascriptInterface") != 29:
+# v1.4.31 (2026-11-25): 29 -> 30 — Bolt.passkeyLoad (THE PASSKEY LAZY
+# LAW's bridge door: the <=3KB bootstrap parks the first real
+# credentials call and asks for the full ~55KB layer exactly once)
+if ba.count("@JavascriptInterface") != 30:
     failures.append("BrowserActivity @JavascriptInterface count changed "
-                    f"(expected 28, found {ba.count('@JavascriptInterface')}) — "
+                    f"(expected 30, found {ba.count('@JavascriptInterface')}) — "
                     "the bridge surface must change only deliberately")
 for sig, why in (
         ("public void noteDownloadAnchor(final String href, final String name)",
@@ -387,10 +390,16 @@ for site, probe in (("onPageStarted", "public void onPageStarted(WebView view, S
         if i_end < 0:
             i_end = i + 4000
         seg = ba[i:i_end]
-        if "FrameHooks.injectNow(view)" not in seg:
+        # v1.4.31 re-point (2026-11-25): THE SINGLE-INJECTION LAW — the
+        # commit-time evaluate twin is GONE BY LAW (the document-start
+        # registration covers every frame of every navigation; the ONE
+        # guarded fallback per document lives at onPageStarted, and the
+        # __boltFH guard keeps re-runs harmless). Old-WebView coverage is
+        # the onPageStarted leg — checked below, unchanged.
+        if site == "onPageStarted" and "FrameHooks.injectNow(view)" not in seg:
             failures.append(f"BrowserActivity: {site} no longer injects "
-                            "FrameHooks (main-frame belt-and-braces lost — "
-                            "copy buttons die on WebViews without "
+                            "FrameHooks (the one fallback per document "
+                            "lost — copy buttons die on WebViews without "
                             "DOCUMENT_START_SCRIPT)")
         if "ClipboardWrite.injectNow" in seg:
             failures.append(f"BrowserActivity: {site} still injects the "

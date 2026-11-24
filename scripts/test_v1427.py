@@ -827,8 +827,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 141/1.4.27 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1427.py")),
      "the v1.4.27 sweep script is checked in (provenance)")
-need('versionName "1.4.30"' in open(BG, encoding="utf8").read()
-     and "versionCode 144" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.31"' in open(BG, encoding="utf8").read()
+     and "versionCode 145" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
 
 print()

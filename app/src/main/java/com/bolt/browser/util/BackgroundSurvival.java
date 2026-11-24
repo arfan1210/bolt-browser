@@ -289,11 +289,41 @@ public final class BackgroundSurvival {
                     .setMessage(msg.toString())
                     .setPositiveButton("Allow", (d, w) -> requestExemption(a))
                     .setNeutralButton("Phone settings", (d, w) -> openOemPower(a))
-                    .setNegativeButton("Not now", null)
+                    // v1.4.31 — the churn law: "Not now" records the
+                    // version; the automatic offer never fires again in it
+                    .setNegativeButton("Not now", (d, w) -> recordDismissed(a))
+                    .setOnCancelListener(d -> recordDismissed(a))
                     .show();
             Diag.log(a, "boOffer shown (whitelisted=" + isIgnoring(a)
                     + " oem=" + (oem.isEmpty() ? "none" : oem) + ")");
         } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.31 — THE CHURN LAW (the "boOffer shown" corpse: the offer
+     *  popped at EVERY resume — the 6-hour boNagDue clock reset askedBo
+     *  and every kill evidence re-armed the dialog, so a session of
+     *  background plays asked 15 times). TWO gates close it:
+     *  (a) at most ONE automatic offer PER PROCESS — the static flag;
+     *  (b) a "Not now" dismissal records the app VERSION — the automatic
+     *  offer never fires again in that version (an update may ask once
+     *  more; the Settings row always works — it is an explicit user
+     *  action and bypasses both gates). The whitelist checks are
+     *  untouched. */
+    private static volatile boolean offeredThisProcess = false;
+
+    /** v1.4.31 — the dismissal marker (the version that was declined). */
+    private static void recordDismissed(Activity a) {
+        try {
+            Prefs.get(a).set("boDismissedVer", versionName(a));
+        } catch (Throwable ignored) {}
+    }
+
+    private static String versionName(Activity a) {
+        try {
+            return a.getPackageManager().getPackageInfo(a.getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     /** the automatic one-time offer (returns true when it showed a dialog).
@@ -304,9 +334,15 @@ public final class BackgroundSurvival {
      *  WITH the whitelist on realme (adj=200, bo=whitelisted in the
      *  heartbeat log), and dontkillmyapp.com's realme page lists the
      *  manufacturer-layer switches (app battery management, sleep stand-by
-     *  optimization, app quick freeze) that actually close that gap. */
+     *  optimization, app quick freeze) that actually close that gap.
+     *  v1.4.31 — the churn gates (once per process + per-version dismiss)
+     *  run FIRST, before any prefs clock is touched. */
     public static boolean maybeOfferOnce(Activity a, Prefs prefs, String evidenceLine) {
         try {
+            if (offeredThisProcess) return false;
+            String dismissed = prefs.s("boDismissedVer", "");
+            if (!dismissed.isEmpty() && dismissed.equals(versionName(a))) return false;
+            offeredThisProcess = true;
             if (!prefs.b("askedBo", false)) {
                 prefs.set("askedBo", true);
                 if (!isIgnoring(a)) {
@@ -321,6 +357,9 @@ public final class BackgroundSurvival {
                 showOemOffer(a, evidenceLine);
                 return true;
             }
+            // nothing showed this pass — the process gate re-arms so a
+            // later evidence line in the SAME process can still ask once
+            offeredThisProcess = false;
             return false;
         } catch (Throwable t) {
             return false;
@@ -352,7 +391,8 @@ public final class BackgroundSurvival {
                     .setTitle("One more switch on your " + name)
                     .setMessage(msg.toString())
                     .setPositiveButton("Open phone settings", (d, w) -> openOemPower(a))
-                    .setNegativeButton("Later", null)
+                    // v1.4.31 — the churn law covers the phase-2 dialog too
+                    .setNegativeButton("Later", (d, w) -> recordDismissed(a))
                     .show();
             Diag.log(a, "oemOffer shown (whitelisted=" + isIgnoring(a)
                     + " oem=" + (oem.isEmpty() ? "none" : oem) + ")");

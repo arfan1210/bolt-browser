@@ -234,6 +234,37 @@ laws; the list below is the CURRENT law set (name → the one line):
 - THE IDEMPOTENT RE-FILL LAW (v1.4.30) — a chat bubble re-fill clears
   first and preserves each table scroller's scrollX by table index;
   the grid never claims the copy gesture.
+- THE MEASURED-IMPLICIT LAW (v1.4.31) — the QR preview's implicit
+  buffer→view mapping is MEASURED once per scan session (a CPU stripe
+  pattern through the session's own Surface, read back with
+  getBitmap, solved per axis, whole-pattern-verified) and undone
+  exactly; the device table (RMX2020 = cover-undo) and the fill-undo
+  are the fallback chain; the RMX2020 (sensor=90, display=0) pair
+  seeds the +270 rotation and the user's rotate button still wins.
+- THE EXIT-SWEEP CADENCE LAW (v1.4.31) — CacheGuard.exit runs ONLY on
+  true exits: onDestroy (door=destroy), a user request (door=user),
+  or the 5-minute delayed onStop runnable (door=delayed, cancelled by
+  onResume). Never at bare onStop.
+- THE TRIM-STORM POLICY (v1.4.31) — a trim ≥60 sleeps ONLY background
+  tabs idle >3 min; never the active/shown tab, never a media tab,
+  never the two most recently used; thumbnails drop first.
+- THE SINGLE-INJECTION LAW (v1.4.31) — one feature-detect per WebView:
+  a successful document-start registration makes every
+  evaluateJavascript twin a no-op; an unsupported WebView keeps ONE
+  guarded fallback per document. Cosmetic CSS is cached per
+  (host, list-generation) with commit as the injection moment and
+  finish as the backstop; userscript phases share one executor.
+- THE PASSKEY LAZY LAW (v1.4.31) — the ≤3 KB bootstrap rides document
+  start (detection + parked ceremonies); the full ~55 KB layer loads
+  once per WebView through Bolt.passkeyLoad on the first REAL
+  credentials call and adopts the queue; popup children never load it
+  (THE BRIDGE-FREE CHILD LAW, unchanged).
+- THE WEB-CONTEXT LAW (v1.4.31) — the AI request always carries the
+  standing MAX_TURNS history (Web ON or OFF); the retrieval query
+  covers the conversation (current prompt + topic words from the
+  previous two user turns + the last assistant reply); a bounded
+  transcript (4 turns / 2k chars) rides above the SOURCES block; the
+  web leg APPENDS, never replaces turns.
 
 **Environment lessons (merged — every one paid for itself once).**
 
@@ -276,6 +307,54 @@ end: a fresh sandbox restored losslessly from the bundle + keystore
 backup, rebuilt the toolchain with one script, and re-ran the FULL
 verification (gates + suite + signed build + cert check + size law)
 before publishing.
+
+**v1.4.31 — THE PERFORMANCE-AND-QUIET ROUND** (the twenty-fourth session,
+2026-11-25). Seven fixes, every one traced to a v1.4.30 field diag line:
+
+1. *QR — THE MEASURED-IMPLICIT LAW.* The v1.4.30 diag proved producer=0
+   constant and cover GOOD at offset=270 — yet the preview stretched
+   ~3.8×. The net anisotropy of the v1.4.29-30 undo,
+   (bw/vw)/(bh/vh) = 3.784, WAS the stretch: the undo assumed an
+   anisotropic-FILL implicit mapping while the device renders uniform
+   COVER. The fix measures instead of assuming: one stripe-pattern
+   calibration per scan session (posted through the session's own
+   Surface after it configures, before the repeating request — no camera
+   frame can overwrite the pattern), the view bitmap's stripe runs
+   solved per axis with a whole-pattern bijection check, the undo is
+   the exact inverse affine. Fallback chain: measured → device table
+   (RMX2020 cover-undo) → fill. The +270 offset seeds for the RMX2020
+   (sensor=90, display=0) pair; the user's rotate button still wins and
+   long-press resets to the device default. Diag grew mode= and net=.
+2. *THE EXIT-SWEEP CADENCE LAW.* The immediate-onStop sweep (v1.3.79)
+   ran the full close-out + deep diet on every backgrounding — the
+   "cache guard exit … deep=1" storm. Doors now: destroy / user /
+   delayed (5 min, cancelled by onResume); the door rides the diag.
+3. *THE TRIM-STORM POLICY + boOffer CHURN.* The level-80 storm slept
+   every background tab (the "tab hist restore … cold" lag); the sleep
+   decision is now a PURE table (idle >3 min, never active/shown/media,
+   never the two most recent). boOffer shows once per process, once per
+   version between dismissals.
+4. *THE SINGLE-INJECTION LAW + THE PASSKEY LAZY LAW.* One feature-detect
+   per WebView; the media core joined the document-start registrations;
+   the commit-time evaluate twins are gone; cosmetic CSS cached per
+   (host, generation), commit-only with a finish backstop; one reused
+   userscript executor. webauthn_compat.js (55 KB per frame) became a
+   ≤3 KB bootstrap + a once-per-WebView lazy full load through
+   Bolt.passkeyLoad (the adoption block drains the parked ceremonies).
+   The perf nav / perf launch / perf blur diag lines carry the evidence.
+5. *THE GLASS SNAPSHOT DIET + THE CACHEGUARD CADENCE.* Downscale ≤1/4 →
+   luminance + content-hash → off-main StackBlur on the small bitmap;
+   the 6-minute foreground walk became trim-driven checks + a 30-minute
+   idle-only audit with a file-visit budget.
+6. *THE WEB-CONTEXT LAW.* The keyless web leg appends (never replaces)
+   a bounded context block (4-turn transcript + SOURCES) to the last
+   user turn; the search query now covers the conversation (banana
+   rides "add apple and orange to the table").
+7. *THE GATES + PIPELINE.* test_v1431.py pins all of the above with
+   compiled REAL probes (the stripe solver over fill/cover/fit
+   synthetic bitmaps; implicit∘undo = identity at 1e-6 in all three
+   undo modes; the trim decision table; the injection decision);
+   repin_gates_1431.py swept the ladder to 145/1.4.31 with dated notes.
 
 **v1.4.30 — THE FIELD ROUND** (the twenty-third session, 2026-11-24).
 Six fixes from the maintainer's Realme read-backs on v1.4.29:

@@ -111,6 +111,16 @@ public class FilterEngine {
     public volatile boolean ready = false;
     private int ruleCount = 0;
 
+    // v1.4.31 — THE LIST GENERATION: bumped at the end of every load() —
+    // the cosmetic CSS cache keys on it, so a reloaded list invalidates
+    // every cached payload without touching the cache itself.
+    private volatile long generation = 0;
+
+    /** v1.4.31 — the list generation counter (bumped per load()). */
+    public long generation() {
+        return generation;
+    }
+
     private FilterEngine() {
         seedAdult();
     }
@@ -164,6 +174,8 @@ public class FilterEngine {
         acBuild = null;
         ruleCount = block.count + allow.count;
         ready = true;
+        // v1.4.31 — every rebuild invalidates the cosmetic CSS cache keys
+        generation++;
     }
 
     /** v1.3.80 — the text for a built-in list: the DOWNLOADED update (a

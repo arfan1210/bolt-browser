@@ -170,6 +170,16 @@ object CacheGuard {
     @Volatile private var lastAuditAt = 0L
     @Volatile private var running = false
 
+    /** v1.4.31 — THE FILE-VISIT BUDGET (mid-session passes only; the
+     *  trim-storm corpse: the audit walked tens of thousands of cache
+     *  entries back to back while the user was switching tabs). A pass
+     *  touches at most this many entries measuring/deleting; whatever it
+     *  did not reach waits for the next trigger. Startup and exit sweeps
+     *  are UNBOUNDED — the storage law's promises are measured at true
+     *  start/close, never budgeted. */
+    private const val FILE_BUDGET = 60_000L
+    @Volatile private var visitLeft = Long.MAX_VALUE
+
     /**
      * v1.3.77 — THE EXIT SWEEP. Physically empties EVERY cache subtree
      * plus the app's own cacheDir, unconditionally (no budget, no rate
@@ -190,10 +200,29 @@ object CacheGuard {
      * databases; cookies KEPT so most sign-ins survive) and the marker
      * pair (.boltexit-start/.boltexit-done) lets the NEXT cold start
      * finish a sweep a racing process death interrupted.
+     * v1.4.31 — THE EXIT-SWEEP CADENCE LAW (the tab-hist storm corpse:
+     * "cache guard exit … deep=1" fired at EVERY onStop — 15 times in 90
+     * minutes — because v1.3.79 traded the v1.3.77 delay for an
+     * immediate sweep, and every tab switch that parked the activity ran
+     * the full close-out + site-data diet while the user was coming
+     * right back). exit() now runs ONLY on TRUE exits, three doors:
+     *   destroy — BrowserActivity.onDestroy (the real close);
+     *   user    — an explicit user-initiated sweep (Settings "Clean now");
+     *   delayed — the 5-minute delayed onStop runnable, CANCELLED by
+     *             onResume (the v1.3.77 cadence restored; the OEM-kill
+     *             window is still covered by the start/done marker pair
+     *             + the next cold start's pending-exit finisher).
+     * The door rides the diag line so the field can see which door
+     * fired. The startup sweep and the pending-exit finisher are
+     * UNCHANGED — the ~20 MB promise still holds at true close.
      */
     @JvmStatic
-    fun exit(app: Context) {
+    @JvmOverloads
+    fun exit(app: Context, door: String = "destroy") {
         val ctx = app.applicationContext
+        // v1.4.31 — the exit sweep is UNBOUNDED (the ~20 MB promise is
+        // measured at true close; the budget is a mid-session guard only)
+        visitLeft = Long.MAX_VALUE
         synchronized(this) {
             if (running) return
             running = true
@@ -256,8 +285,8 @@ object CacheGuard {
                 // (anything the allowlist may never touch deliberately)
                 // + the app's own filesDir top items.
                 try {
-                    Diag.log(ctx, "cache guard exit " + mb(before) +
-                            "mb freed=" + mb(freed) + "mb" +
+                    Diag.log(ctx, "cache guard exit door=" + door + " " +
+                            mb(before) + "mb freed=" + mb(freed) + "mb" +
                             (if (deep) " deep=1" else "") + breakdown(ctx))
                 } catch (_: Throwable) {}
                 markExit(ctx, started = false)
@@ -295,6 +324,7 @@ object CacheGuard {
     fun completePendingExit(app: Context) {
         val ctx = app.applicationContext
         if (!pendingExit(ctx)) return
+        visitLeft = Long.MAX_VALUE
         Thread({
             try {
                 try {
@@ -444,6 +474,9 @@ object CacheGuard {
     }
 
     private fun run(ctx: Context, startup: Boolean, web: WebView?) {
+        // v1.4.31 — the file-visit budget: mid-session passes are bounded,
+        // the startup sweep is not (see FILE_BUDGET)
+        visitLeft = if (startup) Long.MAX_VALUE else FILE_BUDGET
         val dirs = cacheDirs(ctx)
         val before = sizeOf(dirs)
         if (before < SOFT) {
@@ -538,7 +571,11 @@ object CacheGuard {
     private fun du(f: File): Long {
         var total = 0L
         try {
-            if (f.isFile) return f.length()
+            if (visitLeft <= 0) return 0L
+            if (f.isFile) {
+                visitLeft--
+                return f.length()
+            }
             val cs = f.listFiles() ?: return 0L
             for (c in cs) total += du(c)
         } catch (_: Throwable) {}
@@ -562,11 +599,13 @@ object CacheGuard {
     private fun rm(f: File): Long {
         return try {
             var freed = 0L
+            if (visitLeft <= 0) return 0L
             if (f.isDirectory) {
                 val cs = f.listFiles()
                 if (cs != null) for (c in cs) freed += rm(c)
             }
             try { freed += f.length() } catch (_: Throwable) {}
+            visitLeft--
             if (f.delete()) freed else 0L
         } catch (_: Throwable) {
             0L

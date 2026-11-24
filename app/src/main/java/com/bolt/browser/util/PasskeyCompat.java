@@ -31,13 +31,21 @@ import androidx.webkit.WebViewFeature;
  *     actually gate on is navigator.userAgentData.platformVersion —
  *     reported "14.0.0" by the JS side. A custom UA chosen by the user
  *     (Settings / per-site) is left completely untouched.
- *  2. document-start injection: webauthn_compat.js must run BEFORE page
- *     scripts so it can complete the PublicKeyCredential surface
- *     (getClientCapabilities, parseCreationOptionsFromJSON, conditional
- *     mediation, ...). androidx.webkit's addDocumentStartJavaScript is
- *     used when the device WebView supports it; otherwise BoltClient.
- *     onPageStarted calls {@link #injectNow} as the fallback (the script
- *     is idempotent, so double injection is harmless).
+ *  2. document-start injection: v1.4.31 — THE PASSKEY LAZY LAW. The full
+ *     compat layer (assets/webauthn_compat.js, ~55 KB) used to ride EVERY
+ *     frame of EVERY page at document start; the ceremonies it exists for
+ *     are rare. Document start now carries the <=3 KB BOOTSTRAP
+ *     (assets/webauthn_bootstrap.js): it answers the RP's feature
+ *     detection immediately (the capability matrix, the parse*FromJSON
+ *     pair, the availability probes — the full layer's shapes) and parks
+ *     the first REAL credentials.create/get call, which calls
+ *     Bolt.passkeyLoad ONCE; loadFull() injects the full layer into that
+ *     WebView (once per WebView) and the full layer's adoption block
+ *     drains the parked ceremony. WebViews without document-start
+ *     support get the bootstrap at onPageStarted ({@link #injectNow}).
+ *     The popup child has no Bolt bridge and never loads the full layer
+ *     (THE BRIDGE-FREE CHILD LAW — unchanged: it had no webauthn
+ *     registration before v1.4.31 either).
  *
  * The third fingerprint (the X-Requested-With header) is NOT touched in
  * this build: stripping it requires re-fetching main documents through a
@@ -61,27 +69,37 @@ public final class PasskeyCompat {
     /** true once document-start injection is known to work on this device. */
     private static volatile boolean docStartOk = false;
 
-    /** the prepared (placeholder-filled) compat script, cached for the process. */
+    /** the prepared (placeholder-filled) full compat script, cached for the
+     *  process — LAZY: injected only on the first real credentials call. */
     private static volatile String script = null;
+
+    /** the <=3 KB bootstrap (document-start), cached for the process. */
+    private static volatile String bootstrap = null;
+
+    /** v1.4.31 — WebViews that already received the FULL layer (once per
+     *  WebView, the lazy-load law). */
+    private static final java.util.WeakHashMap<WebView, Boolean> fullInjected =
+            new java.util.WeakHashMap<>();
 
     private PasskeyCompat() {}
 
     /**
-     * One-call setup for one WebView: detect the engine version, register the
-     * compat script at document start (all frames), and shape the UA.
+     * One-call setup for one WebView: detect the engine version, register
+     * the BOOTSTRAP at document start (all frames), and shape the UA. The
+     * full layer stays lazy until a real ceremony asks for it.
      * Called from Tab.buildWeb() right after WebAuthnHelper.enablePasskeys().
      */
     public static void apply(Context c, WebView w) {
         if (c == null || w == null) return;
         detectEngine(c);
-        String js = prepareScript(c);
+        String js = prepareBootstrap(c);
         if (js != null) {
             try {
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                     WebViewCompat.addDocumentStartJavaScript(w, js, Collections.singleton("*"));
                     docStartOk = true;
-                    Log.i(TAG, "passkey compat applied (Chrome/" + chromeMajor
-                            + ", document-start)");
+                    Log.i(TAG, "passkey bootstrap applied (Chrome/" + chromeMajor
+                            + ", document-start, lazy full layer)");
                 } else {
                     Log.w(TAG, "DOCUMENT_START_SCRIPT unsupported on this WebView; "
                             + "onPageStarted fallback active");
@@ -151,13 +169,38 @@ public final class PasskeyCompat {
 
     /**
      * Fallback injection for WebViews where document-start registration is
-     * unavailable: called from BoltClient.onPageStarted(), which fires at
-     * navigation commit — before page scripts execute.
+     * unavailable: called from BoltClient.onPageStarted(). v1.4.31 — this
+     * injects the BOOTSTRAP (the stub), never the full layer; the lazy-load
+     * door (Bolt.passkeyLoad → loadFull) delivers the full layer exactly
+     * once per WebView when a real ceremony parks.
      */
-    public static void injectNow(WebView w) {
-        if (docStartOk || w == null || script == null) return;
+    public static void injectNow(WebView w, Context c) {
+        if (docStartOk || w == null || c == null) return;
+        String js = prepareBootstrap(c);
+        if (js == null) return;
         try {
-            w.evaluateJavascript(script, null);
+            w.evaluateJavascript(js, null);
+        } catch (Throwable ignored) {}
+    }
+
+    /**
+     * v1.4.31 — THE LAZY-LOAD DOOR: Bolt.passkeyLoad calls this (any
+     * thread; the evaluate posts to the WebView's thread). The full ~55 KB
+     * compat layer is injected ONCE per WebView; the bootstrap's parked
+     * ceremonies are adopted by the full layer itself on arrival.
+     */
+    public static void loadFull(Context c, WebView w) {
+        if (c == null || w == null) return;
+        synchronized (fullInjected) {
+            if (fullInjected.containsKey(w)) return;
+            fullInjected.put(w, Boolean.TRUE);
+        }
+        String js = prepareScript(c);
+        if (js == null) return;
+        try {
+            w.post(() -> {
+                try { w.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+            });
         } catch (Throwable ignored) {}
     }
 
@@ -173,6 +216,28 @@ public final class PasskeyCompat {
             int major = Integer.parseInt(head);
             if (major > 0) chromeMajor = major;
         } catch (Throwable ignored) {}
+    }
+
+    /**
+     * Read assets/webauthn_bootstrap.js (NO placeholders — byte-stable),
+     * cache. Runs once per process; safe to call from any thread.
+     */
+    private static String prepareBootstrap(Context c) {
+        String cached = bootstrap;
+        if (cached != null) return cached;
+        try {
+            InputStream in = c.getAssets().open("webauthn_bootstrap.js");
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            in.close();
+            bootstrap = new String(bos.toByteArray(), StandardCharsets.UTF_8);
+            return bootstrap;
+        } catch (Throwable t) {
+            Log.w(TAG, "prepareBootstrap failed", t);
+            return null;
+        }
     }
 
     /**

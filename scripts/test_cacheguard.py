@@ -128,18 +128,20 @@ def main():
                      r"[^}]*?CacheGuard\.check\(this, true\)", act, re.S):
         print("FAIL: the startup sweep must run right after destroyStaleWebViews()")
         return 1
-    # v1.3.77 — the three close-out arms
-    # (v1.3.79: the audit loop runs every 6 minutes — the 3-minute disk walk
-    # was a recurring wakeup the battery report flagged; the close-out arm
-    # fires IMMEDIATELY at onStop — the 45 s delay died with the OEM-killer
-    # reality that a killed process never runs its Handler runnables)
+    # v1.3.77 — the close-out arms. v1.4.31 re-point (2026-11-25): the
+    # audit loop runs every 30 MINUTES and skips loading/media sessions
+    # (the trim-driven check covers the pressure moments); the onStop arm
+    # is the 5-MINUTE DELAYED sweep (door=delayed, cancelled by onResume —
+    # the exit-sweep cadence law; the immediate-onStop sweep of v1.3.79
+    # was the tab-hist storm corpse). The exit doors name themselves:
+    # destroy (onDestroy) / user (Clean now) / delayed (the runnable).
     for probe in ("protected final Runnable cacheAuditTick",
                   "protected final Runnable cacheBgSweep",
-                  "ui.postDelayed(cacheAuditTick, 6 * 60 * 1000L)",
-                  "CacheGuard.exit(BrowserActivity.this)",
-                  "ui.postDelayed(cacheBgSweep, 60 * 1000L)",
+                  "ui.postDelayed(cacheAuditTick, 30 * 60 * 1000L)",
+                  'CacheGuard.exit(BrowserActivity.this, "delayed")',
+                  "ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L)",
                   "ui.removeCallbacks(cacheBgSweep)",
-                  "CacheGuard.exit(this)"):
+                  'CacheGuard.exit(this, "destroy")'):
         if probe not in act:
             print(f"FAIL: the v1.3.77 close-out wiring lacks {probe}")
             return 1

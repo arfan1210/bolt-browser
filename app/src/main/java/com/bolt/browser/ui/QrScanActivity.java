@@ -122,8 +122,26 @@ public class QrScanActivity extends AppCompatActivity {
     // third ranked suspect), the scanner's rotate button shifts the angle
     // by +90° steps and PERSISTS the offset per (sensor, display) pair —
     // one honest, bounded user correction instead of another blind
-    // heuristic. Long-press resets it to 0.
+    // heuristic. Long-press resets it to the DEVICE DEFAULT (the v1.4.31
+    // seed below — 0 on unknown devices).
     private int rotOffset = 0;
+    // v1.4.31 — THE MEASURED-IMPLICIT LAW (the stretched-preview corpse:
+    // the v1.4.29-30 matrix assumed the implicit buffer->view mapping is
+    // the anisotropic FILL stretch, but the field device renders the
+    // buffer UNIFORM COVER — the undo's own anisotropy
+    // (bw/vw)/(bh/vh) = 3.784 was exactly the reported ~3.8x stretch, and
+    // the producer=0-always-0 diag disproved every HAL-rotation story; the
+    // user's +270 offset was the REAL rotation fix). MEASURE, DON'T ASSUME: once per
+    // scan session, after the session configures and BEFORE the repeating
+    // request starts (no camera frame can overwrite the pattern), a CPU
+    // test pattern is posted through the SAME Surface the camera will use
+    // and the delivered frame is read back with TextureView.getBitmap —
+    // the stripe positions in the view bitmap solve the implicit affine
+    // (view = i*buf + t per axis) exactly, and the undo becomes the
+    // inverse of what THIS device actually does.
+    private String undoMode = null;      // "measured" | "table" | "fill"
+    private boolean calibArmed = false, calibDone = false;
+    private float calibIx = -1f, calibIy = -1f, calibTx = Float.NaN, calibTy = Float.NaN;
     private ImageButton btnTorch;
     private View scanLine;
     private TextView tvHint;
@@ -182,6 +200,22 @@ public class QrScanActivity extends AppCompatActivity {
             // never shown under a stale transform.
             @Override public void onSurfaceTextureUpdated(SurfaceTexture st) {
                 try {
+                    // v1.4.31 — THE CALIBRATION CAPTURE: the posted test
+                    // pattern's frame is the one measured frame the session
+                    // gets before the camera starts repeating. Grab it,
+                    // solve the implicit affine, then let the camera in.
+                    if (calibArmed && !calibDone) {
+                        calibArmed = false;
+                        if (finishCalibration()) {
+                            reapplyTransform();
+                            startRepeating();
+                            return;
+                        }
+                        // solve failed: the bounded timeout arm (posted with
+                        // the pattern) re-applies the table/fill undo and
+                        // starts the repeating request
+                        return;
+                    }
                     // v1.4.30 — probe the producer transform on the FIRST
                     // delivered frame and after every re-pin (a freshly
                     // pinned buffer may carry a fresh producer transform)
@@ -379,10 +413,15 @@ public class QrScanActivity extends AppCompatActivity {
             reapplyTransform();
         });
         rot.setOnLongClickListener(v -> {
-            if (rotOffset == 0) return false;
-            rotOffset = 0;
+            // v1.4.31 — reset lands on the DEVICE DEFAULT (the L3 seed),
+            // never blindly on 0 — a seeded device keeps its standing fix
+            int def = seedRotOffsetFor(android.os.Build.MODEL, sensorOrientation,
+                    displayDegrees());
+            if (rotOffset == def) return false;
+            rotOffset = def;
             saveRotOffset();
-            Fx.toast(this, "Preview offset reset");
+            Fx.toast(this, def == 0 ? "Preview offset reset"
+                    : "Preview offset reset to device default +" + def + "°");
             reapplyTransform();
             return true;
         });
@@ -407,28 +446,37 @@ public class QrScanActivity extends AppCompatActivity {
         return "qrRotOffset." + sensorOrientation + "." + degrees;
     }
 
+    /** the display rotation in degrees for the current (sensor, display)
+     *  pair — one helper for the save/reset paths. */
+    private int displayDegrees() {
+        try {
+            int rotation = getWindowManager().getDefaultDisplay().getRotation();
+            return rotation == Surface.ROTATION_90 ? 90
+                    : rotation == Surface.ROTATION_180 ? 180
+                    : rotation == Surface.ROTATION_270 ? 270 : 0;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     private void saveRotOffset() {
         try {
-            int degrees = 0;
-            try {
-                int rotation = getWindowManager().getDefaultDisplay().getRotation();
-                degrees = rotation == Surface.ROTATION_90 ? 90
-                        : rotation == Surface.ROTATION_180 ? 180
-                        : rotation == Surface.ROTATION_270 ? 270 : 0;
-            } catch (Throwable ignored) {}
-            Prefs.get(this).set(rotOffsetKey(degrees), rotOffset);
+            Prefs.get(this).set(rotOffsetKey(displayDegrees()), rotOffset);
             renderRotBadge();
         } catch (Throwable ignored) {}
     }
 
     /** reads the persisted override for the CURRENT (sensor, display) pair
      *  (a fresh read every apply: cheap, and a button tap lands on the
-     *  very next transform). */
+     *  very next transform). v1.4.31 — the DEFAULT is the device seed
+     *  (L3), so a seeded device starts upright before any tap; a saved
+     *  user value still wins over the seed. */
     private int loadRotOffset(int degrees) {
+        int seed = seedRotOffsetFor(android.os.Build.MODEL, sensorOrientation, degrees);
         try {
-            return Prefs.get(this).i(rotOffsetKey(degrees), 0);
+            return Prefs.get(this).i(rotOffsetKey(degrees), seed);
         } catch (Throwable t) {
-            return 0;
+            return seed;
         }
     }
 
@@ -533,6 +581,10 @@ public class QrScanActivity extends AppCompatActivity {
 
     private void openCamera() {
         if (done || denied || cameraFailed || camera != null || camHandler == null) return;
+        // v1.4.31 — every camera open is a fresh measurement session
+        calibDone = false;
+        calibArmed = false;
+        undoMode = undoModeFor(android.os.Build.MODEL);
         try {
             CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
             String id = null;
@@ -644,6 +696,13 @@ public class QrScanActivity extends AppCompatActivity {
                     new CameraCaptureSession.StateCallback() {
                         @Override public void onConfigured(CameraCaptureSession s) {
                             session = s;
+                            // v1.4.31 — THE MEASURED-IMPLICIT SESSION GATE:
+                            // calibrate FIRST (the pattern post + one frame),
+                            // start the repeating request only after the
+                            // calibration frame was captured (or the bounded
+                            // timeout fell back) — no camera frame can
+                            // overwrite the test pattern mid-measure.
+                            if (armCalibration()) return;
                             reapplyTransform();
                             startRepeating();
                         }
@@ -654,6 +713,148 @@ public class QrScanActivity extends AppCompatActivity {
         } catch (Throwable t) {
             cameraFailure();
         }
+    }
+
+    // ------------------------------------------------------------ v1.4.31
+    // THE MEASURED-IMPLICIT CALIBRATION (one pass per scan session)
+
+    /** posts the stripe test pattern through the session's own preview
+     *  Surface and arms the capture. The buffer is the REAL pinned camera
+     *  size; the canvas maps 1:1 onto it. Runs on the camera handler after
+     *  onConfigured, BEFORE startRepeating. Any failure falls back to the
+     *  device table (undoModeFor). */
+    private boolean armCalibration() {
+        try {
+            undoMode = undoModeFor(android.os.Build.MODEL);
+            calibDone = false;
+            calibArmed = false;
+            SurfaceTexture st = tvPreview.getSurfaceTexture();
+            if (st == null || previewSurface == null || bufW <= 0 || bufH <= 0) return false;
+            android.graphics.Canvas c = previewSurface.lockCanvas(null);
+            if (c == null) return false;
+            try {
+                c.drawColor(0xFF000000);
+                android.graphics.Paint red = new android.graphics.Paint();
+                red.setColor(0xFFFF2222);
+                int sw = Math.max(2, bufW / 128);
+                for (int j = 1; j <= stripeCount(); j++) {
+                    int x = stripePos(bufW, j);
+                    c.drawRect(x - sw / 2f, 0, x + sw / 2f, bufH, red);
+                }
+                android.graphics.Paint green = new android.graphics.Paint();
+                green.setColor(0xFF22DD22);
+                int sh = Math.max(2, bufH / 128);
+                // green paints AFTER red — intersections read green, so a
+                // scan line that happens to ride a red stripe still finds
+                // the green bands crossing it
+                for (int j = 1; j <= stripeCount(); j++) {
+                    int y = stripePos(bufH, j);
+                    c.drawRect(0, y - sh / 2f, bufW, y + sh / 2f, green);
+                }
+            } finally {
+                try { previewSurface.unlockCanvasAndPost(c); } catch (Throwable ignored) {}
+            }
+            calibArmed = true;
+            try {
+                Diag.log(this, "qr calib arm buf=" + bufW + "x" + bufH
+                        + " mode=" + undoMode);
+            } catch (Throwable ignored) {}
+            // bounded fallback: if the pattern frame never lands (compositor
+            // busy, surface replaced) the table/fill mode + the camera win
+            tvPreview.postDelayed(() -> {
+                try {
+                    if (!calibDone) {
+                        calibArmed = false;
+                        undoMode = undoModeFor(android.os.Build.MODEL);
+                        try {
+                            Diag.log(this, "qr calib timeout mode=" + undoMode);
+                        } catch (Throwable ignored) {}
+                    }
+                    if (session != null && camera != null && !cameraFailed) startRepeating();
+                } catch (Throwable ignored) {}
+            }, 900L);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** the calibration frame arrived: read the view bitmap, locate the
+     *  stripe runs, solve the implicit affine. UI thread (getBitmap).
+     *  Returns true when the measured undo was stored. */
+    private boolean finishCalibration() {
+        try {
+            int vw = tvPreview.getWidth(), vh = tvPreview.getHeight();
+            if (vw <= 0 || vh <= 0) return false;
+            android.graphics.Bitmap b = tvPreview.getBitmap();
+            if (b == null) return false;
+            boolean ok = false;
+            try {
+                int[] px = new int[vw * vh];
+                b.getPixels(px, 0, vw, 0, 0, vw, vh);
+                // scan lines at 7/16, 9/16, 8/16 of the view: 7/16 and 9/16
+                // fall BETWEEN the stripes under every center-anchored
+                // mapping (fill/cover/fit), 8/16 rides the center stripe —
+                // the first line that yields runs wins
+                int[] rx = null;
+                int[] rows = {7 * vh / 16, 9 * vh / 16, 8 * vh / 16};
+                for (int ry : rows) {
+                    if (rx != null && rx.length >= 2) break;
+                    if (ry < 0 || ry >= vh) continue;
+                    int[] row = rowPixels(px, vw, vh, ry);
+                    int[] r = scanRunsArgb(row, vw, 1, true, 1);
+                    if (r != null && r.length >= 2) rx = r;
+                }
+                int[] gy = null;
+                int[] cols = {7 * vw / 16, 9 * vw / 16, 8 * vw / 16};
+                for (int cx : cols) {
+                    if (gy != null && gy.length >= 2) break;
+                    if (cx < 0 || cx >= vw) continue;
+                    int[] col = colPixels(px, vw, vh, cx);
+                    int[] g = scanRunsArgb(col, 1, vh, false, 2);
+                    if (g != null && g.length >= 2) gy = g;
+                }
+                float[] sx = rx != null ? solveAxis(rx, bufW, vw) : null;
+                float[] sy = gy != null ? solveAxis(gy, bufH, vh) : null;
+                if (sx != null && sy != null) {
+                    calibIx = sx[0]; calibTx = sx[1];
+                    calibIy = sy[0]; calibTy = sy[1];
+                    undoMode = "measured";
+                    calibDone = true;
+                    ok = true;
+                }
+            } finally {
+                try { b.recycle(); } catch (Throwable ignored) {}
+            }
+            try {
+                Diag.log(this, ok
+                        ? "qr calib ok mode=measured ix=" + fmt(calibIx) + " iy=" + fmt(calibIy)
+                        : "qr calib fail mode=" + undoModeFor(android.os.Build.MODEL));
+            } catch (Throwable ignored) {}
+            return ok;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** one row of the raster as a fresh array (the scanner walks it as a
+     *  1-row image). */
+    private static int[] rowPixels(int[] px, int w, int h, int y) {
+        int[] out = new int[w];
+        if (y < 0 || y >= h) return out;
+        System.arraycopy(px, y * w, out, 0, w);
+        return out;
+    }
+
+    private static int[] colPixels(int[] px, int w, int h, int x) {
+        int[] out = new int[h];
+        if (x < 0 || x >= w) return out;
+        for (int y = 0; y < h; y++) out[y] = px[y * w + x];
+        return out;
+    }
+
+    private static String fmt(float v) {
+        return String.format(java.util.Locale.US, "%.4f", v);
     }
 
     private void startRepeating() {
@@ -736,6 +937,139 @@ public class QrScanActivity extends AppCompatActivity {
             return ((q % 4) + 4) % 4 * 90;
         } catch (Throwable t) {
             return 0;
+        }
+    }
+
+    // ------------------------------------------------------------ v1.4.31
+    // THE MEASURED-IMPLICIT LAW — the device table + the stripe solver.
+
+    /** v1.4.31 — L2 THE DEVICE TABLE (probe-pinned): devices whose implicit
+     *  buffer->view mapping is known-uniform-COVER get the cover-undo when
+     *  measurement cannot run; every other device keeps the fill-undo (the
+     *  historical default, correct on the majority). The table grows only
+     *  from field read-backs (diag mode= tells which leg fired). */
+    static final String[] COVER_UNDO_MODELS = { "RMX2020" };
+
+    /** v1.4.31 — PURE (gate-pinned): the fallback undo mode for a device —
+     *  "table" (cover-undo) for known devices, "fill" otherwise. */
+    static String undoModeFor(String model) {
+        if (model == null) return "fill";
+        for (String m : COVER_UNDO_MODELS) {
+            if (m.equals(model)) return "table";
+        }
+        return "fill";
+    }
+
+    /** v1.4.31 — L3 THE OFFSET SEED (probe-pinned): devices whose preview
+     *  needs a standing rotation correction get it the FIRST time the
+     *  scanner opens, persisted under the same (sensor, display) key the
+     *  rotate button writes. The user's own saved offset still wins — the
+     *  seed is only the DEFAULT. RMX2020 (sensor=90, display=0): the field
+     *  proved +270 upright. */
+    static int seedRotOffsetFor(String model, int sensor, int display) {
+        if ("RMX2020".equals(model) && sensor == 90 && display == 0) return 270;
+        return 0;
+    }
+
+    /** v1.4.31 — PURE (gate-compiled): the stripe test-pattern geometry.
+     *  7 vertical stripes at bufW*j/8 and 7 horizontal stripes at bufH*j/8
+     *  (j=1..7) — NOT just the quarters: under a uniform-COVER implicit
+     *  mapping (exactly the devices this law exists for) the buffer's
+     *  overflow axis is cropped and the quarter stripes fall OFF-view;
+     *  the 1/8 grid guarantees a center-symmetric visible subset on any
+     *  monotonic center-anchored mapping. */
+    static int stripeCount() { return 7; }
+
+    static int stripePos(int span, int j) {
+        return Math.round(span * j / 8f);
+    }
+
+    /** v1.4.31 — PURE (gate-compiled): stripe-run centers from an ARGB
+     *  raster. Walks alongX (x within the middle row) or y within the
+     *  middle column. test 1 = red (r>=192, g<=96, b<=96), 2 = green
+     *  (g>=192, r<=96, b<=96). Adjacent hits within 3 samples join; runs
+     *  shorter than 2 samples drop. Returns ascending centers, null on
+     *  nothing found. Center rows/columns only — a row inside a
+     *  perpendicular stripe finds nothing there, which the multi-row
+     *  caller absorbs. */
+    static int[] scanRunsArgb(int[] argb, int w, int h, boolean alongX, int test) {
+        try {
+            if (argb == null || w <= 0 || h <= 0) return null;
+            int len = alongX ? w : h;
+            int mid = (alongX ? h : w) / 2;
+            int[] raw = new int[64];
+            int n = 0, runStart = -1, last = -10;
+            for (int p = 0; p < len; p++) {
+                int c = alongX ? argb[mid * w + p] : argb[p * w + mid];
+                int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+                boolean hit = (test == 1) ? (r >= 192 && g <= 96 && b <= 96)
+                        : (g >= 192 && r <= 96 && b <= 96);
+                if (hit) {
+                    if (runStart < 0) runStart = p;
+                    last = p;
+                } else if (runStart >= 0 && p - last > 3) {
+                    if (last - runStart >= 1 && n < raw.length) raw[n++] = (runStart + last) / 2;
+                    runStart = -1;
+                }
+            }
+            if (runStart >= 0 && last - runStart >= 1 && n < raw.length) raw[n++] = (runStart + last) / 2;
+            if (n == 0) return null;
+            int[] out = new int[n];
+            System.arraycopy(raw, 0, out, 0, n);
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.31 — PURE (gate-compiled): THE AXIS SOLVE. Stripes live at
+     *  span*j/8 (j=1..7); a center-anchored mapping shows a CENTER-SYMMETRIC
+     *  subset of them. From the detected run centers: uniform step d ->
+     *  i = 8*d/span; the first visible stripe's index j1 follows from the
+     *  symmetry around j=4; t = runs[0] - i*span*j1/8. Then the WHOLE
+     *  pattern is predicted and bijected against the detection — any
+     *  mismatch rejects the observation (a rotated or junk mapping lands
+     *  in the fallback chain, never a wrong matrix). Returns {i, t} (view
+     *  = i*buf + t) or null.
+     *  Fills/cover/fit synthetic bitmaps solve exactly — probe-pinned by
+     *  scripts/test_v1431.py section B. */
+    static float[] solveAxis(int[] runs, int span, int viewLen) {
+        try {
+            if (runs == null || span <= 0 || viewLen <= 0) return null;
+            int n = runs.length;
+            if (n < 2 || n > stripeCount()) return null;
+            for (int k = 1; k < n; k++) {
+                if (runs[k] <= runs[k - 1]) return null;   // must ascend
+            }
+            double sum = 0;
+            for (int k = 1; k < n; k++) sum += runs[k] - runs[k - 1];
+            double d = sum / (n - 1);
+            if (!(d > 0.5) || Double.isNaN(d)) return null;   // sub-pixel step = junk
+            float i = (float) (8.0 * d / span);
+            if (!(i > 0.01f) || !(i < 40f) || Float.isNaN(i) || Float.isInfinite(i)) return null;
+            int j1 = (int) Math.ceil(4.0 - (n - 1) / 2.0);
+            if (j1 < 1 || j1 + n - 1 > stripeCount()) return null;
+            float t = runs[0] - i * span * j1 / 8f;
+            // whole-pattern verification: every stripe predicted on-view
+            // must match a detected run, and vice versa (bijection)
+            float tol = Math.max(2f, viewLen / 64f);
+            boolean[] matched = new boolean[n];
+            int visible = 0;
+            for (int j = 1; j <= stripeCount(); j++) {
+                float p = i * span * j / 8f + t;
+                if (p < -tol || p > viewLen + tol) continue;
+                visible++;
+                boolean hit = false;
+                for (int k = 0; k < n; k++) {
+                    if (!matched[k] && Math.abs(runs[k] - p) <= tol) { matched[k] = true; hit = true; break; }
+                }
+                if (!hit) return null;
+            }
+            if (visible != n) return null;
+            for (boolean mm : matched) if (!mm) return null;
+            return new float[]{i, t};
+        } catch (Throwable t) {
+            return null;
         }
     }
 
@@ -832,12 +1166,46 @@ public class QrScanActivity extends AppCompatActivity {
             Matrix matrix = new Matrix();
             // v1.4.29 — THE VIEW-SPACE MATRIX (the buffer-space corpse):
             // setTransform() consumes view-local geometry whose content is
-            // the buffer ALREADY stretched to the view bounds, so the first
-            // op maps view coords BACK to buffer coords (undo the implicit
-            // stretch); then the classic recipe runs in buffer coords and
-            // centers in the view. Uniform scale only — aspect preserved;
-            // both axes covered (the fills assertion below); centered.
-            matrix.postScale(bw / viewW, bh / viewH);   // undo the implicit buffer->view stretch
+            // the buffer ALREADY mapped to the view bounds by the IMPLICIT
+            // buffer->view mapping, so the first ops map view coords BACK
+            // to buffer coords; then the classic recipe runs in buffer
+            // coords and centers in the view.
+            // v1.4.31 — THE UNDO IS NO LONGER ASSUMED, IT IS MEASURED (the
+            // stretched-preview corpse: the anisotropic-FILL undo below
+            // multiplied the display stretch by (bw/vw)/(bh/vh) = 3.784 on
+            // the field device, whose implicit mapping is uniform COVER).
+            // Three modes:
+            //   measured — the stripe calibration solved the implicit
+            //     affine (view = i*buf + t per axis); the undo is its exact
+            //     inverse [1/i, 0, -t/i; 0, 1/i, -t/i].
+            //   table — the device table says uniform COVER: undo k =
+            //     max(vw/bw, vh/bh), centered (1/k scale + the centering
+            //     translate).
+            //   fill — the historical anisotropic assumption (correct on
+            //     the majority of devices; unchanged behavior).
+            // The rest of the recipe (T(-bufCenter) R(theta) S(cover)
+            // T(center)) is untouched in all three modes.
+            float undoSx, undoSy;
+            if ("measured".equals(undoMode) && calibDone
+                    && calibIx > 0f && calibIy > 0f) {
+                undoSx = 1f / calibIx;
+                undoSy = 1f / calibIy;
+                matrix.postScale(undoSx, undoSy);
+                matrix.postTranslate(-calibTx / calibIx, -calibTy / calibIy);
+            } else if ("table".equals(undoMode)) {
+                float k = Math.max(viewW / bw, viewH / bh);
+                if (!(k > 0f) || Float.isNaN(k) || Float.isInfinite(k)) k = 1f;
+                undoSx = 1f / k;
+                undoSy = 1f / k;
+                matrix.postScale(undoSx, undoSy);
+                matrix.postTranslate(bw / 2f - viewW / (2f * k),
+                        bh / 2f - viewH / (2f * k));
+            } else {
+                undoSx = bw / viewW;
+                undoSy = bh / viewH;
+                matrix.postScale(undoSx, undoSy);   // undo the implicit buffer->view stretch (FILL)
+            }
+            if (undoMode == null) undoMode = "fill";
             matrix.postTranslate(-bw / 2f, -bh / 2f);   // buffer center -> origin
             matrix.postRotate(theta);                    // upright
             matrix.postScale(s, s);                      // cover BOTH axes
@@ -856,6 +1224,12 @@ public class QrScanActivity extends AppCompatActivity {
                 // sensor, producer, or neither+user-corrected). MISMATCH
                 // still marks ONLY a real cover failure. No URLs, no
                 // tokens, nothing device-identifying rides this line.
+                // v1.4.31 — the line grew mode= (measured|table|fill —
+                // which undo leg fired) and net= (the undo's own x/y
+                // anisotropy — the displayed-stretch predictor; the v1.4.30
+                // corpse read 3.784 here, a measured/table undo reads
+                // 1.0xx). Same privacy posture as before.
+                float net = (undoSy != 0f) ? undoSx / undoSy : 1f;
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
                         " buf=" + Math.round(bw) + "x" + Math.round(bh) +
                         " sensor=" + sensorOrientation + " display=" + degrees +
@@ -863,6 +1237,8 @@ public class QrScanActivity extends AppCompatActivity {
                         " theta=" + theta +
                         " content=" + Math.round(uw * s) + "x" + Math.round(uh * s) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
+                        " mode=" + undoMode +
+                        " net=" + String.format(java.util.Locale.US, "%.3f", net) +
                         (fills ? "" : " MISMATCH"));
             } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
