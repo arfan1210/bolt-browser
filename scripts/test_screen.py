@@ -312,7 +312,15 @@ def main():
         return 1
     ai_urls = set(re.findall(r'https://[A-Za-z0-9._/@+-]+', ai))
     ai_allowed = {"https://generativelanguage.googleapis.com",
-                  "https://aistudio.google.com/apikey"}
+                  "https://aistudio.google.com/apikey",
+                  # v1.4.30 re-point (2026-11-24): the AI web-search L2
+                  # KEYLESS ladder joined (html.duckduckgo.com ->
+                  # lite.duckduckgo.com -> bing.com; mobile UA, no key,
+                  # no query in any diag) — see scripts/test_v1430.py
+                  # section D
+                  "https://html.duckduckgo.com/html/",
+                  "https://lite.duckduckgo.com/lite/",
+                  "https://www.bing.com/search"}
     # the OpenAI-compatible base URL is USER-CONFIGURED (any endpoint they
     # choose) — the DEFAULT must be pinned https
     mbase = re.search(r'DEFAULT_OPENAI_BASE = "(https://[^"]+)"', ai)

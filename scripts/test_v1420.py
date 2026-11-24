@@ -148,8 +148,8 @@ ar_code = strip_comments_strings(ar)
 bd_code = strip_comments_strings(bd)
 
 print("V — the version pin")
-need("versionCode 143" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
-need('versionName "1.4.29"' in gradle, 'versionName "1.4.29"')
+need("versionCode 144" in gradle, "versionCode 135 (Android only installs RISING codes; v1.4.21 re-point 2026-11-20)")
+need('versionName "1.4.30"' in gradle, 'versionName "1.4.30"')
 
 print("A — fix 1: the API<=29 artwork cap (the async notification kill)")
 need("static int api29ArtCap(int fatalMax) {" in mcs_code,
@@ -350,7 +350,7 @@ need("(v.tag as? String) ?:" in bai,
      # v1.4.28 re-point: the tag copy reads the CONTAINER's tag (v.tag)
 
 print("I — the standing sweep count")
-need(gradle.count("versionCode 143") == 1,
+need(gradle.count("versionCode 144") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

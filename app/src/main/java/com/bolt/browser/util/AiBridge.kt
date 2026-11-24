@@ -102,6 +102,48 @@ object AiBridge {
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences("bolt_ai", Context.MODE_PRIVATE)
 
+    // ---------------- v1.4.30 — THE WEB LEGS ----------------
+    //
+    // Bolt AI had NO network of its own (training data only — the field
+    // read-back). Two legs, zero new dependencies:
+    //
+    //  L1 — GOOGLE SEARCH GROUNDING (provider == gemini): the CHAT body
+    //  carries tools=[{"google_search":{}}]; the model searches Google
+    //  itself; groundingMetadata.groundingChunks come back as numbered
+    //  "Sources:" lines riding the reply (rendered clickable by the chat
+    //  markdown machinery). NEVER rides the vision/translate bodies
+    //  (those are one-shot structured calls — grounding there would
+    //  poison the box JSON).
+    //  L2 — PROVIDER-AGNOSTIC RETRIEVAL (the keyless ladder): when L1 is
+    //  refused (a key/model without grounding), or the provider is
+    //  OpenAI-compatible (no grounding contract), the question runs the
+    //  KEYLESS search ladder (DDG html -> DDG lite -> Bing), the top 5
+    //  results ride a numbered SOURCES block PREPENDED to the question
+    //  (the model cites [n]), and the top 2 pages' text is fetched for
+    //  grounding depth (15 s / 200 KB caps each; htmlToText strips the
+    //  chrome).
+    //
+    // Privacy posture (unchanged in kind, extended in reach): with the
+    // Web chip OFF nothing beyond the standing chat leaves the device.
+    // With it ON, the QUESTION + text from PUBLIC pages leave the device
+    // (metered included) — Bolt confirms once per process and NEVER
+    // searches from an incognito process. The API key NEVER rides a diag
+    // line or a toast, and NO query text rides a diag line either.
+
+    /** the Web chip's backing pref (default OFF — the standing posture). */
+    @JvmStatic
+    fun webEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean("web", false)
+
+    @JvmStatic
+    fun setWebEnabled(ctx: Context, on: Boolean) {
+        try { Diag.log(ctx, "ai web " + if (on) "on" else "off") } catch (_: Throwable) {}
+        prefs(ctx).edit().putBoolean("web", on).apply()
+    }
+
+    /** the raw provider body of the LAST failed grounding-bearing chat
+     *  (capped; refusal evidence only — never logged, never shown). */
+    @Volatile private var lastWebBody: String = ""
+
     @JvmStatic
     fun configured(ctx: Context): Boolean =
         prefs(ctx).getString("key", "")!!.isNotBlank()
@@ -1101,13 +1143,57 @@ object AiBridge {
      *  budget for no gain). */
     @JvmStatic
     fun chatX(ctx: Context, system: String, history: List<Msg>,
-            attaches: List<Attach>?): String? {
+            attaches: List<Attach>?): String? =
+            chatX(ctx, system, history, attaches, false)
+
+    /** v1.4.30 — [web] rides ONLY the typed-chat path (BoltAi.askGo);
+     *  summarize/explain pass false (their page content is already the
+     *  grounding). NEVER true for the vision/translate calls. */
+    @JvmStatic
+    fun chatX(ctx: Context, system: String, history: List<Msg>,
+            attaches: List<Attach>?, web: Boolean): String? {
         lastError = ""
+        if (!web) return chatXBase(ctx, system, history, attaches)
+        return try {
+            if (prov(ctx) == "gemini") {
+                val r = chatXBase(ctx, system, history, attaches, true)
+                if (r != null) r
+                else if (groundRefusal()) {
+                    // L1 refused by this key/model: the honest ladder —
+                    // the keyless retrieval leg on a bare request. Never
+                    // a silent failure: the keyless leg's own error (or
+                    // the honest unavailable line) reaches the user.
+                    try {
+                        Diag.log(ctx, "ai web grounding refused — keyless leg")
+                    } catch (_: Throwable) {}
+                    val r2 = keylessRound(ctx, history) { h ->
+                        chatXBase(ctx, system, h, attaches, false)
+                    }
+                    if (r2 == null)
+                        lastError = "web search unavailable on this key/model"
+                    r2
+                } else null
+            } else {
+                keylessRound(ctx, history) { h ->
+                    chatXBase(ctx, system, h, attaches, false)
+                }
+            }
+        } catch (t: Throwable) {
+            lastError = (t.message ?: "web leg failed").take(80)
+            null
+        }
+    }
+
+    /** the standing (pre-web) chat path. [web] feeds ONLY the Gemini
+     *  chat body's grounding tools; the OpenAI-compatible leg has no
+     *  grounding contract (its web leg is the keyless round above). */
+    private fun chatXBase(ctx: Context, system: String, history: List<Msg>,
+            attaches: List<Attach>?, web: Boolean = false): String? {
         return if (prov(ctx) == "gemini") {
             val m = model(ctx)
             val chain = buildChain(m)
             for (name in chain) {
-                val r = geminiChat(ctx, name, system, history, attaches)
+                val r = geminiChat(ctx, name, system, history, attaches, web)
                 if (r != null) {
                     noteAnsweredModel(ctx, m, name)
                     return r
@@ -1120,22 +1206,300 @@ object AiBridge {
         }
     }
 
+    /** was the last chat failure a GROUNDING refusal? (probe-pinned):
+     *  a 400/404/429-shaped error whose provider body mentions grounding
+     *  / tools / quota. A plain auth failure does NOT match (a bad key
+     *  would fail the bare retry identically — no point re-sending). */
+    internal fun groundRefusal(err: String = lastError,
+            body: String = lastWebBody): Boolean {
+        if (body.isEmpty()) return false
+        val shape = err.contains("HTTP 400") || err.contains("HTTP 404")
+                || err.contains("HTTP 429") || err.contains("rate limited")
+                || err.contains("quota") || err.contains("model not found")
+        if (!shape) return false
+        val hay = (err + " " + body).lowercase()
+        return hay.contains("grounding") || hay.contains("google_search")
+                || hay.contains("tool") || hay.contains("quota")
+    }
+
+    /** the keyless retrieval round: search -> SOURCES block -> the bare
+     *  call. No results = the bare call on the untouched history (the
+     *  model answers from its weights and says what it lacks). */
+    private fun keylessRound(ctx: Context, history: List<Msg>,
+            call: (List<Msg>) -> String?): String? {
+        val q = searchQueryFrom(history)
+        if (q.isBlank()) return call(history)
+        val sources = try { webSearch(q) } catch (_: Throwable) { emptyList<WebSource>() }
+        if (sources.isEmpty()) {
+            try { Diag.log(ctx, "ai web keyless 0 results") } catch (_: Throwable) {}
+            return call(history)
+        }
+        try { Diag.log(ctx, "ai web keyless n=" + sources.size) } catch (_: Throwable) {}
+        val block = buildSourcesBlock(sources)
+        val h2 = ArrayList<Msg>(history)
+        for (i in h2.indices.reversed()) {
+            if (h2[i].role != "assistant") {
+                h2[i] = Msg(h2[i].role, block + "\n\n" + h2[i].text)
+                break
+            }
+        }
+        return call(h2)
+    }
+
+    /** the SOURCES block: numbered results (the cite-[n] instruction) +
+     *  the fetched page text of the top 2 (the depth). */
+    internal fun buildSourcesBlock(sources: List<WebSource>): String {
+        val sb = StringBuilder()
+        sb.append("WEB SOURCES (retrieved just now for this question):\n")
+        for ((i, w) in sources.withIndex()) {
+            sb.append("[").append(i + 1).append("] ").append(w.title)
+                .append(" — ").append(w.url).append("\n")
+            if (i < 2) {
+                val page = fetchText(w.url, 200_000, 15_000)
+                val txt = if (page != null) htmlToText(page) else ""
+                if (txt.length > 100)
+                    sb.append("PAGE TEXT: ").append(txt).append("\n")
+            }
+        }
+        sb.append("Use these sources to answer; write [n] after facts you " +
+                "took from source n. If they do not cover the question, " +
+                "say so plainly.")
+        return sb.toString()
+    }
+
+    /** the question to search for: the LAST non-assistant turn with a
+     *  previous SOURCES block stripped (a web turn never compounds);
+     *  newlines flattened; capped. PURE (probe-pinned). */
+    internal fun searchQueryFrom(history: List<Msg>): String {
+        try {
+            var txt = ""
+            for (i in history.indices.reversed()) {
+                if (history[i].role != "assistant") { txt = history[i].text; break }
+            }
+            val marker = "say so plainly."
+            val k = txt.lastIndexOf(marker)
+            var t = if (k >= 0) txt.substring(k + marker.length) else txt
+            t = t.replace("\n", " ").trim()
+            return t.take(240)
+        } catch (_: Throwable) {
+            return ""
+        }
+    }
+
+    // ---------------- v1.4.30 — L2 internals (probe-pinned PUREs) ----
+
+    /** one retrieved result. */
+    class WebSource(@JvmField val title: String, @JvmField val snippet: String,
+                    @JvmField val url: String)
+
+    /** the mobile UA for the keyless ladder (the house chrome UA — the
+     *  same string the tabs carry; a desktop UA invites heavier markup). */
+    private fun searchUa(): String = try { PasskeyCompat.chromeUa() }
+        catch (_: Throwable) { "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36" }
+
+    /** the keyless SEARCH ladder: DDG html -> DDG lite -> Bing. The
+     *  first engine returning >= 1 result wins (top 5). Never throws. */
+    internal fun webSearch(q: String): List<WebSource> {
+        val enc = java.net.URLEncoder.encode(q, "UTF-8")
+        val tries = arrayOf(
+                "https://html.duckduckgo.com/html/?q=" + enc,
+                "https://lite.duckduckgo.com/lite/?q=" + enc,
+                "https://www.bing.com/search?q=" + enc)
+        for (u in tries) {
+            val html = fetchText(u, 300_000, 15_000) ?: continue
+            val rs = parseResults(html)
+            if (rs.isNotEmpty()) return rs.take(5)
+        }
+        return emptyList()
+    }
+
+    /** one capped GET (the ladder's fetch): 15 s timeouts, mobile UA,
+     *  redirects followed, response capped at [maxBytes]. Null on any
+     *  failure. NO Authorization header ever rides this (the key stays
+     *  out of the retrieval path entirely). */
+    internal fun fetchText(url: String, maxBytes: Int, timeoutMs: Int): String? {
+        var c: HttpURLConnection? = null
+        return try {
+            c = URL(url).openConnection() as HttpURLConnection
+            c.requestMethod = "GET"
+            c.connectTimeout = timeoutMs
+            c.readTimeout = timeoutMs
+            c.instanceFollowRedirects = true
+            c.setRequestProperty("User-Agent", searchUa())
+            val code = try { c.responseCode } catch (_: Throwable) { -1 }
+            if (code !in 200..299) return null
+            val ins = c.inputStream ?: return null
+            val bo = ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            var n = ins.read(buf)
+            while (n >= 0 && bo.size() < maxBytes) {
+                bo.write(buf, 0, n)
+                n = ins.read(buf)
+            }
+            String(bo.toByteArray(), Charsets.UTF_8)
+        } catch (_: Throwable) {
+            null
+        } finally {
+            try { c?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
+    /** PURE (probe-pinned): the result extractor over the ladder's three
+     *  markup shapes (DDG html anchors, DDG lite table rows, Bing
+     *  b_algo). External http(s) links only — the engine's own hosts are
+     *  skipped; redirect-wrapped hrefs (uddg=) are unwrapped; titles
+     *  tag-stripped + entity-decoded; snippets best-effort from the
+     *  next block; dedup by URL; top 5. */
+    internal fun parseResults(html: String): List<WebSource> {
+        val out = ArrayList<WebSource>()
+        val seen = HashSet<String>()
+        try {
+            val a = java.util.regex.Pattern.compile(
+                    "<a[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                            or java.util.regex.Pattern.DOTALL)
+            val m = a.matcher(html)
+            while (m.find() && out.size < 5) {
+                val href = unwrapRedirect(decodeEntities(m.group(1)))
+                if (!href.startsWith("http")) continue
+                val host = try { URL(href).host } catch (_: Throwable) { "" }
+                if (host.isEmpty()) continue
+                if (host.endsWith("duckduckgo.com") || host == "bing.com"
+                        || host.endsWith("bing.com") || host.endsWith("microsoft.com")
+                        || host.endsWith("microsoft.com.bing.com")) continue
+                val title = stripTags(m.group(2)).trim()
+                if (title.isEmpty()) continue
+                if (!seen.add(href)) continue
+                val from = Math.min(m.end(), html.length)
+                val to = Math.min(from + 1200, html.length)
+                val tail = html.substring(from, to)
+                val sm = java.util.regex.Pattern.compile(
+                        "<(?:td|div|a)[^>]+class=\"[^\"]*(?:result-snippet|result__snippet|b_caption|b_caption p)[^\"]*\"[^>]*>(.*?)</(?:td|div|a)>",
+                        java.util.regex.Pattern.CASE_INSENSITIVE
+                                or java.util.regex.Pattern.DOTALL)
+                        .matcher(tail)
+                val snip = if (sm.find())
+                    stripTags(sm.group(1)).trim().take(300) else ""
+                out.add(WebSource(title.take(200), snip, href))
+            }
+        } catch (_: Throwable) {}
+        return out
+    }
+
+    /** PURE (probe-pinned): DDG's /l/?uddg=<urlencoded> redirect wrapper
+     *  unwrapped to the REAL target; anything else verbatim. */
+    internal fun unwrapRedirect(href: String): String {
+        try {
+            val i = href.indexOf("uddg=")
+            if (i >= 0) {
+                var v = href.substring(i + 5)
+                val amp = v.indexOf('&')
+                if (amp >= 0) v = v.substring(0, amp)
+                val dec = java.net.URLDecoder.decode(v, "UTF-8")
+                if (dec.startsWith("http")) return dec
+            }
+        } catch (_: Throwable) {}
+        return href
+    }
+
+    /** PURE (probe-pinned): tags to spaces, entities decoded, whitespace
+     *  collapsed. */
+    internal fun stripTags(s: String): String {
+        var t = Regex("<[^>]*>").replace(s, " ")
+        t = decodeEntities(t)
+        return Regex("[ \t\r\n]+").replace(t, " ").trim()
+    }
+
+    /** PURE (probe-pinned): the named entities that matter in snippets +
+     *  numeric character references. */
+    internal fun decodeEntities(s: String): String {
+        if (!s.contains('&')) return s
+        var t = s.replace("&amp;", "&").replace("&lt;", "<")
+                .replace("&gt;", ">").replace("&quot;", "\"")
+                .replace("&#39;", "'").replace("&#x27;", "'")
+                .replace("&apos;", "'").replace("&nbsp;", " ")
+        return Regex("&#(\\d+);").replace(t) { mr ->
+            try { String(Character.toChars(mr.groupValues[1].toInt())) }
+            catch (_: Throwable) { mr.value }
+        }
+    }
+
+    /** PURE (probe-pinned): page HTML -> readable text for the model.
+     *  script/style/noscript/svg/nav/header/footer/aside blocks drop
+     *  WHOLE (their inner text is chrome, never content); tags stripped;
+     *  entities decoded; whitespace collapsed; capped 6000 chars (the
+     *  token-budget law). */
+    internal fun htmlToText(html: String): String {
+        return try {
+            var t = Regex(
+                    "(?is)<(script|style|noscript|svg|nav|header|footer|aside)[^>]*>.*?</\\1>")
+                    .replace(html, " ")
+            t = Regex("<[^>]*>").replace(t, " ")
+            t = decodeEntities(t)
+            t = Regex("[ \t\r]+").replace(t, " ")
+            t = Regex("\n{3,}").replace(t, "\n\n")
+            t.trim().take(6000)
+        } catch (_: Throwable) {
+            ""
+        }
+    }
+
+    /** PURE (probe-pinned): the grounding chunks of a Gemini chat body —
+     *  (title, uri) pairs, external http(s) only, deduped by uri, top 5. */
+    internal fun groundingSources(body: String): List<Pair<String, String>> {
+        val out = ArrayList<Pair<String, String>>()
+        try {
+            val cands = JSONObject(body).optJSONArray("candidates")
+                    ?: return out
+            if (cands.length() == 0) return out
+            val gm = cands.optJSONObject(0)
+                ?.optJSONObject("groundingMetadata") ?: return out
+            val chunks = gm.optJSONArray("groundingChunks") ?: return out
+            val seen = HashSet<String>()
+            for (i in 0 until chunks.length()) {
+                val w = chunks.optJSONObject(i)?.optJSONObject("web") ?: continue
+                val uri = w.optString("uri", "")
+                val title = w.optString("title", "").ifBlank { uri }
+                if (uri.isBlank() || !uri.startsWith("http")) continue
+                if (!seen.add(uri)) continue
+                out.add(Pair(title, uri))
+                if (out.size >= 5) break
+            }
+        } catch (_: Throwable) {}
+        return out
+    }
+
+    /** PURE (probe-pinned): the numbered Sources tail appended to a
+     *  grounded reply (rendered clickable by the chat markdown
+     *  machinery); empty when no sources. */
+    internal fun sourcesTail(srcs: List<Pair<String, String>>): String {
+        if (srcs.isEmpty()) return ""
+        val sb = StringBuilder("\n\nSources:")
+        for ((i, p) in srcs.withIndex()) {
+            sb.append("\n[").append(i + 1).append("] ")
+                .append(p.first.take(120)).append(" — ").append(p.second)
+        }
+        return sb.toString()
+    }
+
     /** Gemini native chat: systemInstruction + contents[user/model turns].
      * v1.3.76 — thinkingLevel minimal (the latency cut) with a one-shot
      * retry without it for models that reject the field, and the chat cap
      * trimmed 4096 -> 2048 (snappier turns, replies truncate gracefully). */
     private fun geminiChat(ctx: Context, mdl: String, system: String,
-                           history: List<Msg>, attaches: List<Attach>? = null): String? {
-        var reply = geminiChatPost(ctx, mdl, system, history, true, attaches)
+                           history: List<Msg>, attaches: List<Attach>? = null,
+                           web: Boolean = false): String? {
+        var reply = geminiChatPost(ctx, mdl, system, history, true, attaches, web)
         if (reply == null && lastError.contains("thinking", true)) {
-            reply = geminiChatPost(ctx, mdl, system, history, false, attaches)
+            reply = geminiChatPost(ctx, mdl, system, history, false, attaches, web)
         }
         return reply
     }
 
     private fun geminiChatPost(ctx: Context, mdl: String, system: String,
                                history: List<Msg>, think: Boolean,
-                               attaches: List<Attach>? = null): String? {
+                               attaches: List<Attach>? = null,
+                               web: Boolean = false): String? {
         val contents = JSONArray()
         for ((i, m) in history.withIndex()) {
             val parts = JSONArray().put(JSONObject().put("text", m.text))
@@ -1164,12 +1528,31 @@ object AiBridge {
                 .put("parts", JSONArray().put(JSONObject().put("text", system))))
             .put("contents", contents)
             .put("generationConfig", gc)
+        // v1.4.30 — L1: GOOGLE SEARCH GROUNDING rides the CHAT body ONLY
+        // (this function IS the chat body builder — the vision/translate
+        // builders never reach here). The model searches Google itself;
+        // the sources come back in groundingMetadata and ride the reply
+        // as a numbered Sources tail.
+        if (web) {
+            body.put("tools", JSONArray().put(
+                    JSONObject().put("google_search", JSONObject())))
+        }
         val r = geminiPostRetry(ctx, mdl, body)
         val (code, txt) = r
-        if (code != 200) { lastError = shortErr(code, txt); return null }
+        if (code != 200) {
+            lastWebBody = if (web) txt.take(400) else ""
+            lastError = shortErr(code, txt)
+            return null
+        }
+        lastWebBody = ""
         val out = geminiText(txt)
         if (out.isBlank()) { lastError = "empty reply (rate limited? wait a minute)"; return null }
-        return out
+        if (!web) return out
+        val srcs = groundingSources(txt)
+        try {
+            Diag.log(ctx, "ai web grounded n=" + srcs.size)
+        } catch (_: Throwable) {}
+        return out + sourcesTail(srcs)
     }
 
     /** OpenAI-compatible chat: messages[system/user/assistant] */

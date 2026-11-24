@@ -81,9 +81,9 @@ st_code = strip(st)
 ar_code = strip(ar)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+143\b", gradle) is not None, "versionCode 143")
-need(re.search(r'versionName\s+"1\.4\.29"', gradle) is not None,
-     'versionName "1.4.29"')
+need(re.search(r"versionCode\s+144\b", gradle) is not None, "versionCode 144")
+need(re.search(r'versionName\s+"1\.4\.30"', gradle) is not None,
+     'versionName "1.4.30"')
 need("<item>1.4.23|" in strings, "the 1.4.23 About-changelog entry landed")
 need("the release now verifies the app OPENS" in strings,
      "the changelog tells the user the launch-verification law honestly")

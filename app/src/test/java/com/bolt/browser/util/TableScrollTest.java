@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -182,5 +183,77 @@ public class TableScrollTest {
                 child.getMeasuredWidth() <= hs.getWidth());
         hs.scrollTo(9999, 0);
         assertEquals("no horizontal range to scroll", 0, hs.getScrollX());
+    }
+
+    /** v1.4.30 — THE SCROLL-PRESERVATION LAW (the re-fill yank corpse):
+     *  a RE-fill (the streaming completion, the math-font landing) keeps
+     *  each table scroller's scrollX BY TABLE INDEX — a user reading a
+     *  wide table's right columns is not yanked back to the left edge.
+     *  Also pins the idempotent re-fill: the child count does not grow
+     *  (the stale children — the thinking dots, the pre-font segments —
+     *  never stack below the fresh render). */
+    @Test
+    public void refill_preservesTableScrollX_andDoesNotDuplicateChildren() {
+        Context ctx = RuntimeEnvironment.getApplication();
+        LinearLayout box = new LinearLayout(ctx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        AiRender.fillMarkdown(ctx, box, wideTableMd());
+        HorizontalScrollView hs1 = findScroller(box);
+        assertNotNull("the first fill hosts the scroller", hs1);
+        int bubbleW = ctx.getResources().getDisplayMetrics().widthPixels;
+        box.measure(View.MeasureSpec.makeMeasureSpec(bubbleW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        box.layout(0, 0, bubbleW, box.getMeasuredHeight());
+        View child1 = hs1.getChildAt(0);
+        int maxScroll = child1.getMeasuredWidth() - hs1.getWidth();
+        assertTrue("the fixture overflows (a scroll to preserve)",
+                maxScroll > 0);
+        hs1.scrollTo(maxScroll, 0);
+        int before = box.getChildCount();
+        // the RE-FILL (refreshPendings' math-font path re-fills with the
+        // same raw markdown; the streaming path does the same)
+        AiRender.fillMarkdown(ctx, box, wideTableMd());
+        assertEquals("the re-fill is IDEMPOTENT (no duplicated children)",
+                before, box.getChildCount());
+        HorizontalScrollView hs2 = findScroller(box);
+        assertNotNull(hs2);
+        assertTrue("the re-fill rebuilt a NEW scroller", hs2 != hs1);
+        // the restore rides the view's own post — a detached probe view
+        // never drains that queue, so AiRender's restore runs its
+        // DETACHED leg synchronously (the layout-then-scroll leg)
+        assertEquals("the re-fill preserved the sideways scroll position",
+                maxScroll, hs2.getScrollX());
+    }
+
+    /** v1.4.30 — THE COPY-THROUGH LAW: a long-press that lands ON the
+     *  table (the grid view or its wrapper) rises to the BUBBLE
+     *  container's long-press listener — the grid and the wrapper never
+     *  claim click/long-click, so the raw-source copy wins through the
+     *  table. */
+    @Test
+    public void table_andWrapper_neverClaimClick_orLongClick() {
+        Context ctx = RuntimeEnvironment.getApplication();
+        LinearLayout box = new LinearLayout(ctx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        AiRender.fillMarkdown(ctx, box, wideTableMd());
+        HorizontalScrollView hs = findScroller(box);
+        assertNotNull(hs);
+        View child = hs.getChildAt(0);
+        assertTrue(child instanceof AiRender.TableView);
+        assertFalse("the grid view never claims clicks (the copy-through "
+                + "law)", child.isClickable());
+        assertFalse("the grid view never claims long-presses",
+                child.isLongClickable());
+        assertFalse("the wrapper never claims clicks", hs.isClickable());
+        assertFalse("the wrapper never claims long-presses",
+                hs.isLongClickable());
+    }
+
+    private static HorizontalScrollView findScroller(LinearLayout box) {
+        for (int i = 0; i < box.getChildCount(); i++) {
+            View c = box.getChildAt(i);
+            if (c instanceof HorizontalScrollView) return (HorizontalScrollView) c;
+        }
+        return null;
     }
 }

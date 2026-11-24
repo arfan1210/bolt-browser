@@ -39,6 +39,7 @@ import androidx.core.content.ContextCompat;
 import com.bolt.browser.R;
 import com.bolt.browser.util.Diag;
 import com.bolt.browser.util.Fx;
+import com.bolt.browser.util.Prefs;
 import com.bolt.browser.util.Qr;
 import com.bolt.browser.util.QrCore;
 import com.bolt.browser.util.Ui;
@@ -102,9 +103,31 @@ public class QrScanActivity extends AppCompatActivity {
     // buffer). Both flags are one-shot so no layout storm loops.
     private boolean firstFrameSeen = false;
     private boolean pinRetried = false;
+    // v1.4.30 — THE PRODUCER-TRANSFORM PROBE (the still-90°-off corpse on
+    // the Realme after the v1.4.29 view-space fix: the cover/center
+    // geometry was RIGHT but the ANGLE input could be wrong). Some HALs
+    // encode a display rotation into the SurfaceTexture PRODUCER transform
+    // (getTransformMatrix) — and TextureView ALREADY applies that matrix
+    // internally when it draws, so a rotation found there is part of the
+    // DISPLAYED content. Our theta must SUBTRACT it, not add it again.
+    // probeProducer arms on the first frame and after every re-pin (the
+    // producer can appear/change late — the buffer pin may be what wakes
+    // it); the probe reads the matrix on the next delivered frame and
+    // re-applies the transform when the rotation moved.
+    private final float[] stMatrix = new float[16];
+    private int producerRot = 0;
+    private boolean probeProducer = true;
+    // v1.4.30 — THE USER'S OVERRIDE (the rotation-input law): if a device
+    // still shows a turned preview (SENSOR_ORIENTATION mis-report is the
+    // third ranked suspect), the scanner's rotate button shifts the angle
+    // by +90° steps and PERSISTS the offset per (sensor, display) pair —
+    // one honest, bounded user correction instead of another blind
+    // heuristic. Long-press resets it to 0.
+    private int rotOffset = 0;
     private ImageButton btnTorch;
     private View scanLine;
     private TextView tvHint;
+    private TextView rotBadge;
     private LinearLayout topBar, bottomBar;
 
     private CameraDevice camera;
@@ -158,12 +181,26 @@ public class QrScanActivity extends AppCompatActivity {
             // the CURRENT view dims — guarantees a delivered frame is
             // never shown under a stale transform.
             @Override public void onSurfaceTextureUpdated(SurfaceTexture st) {
-                if (!firstFrameSeen) {
-                    firstFrameSeen = true;
-                    try {
+                try {
+                    // v1.4.30 — probe the producer transform on the FIRST
+                    // delivered frame and after every re-pin (a freshly
+                    // pinned buffer may carry a fresh producer transform)
+                    if (probeProducer) {
+                        probeProducer = false;
+                        st.getTransformMatrix(stMatrix);
+                        int pr = extractProducerRotation(stMatrix);
+                        if (pr != producerRot) {
+                            producerRot = pr;
+                            applyPreviewTransform(tvPreview.getWidth(),
+                                    tvPreview.getHeight());
+                            return;
+                        }
+                    }
+                    if (!firstFrameSeen) {
+                        firstFrameSeen = true;
                         applyPreviewTransform(tvPreview.getWidth(), tvPreview.getHeight());
-                    } catch (Throwable ignored) {}
-                }
+                    }
+                } catch (Throwable ignored) {}
             }
         });
 
@@ -310,6 +347,89 @@ public class QrScanActivity extends AppCompatActivity {
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1f);
         tlp.leftMargin = Fx.dp(this, 8);
         topBar.addView(title, tlp);
+
+        // v1.4.30 — THE ROTATION OVERRIDE (the rotation-input law): a
+        // preview that still sits turned after the producer compensation
+        // gets a bounded, PERSISTED user correction — tap shifts +90°,
+        // long-press resets. The pill shows the live offset when non-zero.
+        rotBadge = new TextView(this);
+        rotBadge.setTextColor(0xFFFFFFFF);
+        rotBadge.setTextSize(12);
+        rotBadge.setTypeface(Ui.medium());
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(Fx.dp(this, 10));
+        bg.setColor(0x66FFFFFF);
+        rotBadge.setBackground(bg);
+        rotBadge.setPadding(Fx.dp(this, 8), Fx.dp(this, 3),
+                Fx.dp(this, 8), Fx.dp(this, 3));
+        rotBadge.setVisibility(View.GONE);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2);
+        blp.rightMargin = Fx.dp(this, 8);
+        topBar.addView(rotBadge, blp);
+
+        ImageButton rot = quietBtn(R.drawable.ic_reload);
+        rot.setContentDescription("Rotate preview");
+        rot.setOnClickListener(v -> {
+            rotOffset = (rotOffset + 90) % 360;
+            saveRotOffset();
+            Fx.toast(this, rotOffset == 0
+                    ? "Preview offset +90° (back to 0)"
+                    : "Preview offset +" + rotOffset + "° — long-press to reset");
+            reapplyTransform();
+        });
+        rot.setOnLongClickListener(v -> {
+            if (rotOffset == 0) return false;
+            rotOffset = 0;
+            saveRotOffset();
+            Fx.toast(this, "Preview offset reset");
+            reapplyTransform();
+            return true;
+        });
+        topBar.addView(rot, new LinearLayout.LayoutParams(-2, -2));
+    }
+
+    /** the offset pill: visible only while the override is non-zero. */
+    private void renderRotBadge() {
+        if (rotBadge == null) return;
+        if (rotOffset == 0) {
+            rotBadge.setVisibility(View.GONE);
+        } else {
+            rotBadge.setVisibility(View.VISIBLE);
+            rotBadge.setText("+" + rotOffset + "°");
+        }
+    }
+
+    /** the persisted override key: PER (sensor, display) pair — a fix made
+     *  in portrait never leaks into landscape. NEVER logged with values
+     *  beyond the pair itself (no device identifiers ride the diag). */
+    private String rotOffsetKey(int degrees) {
+        return "qrRotOffset." + sensorOrientation + "." + degrees;
+    }
+
+    private void saveRotOffset() {
+        try {
+            int degrees = 0;
+            try {
+                int rotation = getWindowManager().getDefaultDisplay().getRotation();
+                degrees = rotation == Surface.ROTATION_90 ? 90
+                        : rotation == Surface.ROTATION_180 ? 180
+                        : rotation == Surface.ROTATION_270 ? 270 : 0;
+            } catch (Throwable ignored) {}
+            Prefs.get(this).set(rotOffsetKey(degrees), rotOffset);
+            renderRotBadge();
+        } catch (Throwable ignored) {}
+    }
+
+    /** reads the persisted override for the CURRENT (sensor, display) pair
+     *  (a fresh read every apply: cheap, and a button tap lands on the
+     *  very next transform). */
+    private int loadRotOffset(int degrees) {
+        try {
+            return Prefs.get(this).i(rotOffsetKey(degrees), 0);
+        } catch (Throwable t) {
+            return 0;
+        }
     }
 
     private void addBottomBar(FrameLayout root) {
@@ -590,7 +710,33 @@ public class QrScanActivity extends AppCompatActivity {
             bufW = previewSize != null ? previewSize.getWidth() : 640;
             bufH = previewSize != null ? previewSize.getHeight() : 480;
             st.setDefaultBufferSize(bufW, bufH);
+            // v1.4.30 — a re-pinned buffer may carry a fresh producer
+            // transform: re-probe on the next delivered frame
+            probeProducer = true;
         } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.30 — THE PRODUCER-ROTATION PROBE (PURE, probe-pinned by
+     *  scripts/test_v1430.py across all four quarter-turns x both flip
+     *  signs): reads the rotation a HAL bakes into the SurfaceTexture
+     *  PRODUCER transform. getTransformMatrix() is what TextureView
+     *  ALREADY applies internally when it draws — a rotation found there
+     *  is part of the DISPLAYED content, so applyPreviewTransform must
+     *  SUBTRACT it from theta, never add it again (the still-90°-off
+     *  corpse). atan2(m[1], m[0]) is the screen-space rotation of the
+     *  matrix, snapped to the nearest quarter-turn; the y-flip lives in
+     *  m[5]/m[9] and its sign is DELIBERATELY ignored (every preview
+     *  surface carries one — it is a flip, not a rotation). */
+    static int extractProducerRotation(float[] m) {
+        try {
+            if (m == null || m.length < 16) return 0;
+            double deg = Math.toDegrees(Math.atan2((double) m[1], (double) m[0]));
+            if (Double.isNaN(deg)) return 0;
+            int q = (int) Math.round(deg / 90.0);
+            return ((q % 4) + 4) % 4 * 90;
+        } catch (Throwable t) {
+            return 0;
+        }
     }
 
     /** v1.4.26 — re-apply the transform against the ACTUAL pinned buffer
@@ -643,7 +789,15 @@ public class QrScanActivity extends AppCompatActivity {
             int degrees = rotation == Surface.ROTATION_90 ? 90
                     : rotation == Surface.ROTATION_180 ? 180
                     : rotation == Surface.ROTATION_270 ? 270 : 0;
-            int theta = (sensorOrientation - degrees + 360) % 360;
+            // v1.4.30 — THE COMPENSATED ANGLE: the producer's own rotation
+            // (already on screen via TextureView's internal transform) is
+            // SUBTRACTED; the persisted user override ADDS last (the user
+            // sees the real render — their tap must win over every
+            // heuristic). Both wrap in +720 so the result stays non-negative.
+            rotOffset = loadRotOffset(degrees);
+            int theta = (sensorOrientation - degrees - producerRot + 720) % 360;
+            theta = (theta + rotOffset + 360) % 360;
+            renderRotBadge();
             // v1.4.26 — the ACTUAL pinned buffer dims (the 640x480 pre-open
             // placeholder made the old previewSize-null early return leave
             // the view UNTRANSFORMED forever — the race); the recipe is the
@@ -696,9 +850,16 @@ public class QrScanActivity extends AppCompatActivity {
             // carries no MISMATCH mark). No URLs, no tokens, nothing
             // device-identifying rides this line.
             try {
+                // v1.4.30 — the readable residual grew the producer angle,
+                // the user offset and the COMPENSATED theta (a field
+                // mismatch is now readable end to end: which input lied —
+                // sensor, producer, or neither+user-corrected). MISMATCH
+                // still marks ONLY a real cover failure. No URLs, no
+                // tokens, nothing device-identifying rides this line.
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
                         " buf=" + Math.round(bw) + "x" + Math.round(bh) +
                         " sensor=" + sensorOrientation + " display=" + degrees +
+                        " producer=" + producerRot + " offset=" + rotOffset +
                         " theta=" + theta +
                         " content=" + Math.round(uw * s) + "x" + Math.round(uh * s) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +

@@ -65,8 +65,8 @@ chlog = read("CHANGELOG.md")
 rels = read("scripts/release.sh")
 
 print("A — version pins")
-need("versionCode 143" in gradle and 'versionName "1.4.29"' in gradle,
-     "build.gradle pins 143 / 1.4.29")
+need("versionCode 144" in gradle and 'versionName "1.4.30"' in gradle,
+     "build.gradle pins 144 / 1.4.30")
 need('<item>1.4.29|' in strings,
      "the About changelog carries the 1.4.29 line at [0] (newest first)")
 i29 = strings.find("<item>1.4.29|")
@@ -137,7 +137,11 @@ need("@GraphicsMode(GraphicsMode.Mode.NATIVE)" in trr
      "the v1.4.28 pixel probe rides unchanged")
 
 print()
-print("C — QR: THE VIEW-SPACE PREVIEW TRANSFORM")
+print("C — QR: THE VIEW-SPACE PREVIEW TRANSFORM (v1.4.30 re-point, dated "
+      "2026-11-24: the geometry law below is UNCHANGED — theta is now the "
+      "COMPENSATED angle, (sensor - display - producer + 720) % 360 plus "
+      "the persisted user offset, still always a quarter-turn; the "
+      "producer probe + the rotate button are pinned by test_v1430.py)")
 # the matrix: the stretch-undo is the FIRST op (view coords -> buffer coords)
 need("matrix.postScale(bw / viewW, bh / viewH);" in qsa
      and qsa.find("matrix.postScale(bw / viewW, bh / viewH);") <
@@ -172,7 +176,9 @@ need("root.addView(tvPreview, new FrameLayout.LayoutParams(-1, -1))" in qsa,
 need("st.setDefaultBufferSize(bufW, bufH);" in qsa,
      "the buffer pin rides unchanged (the actual camera preview size)")
 
-# ---- the PURE transcription probe (view-space) ----
+# ---- the PURE transcription probe (view-space; v1.4.30 dated re-point:
+# the cases feed theta EXPLICITLY, and the compensated theta_eff is still
+# one of the four quarter-turns — the table holds unchanged) ----
 def view_space_matrix(bufw, bufh, vieww, viewh, theta):
     """the content in view space = M(view rect) where
     M = T(center) . S(cover) . R(theta) . T(-bufCenter) . S(bw/vw, bh/vh)

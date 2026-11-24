@@ -4,6 +4,115 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.30] — 2026-11-24
+
+**The field round: the QR rotation the v1.4.29 view-space fix could not
+see, the OAuth popup that would not come home, and the AI that could not
+look anything up — plus popup lifecycle hardening, chat-table polish,
+and a two-thirds-slimmer README. The QR preview's cover/center geometry
+was right but the ANGLE input could lie (the camera HAL can bake a
+rotation into the picture before the app ever sees it); the Imgur Google
+consent now ends ON imgur; Bolt AI answers with the live web when you
+turn the Web chip on (off by default; one plain confirm; sources cited
+as tappable numbered links; never in incognito). Field verification on
+the maintainer's Realme is still outstanding for the QR rotation line,
+the Imgur return leg and the Web citations — the mechanics are
+probe-pinned.**
+
+### 1. QR PREVIEW: THE PRODUCER-TRANSFORM COMPENSATION + THE USER'S ROTATION
+- Corpse (v1.4.29 field read-back): the cover/center geometry VERIFIED
+  good, yet the preview still sat ~90 deg off on the Realme — some HALs
+  encode a display rotation into the SurfaceTexture PRODUCER transform,
+  and TextureView ALREADY applies that matrix internally when it draws,
+  so our theta was adding a rotation the picture already had.
+- Law: the first delivered frame (and every frame after a re-pin) reads
+  `SurfaceTexture.getTransformMatrix` and `extractProducerRotation`
+  (PURE: atan2 of m[1]/m[0] snapped to quarter-turns; the y-flip sign is
+  deliberately ignored — a flip is not a rotation) SUBTRACTS that angle:
+  `theta_eff = (sensor - display - producer + 720) % 360`.
+- The user's override (the rotation-input law): the scanner's top bar
+  grew a rotate button — tap shifts +90 deg and PERSISTS per
+  (sensor, display) pair (`qrRotOffset.<sensor>.<degrees>`), long-press
+  resets, a pill shows the live offset. One honest, bounded user
+  correction beats another blind heuristic.
+- The diag line grew `producer=` and `offset=` (MISMATCH still marks
+  ONLY a real cover failure) — a field mismatch is readable end to end:
+  which input lied.
+
+### 2. OAUTH POPUPS: THE RETURN LEG (the Imgur corpse)
+- Corpse (v1.4.29 field read-back): the Google consent SUCCEEDED inside
+  the popup child — and the browser fell back on google.com instead of
+  imgur. The child's return door never closed: nothing watched for the
+  callback.
+- Law: when the child commits the RP callback (Tab.isAuthResponseUrl on
+  the OPENER's base domain), the flow is flowCompleting — a ~6s RETURN
+  WATCHDOG arms; any close of a completing child (its own window.close,
+  the chip, Back, the watchdog, or a commit that leaves the RP base
+  again) closes the child and REFRESHES the opener (reload when the tab
+  still IS the RP, else loadUrl of the RP base). The diag carries
+  `popup return door=… rp=…` — base domains only; NEVER a URL, code or
+  state.
+- The unclassified-child timeout went NAVIGATION-AWARE: a real
+  navigation cancels the bounded wait — only a truly idle about:blank
+  child retires (a slow consent page is never killed mid-flow).
+
+### 3. BOLT AI: THE WEB LEGS (zero new dependencies)
+- Corpse (standing field read-back): "Bolt AI has no network — it only
+  knows its training data."
+- The panel grew a Web chip (default OFF; the pref is bolt_ai/web).
+  ON, the typed question grounds two ways:
+  - L1 — GOOGLE SEARCH GROUNDING (Gemini keys): the CHAT body carries
+    `tools=[{"google_search":{}}]` (never the vision/translate bodies);
+    groundingMetadata comes back as a numbered "Sources:" tail the
+    markdown machinery renders as tappable links. A 400/404/429 whose
+    body blames grounding/tools/quota falls to L2 on a bare request;
+    if that fails too the error is HONEST ("web search unavailable on
+    this key/model") — never silent, never a crash.
+  - L2 — THE KEYLESS LADDER (everything else, including
+    OpenAI-compatible endpoints): html.duckduckgo.com -> lite.duckduckgo
+    -> Bing (mobile UA, no key anywhere), PURE parseResults picks the
+    top 5, the top 2 pages are fetched (15 s / 200 KB caps) through
+    PURE htmlToText (script/style/nav chrome stripped, entities
+    decoded, 6k chars), and a numbered SOURCES block rides the question
+    with a cite-[n] instruction.
+- Privacy: one confirm per process names exactly what leaves (the
+  question + public page text, metered included); NEVER in incognito
+  (BrowserActivity.aiWebAllowed); the API key and the query text never
+  ride a diag line or a toast.
+
+### 4. POPUP LIFECYCLE HARDENING
+- A flowCompleting child is never killed by a second window.open (the
+  new popup is refused + toasted — the return is the flow's most
+  fragile moment); ordinary pending children keep the v1.4.29
+  retire-and-replace (PURE secondPopupPolicy).
+- New Settings row: "Same-site popups open in a new tab" (default OFF —
+  the overlay child, which postMessage/window.opener flows NEED). The
+  new-tab path fires at the first classified navigation only.
+- The child can now ride the adblock engine's NETWORK pass only (a
+  minimal shouldInterceptRequest against the child's own host): no JS
+  injection, no cosmetic/procedural engine, no userscripts, body
+  carriers never touched (the v1.3.84 law) — the posture is written
+  into the README log.
+
+### 5. CHAT TABLES: SCROLL PReservation + COPY THROUGH THE GRID
+- fillMarkdown is an IDEMPOTENT RE-FILL now (the stale children — the
+  thinking dots, the pre-font fallbacks — no longer stack below the
+  fresh render), and each table scroller's scrollX is captured BY
+  TABLE INDEX before the clear and restored after: a re-render (stream
+  completion, math-font landing) no longer yanks a wide table back to
+  its left edge while you read it.
+- The grid and its wrapper stay explicitly non-clickable /
+  non-long-clickable — a long-press that lands ON a table cell copies
+  the bubble's raw source (the v1.4.20 law) instead of dying on the
+  view. Pinned by TableScrollTest (scroll preservation + copy-through).
+
+### 6. README: THE ERA COMPRESSION (~159 KB -> <=60 KB)
+- The per-version maintainer log compressed into era summaries (v1.3.x
+  foundation, v1.4.0-14 features, v1.4.15-22 reliability, v1.4.23-30
+  the current laws) WITHOUT losing: every current law by name, every
+  known-good APK byte count + certificate fingerprint, the open field
+  read-backs, the merged environment lessons, the wipe-recovery story.
+
 ## [1.4.29] — 2026-11-24
 
 **The reachability round: three fixes about content and flows you could

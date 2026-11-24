@@ -82,6 +82,11 @@ object BoltAi {
     /** page-content sends confirm ONCE per process (same law as the vision confirm) */
     @Volatile private var pageConfirmed = false
 
+    /** v1.4.30 — the WEB confirm rides once per process too (the Web chip
+     *  being ON means the QUESTION + public page text leave the device,
+     *  metered included — the user hears that once, plainly). */
+    @Volatile private var webConfirmed = false
+
     /** the live panel */
     private var dialog: Dialog? = null
     private var list: LinearLayout? = null
@@ -224,6 +229,21 @@ object BoltAi {
             t.setOnClickListener(click)
             chips.addView(t)
             return t
+        }
+        // v1.4.30 — THE WEB CHIP (the standing field read-back: "Bolt AI
+        // has no network — it only knows its training data"). OFF (the
+        // default) is the old honest assistant; ON grounds answers: the
+        // typed question runs Gemini's google_search grounding (or the
+        // keyless retrieval ladder for OpenAI-compatible endpoints /
+        // refused keys). The confirm names exactly what leaves.
+        chip(webLabel(a)) {
+            val now = !AiBridge.webEnabled(a)
+            AiBridge.setWebEnabled(a, now)
+            try { (it as? TextView)?.text = webLabel(a) } catch (_: Throwable) {}
+            Fx.toast(a, if (now)
+                "Web search ON — Bolt confirms once before the first web answer"
+            else
+                "Web search OFF")
         }
         chip("Summarize this page") { summarize(a, web, openUrl) }
         chip("Explain selection") { explainSelection(a, web, openUrl) }
@@ -730,10 +750,53 @@ object BoltAi {
         ask(a, text, atts)
     }
 
+    /** v1.4.30 — the Web chip's live label. */
+    private fun webLabel(a: Activity): String =
+        if (AiBridge.webEnabled(a)) "Web: On" else "Web: Off"
+
+    /** does the WEB leg run from this face? Never from an incognito
+     *  process (the never-incognito law — BrowserActivity.aiWebAllowed()
+     *  answers for the process). */
+    private fun webAllowedHere(a: Activity): Boolean =
+        !(a is com.bolt.browser.ui.BrowserActivity) || a.aiWebAllowed()
+
     /** the shared request path — [userText] is already final.
-     *  v1.4.19 — [attaches] (nullable) ride ONLY this turn. */
+     *  v1.4.19 — [attaches] (nullable) ride ONLY this turn.
+     *  v1.4.30 — [allowWeb] is true ONLY for typed chat (summarize /
+     *  explain already carry their page content — no web leg for them);
+     *  a first web answer confirms ONCE per process, naming exactly
+     *  what leaves the device (question + public page text, metered
+     *  included). Cancelling keeps the question UN-sent — the user
+     *  bubble and the thinking bubble are only added in [askGo]. */
     private fun ask(a: Activity, userText: String,
-            attaches: List<AiBridge.Attach>? = null) {
+            attaches: List<AiBridge.Attach>? = null,
+            allowWeb: Boolean = true) {
+        val webOn = allowWeb && AiBridge.webEnabled(a) && webAllowedHere(a)
+        if (webOn && !webConfirmed) {
+            try { Diag.log(a, "ai confirm web") } catch (_: Throwable) {}
+            android.app.AlertDialog.Builder(a)
+                .setTitle("Search the web for this?")
+                .setMessage("To answer with the live web, your QUESTION and " +
+                        "text from a few PUBLIC web pages are sent over the " +
+                        "network (mobile data included). " +
+                        AiBridge.providerName(a) + " writes the answer. " +
+                        "This confirm appears once per app run; the Web chip " +
+                        "in the panel turns it off any time. Never used in " +
+                        "incognito.")
+                .setPositiveButton("Search the web") { d, _ ->
+                    try { d.dismiss() } catch (_: Throwable) {}
+                    webConfirmed = true
+                    askGo(a, userText, attaches, true)
+                }
+                .setNegativeButton(com.bolt.browser.R.string.cancel, null)
+                .show()
+            return
+        }
+        askGo(a, userText, attaches, webOn && webConfirmed)
+    }
+
+    private fun askGo(a: Activity, userText: String,
+            attaches: List<AiBridge.Attach>?, web: Boolean) {
         history.add(AiBridge.Msg("user", userText))
         addBubble(a, userText, true)
         val thinking = addBubble(a, "\u2026", false)
@@ -750,7 +813,8 @@ object BoltAi {
         POOL.execute {
             val turns = if (history.size > MAX_TURNS)
                 history.subList(history.size - MAX_TURNS, history.size).toList() else history.toList()
-            val reply = AiBridge.chatX(a, SYSTEM, turns, attaches)
+            val reply = if (web) AiBridge.chatX(a, SYSTEM, turns, attaches, true)
+                    else AiBridge.chatX(a, SYSTEM, turns, attaches)
             main.post {
                 busy = false
                 try {
@@ -836,7 +900,8 @@ object BoltAi {
                         "URL: " + (web.url ?: "") + "\n" +
                         (if (desc.isNotBlank()) "DESCRIPTION: " + desc + "\n" else "") +
                         "\nPAGE TEXT:\n" + text
-                ask(a, msg)
+                // v1.4.30 — no web leg: the page text IS the grounding
+                ask(a, msg, null, false)
             }
             if (pageConfirmed) go()
             else {
@@ -878,7 +943,8 @@ object BoltAi {
             val go = {
                 val msg = "I selected this text on the page I'm reading — explain " +
                         "what it means, in context and in plain words:\n\n\"" + sel + "\""
-                ask(a, msg)
+                // v1.4.30 — no web leg: the selection IS the grounding
+                ask(a, msg, null, false)
             }
             if (pageConfirmed) go()
             else {

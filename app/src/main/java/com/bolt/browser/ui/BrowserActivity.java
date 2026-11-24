@@ -75,6 +75,7 @@ import com.bolt.browser.core.TabManager;
 import com.bolt.browser.media.MediaControlService;
 import com.bolt.browser.media.MediaHook;
 import com.bolt.browser.scripts.UserscriptEngine;
+import com.bolt.browser.util.Diag;
 import com.bolt.browser.util.Fx;
 import com.bolt.browser.util.PasskeyCompat;
 import com.bolt.browser.util.Prefs;
@@ -6933,6 +6934,20 @@ public class BrowserActivity extends AppCompatActivity {
                 android.os.Message resultMsg) {
             try {
                 if (!(resultMsg.obj instanceof WebView.WebViewTransport)) return false;
+                // v1.4.30 — THE SECOND-POPUP POLICY (probe-pinned): a
+                // flowCompleting child is NEVER retired by a fresh
+                // window.open; ordinary pending children keep the standing
+                // retire-and-rebuild
+                if ("refuse".equals(secondPopupPolicy(
+                        popupFlowCompleting, popupChild != null))) {
+                    try {
+                        Diag.log(BrowserActivity.this,
+                                "popup second window refused during return");
+                    } catch (Throwable ignored) {}
+                    Fx.toast(BrowserActivity.this,
+                            "Sign-in window is finishing — popup blocked");
+                    return false;
+                }
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                 // one child at a time: a fresh request retires any pending one
                 closePopupChild();
@@ -6992,11 +7007,57 @@ public class BrowserActivity extends AppCompatActivity {
     private String popupOpenerUrl = null;
     /** the child's host frame (child + the native close chip), in flContent. */
     private android.view.ViewGroup popupHost = null;
-    /** the bounded wait for an unclassified child (blocker ON). */
+    /** the bounded wait for an unclassified child (blocker ON).
+     *  v1.4.30 — NAVIGATION-AWARE: a child that committed any real
+     *  navigation (popupNavigated) is ALIVE — only a truly idle
+     *  about:blank child retires here (a slow consent page must never be
+     *  killed mid-flow by a blind timer). */
     private final Runnable popupTimeoutR = new Runnable() {
         @Override public void run() {
             try {
-                if (popupChild != null && !popupChildVisible) closePopupChild();
+                if (popupChild != null && !popupChildVisible && !popupNavigated)
+                    closePopupChild();
+            } catch (Throwable ignored) {}
+        }
+    };
+
+    // v1.4.30 — THE OAUTH RETURN LEG (the Imgur corpse: the Google consent
+    // SUCCEEDED but the browser fell back on google.com instead of imgur —
+    // the child's return door never closed). Three laws, all pinned by
+    // scripts/test_v1430.py:
+    //  (a) THE MARK: a main-frame commit that satisfies
+    //      Tab.isAuthResponseUrl AND lands on the OPENER's base domain is
+    //      the RP callback — the flow is completing. The RP base rides
+    //      popupRpBase; a ~6s RETURN WATCHDOG arms.
+    //  (b) THE ACT: while completing, a commit that LEAVES the RP base
+    //      (a bounce back to the IdP host — a new leg, not the return) or
+    //      the watchdog firing with no onCloseWindow closes the child and
+    //      REFRESHES the opener (reload when it still IS the RP, else
+    //      loadUrl of the RP base).
+    //  (c) ANY close of a completing child (its own window.close, the
+    //      chip, Back, the watchdog, a left-RP bounce) refreshes the
+    //      opener — the closePopupChild one-teardown carries it.
+    /** true once the child committed the RP callback (the return is in
+     *  flight); cleared by the one teardown. */
+    private boolean popupFlowCompleting = false;
+    /** the RP base domain captured at the mark (never logged beyond the
+     *  base itself; NEVER a URL/code/state). */
+    private String popupRpBase = null;
+    /** whether the pending child committed any real navigation (the
+     *  navigation-aware idle retire's input). */
+    private boolean popupNavigated = false;
+    /** the ~6s return watchdog: a completing child that neither closes
+     *  itself nor leaves the RP is closed + the opener refreshed. */
+    private final Runnable popupReturnWatchdogR = new Runnable() {
+        @Override public void run() {
+            try {
+                if (popupChild != null && popupFlowCompleting) {
+                    try {
+                        Diag.log(BrowserActivity.this,
+                                "popup return door=watchdog rp=" + popupRpBase);
+                    } catch (Throwable ignored) {}
+                    closePopupChild();   // the completing close refreshes
+                }
             } catch (Throwable ignored) {}
         }
     };
@@ -7027,6 +7088,45 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** v1.4.30 — THE RETURN DECISION (PURE, probe-pinned):
+     *  what the return leg does when the completing child commits a
+     *  main-frame navigation.
+     *    - never completing                       -> "watch"
+     *    - closed in time (window.close landed)   -> handled by the close
+     *      path itself; this probe answers "watch" (nothing to decide)
+     *    - completing + LEFT the RP base (a new
+     *      leg started — the IdP host again)      -> "close-refresh"
+     *    - completing + still ON the RP base      -> "watch" (the watchdog
+     *      is the backstop — the RP's own JS usually closes the child)
+     *  An empty/blank base never acts. NO URL/code/state ever rides the
+     *  callers' diag lines — the base only. */
+    static String returnDecision(String childBase, String openerBase,
+            boolean flowCompleting, boolean closedInTime) {
+        try {
+            if (!flowCompleting || closedInTime) return "watch";
+            if (childBase == null || childBase.length() == 0) return "watch";
+            if (openerBase == null || openerBase.length() == 0) return "watch";
+            if (!childBase.equals(openerBase)) return "close-refresh";
+            return "watch";
+        } catch (Throwable t) {
+            return "watch";
+        }
+    }
+
+    /** v1.4.30 — THE SECOND-POPUP POLICY (PURE, probe-pinned): what a
+     *  fresh window.open does while a related child is alive.
+     *    no child at all                     -> "build" (standing v1.4.29)
+     *    an ordinary pending child           -> "replace" (standing
+     *        retire-and-rebuild, the v1.4.29 one-at-a-time law)
+     *    a flowCompleting child (the OAuth
+     *    return IN FLIGHT)                   -> "refuse" (never kill a
+     *        finishing consent — the return is the flow's most fragile
+     *        moment; the new popup is refused + toasted instead) */
+    static String secondPopupPolicy(boolean flowCompleting, boolean haveChild) {
+        if (!haveChild) return "build";
+        return flowCompleting ? "refuse" : "replace";
     }
 
     /** the child WebView: minimal settings, opener identity, its own
@@ -7084,6 +7184,20 @@ public class BrowserActivity extends AppCompatActivity {
             if (url.startsWith("about:")) return false;
             // the classification point (the popup's first real navigation)
             if (isPopupOAuthUrl(popupOpenerUrl, url)) {
+                // v1.4.30 — THE SAME-SITE POPUP DESTINATION (default
+                // overlay): a user who prefers TABS sends the classified
+                // popup into a new tab at the FIRST classified navigation
+                // (openNewTab — the shared cookie jar rides) and the child
+                // retires. Overlay stays the default on purpose:
+                // postMessage/window.opener flows (the Imgur consent) die
+                // in a tab; mid-flow hops (a visible child) always ride
+                // the child as v1.4.29 shipped.
+                if (prefs.b("popupNewTab", false) && !popupChildVisible) {
+                    String pu = url;
+                    closePopupChild();
+                    openNewTab(pu);
+                    return true;
+                }
                 ensurePopupChildVisible();
                 return false;                       // the chain rides the child
             }
@@ -7102,13 +7216,88 @@ public class BrowserActivity extends AppCompatActivity {
         public void onPageStarted(WebView v, String url, android.graphics.Bitmap favicon) {
             super.onPageStarted(v, url, favicon);
             // belt-and-braces classification (a navigation that skipped the
-            // override hook still classifies + shows the child)
+            // override hook still classifies + shows the child) — plus the
+            // v1.4.30 RETURN LEG (mark + act) and the navigation-aware
+            // idle retire (a real navigation cancels the bounded wait)
             try {
-                if (popupChild == v && !popupChildVisible
-                        && isPopupOAuthUrl(popupOpenerUrl, url)) {
+                if (popupChild != v) return;
+                if (url != null && !url.startsWith("about:")) {
+                    popupNavigated = true;
+                    ui.removeCallbacks(popupTimeoutR);
+                }
+                if (!popupChildVisible && isPopupOAuthUrl(popupOpenerUrl, url)) {
                     ensurePopupChildVisible();
                 }
+                if (url == null || !url.startsWith("http")) return;
+                String childBase = Fx.baseDomain(Fx.hostOf(url));
+                String openerBase = Fx.baseDomain(Fx.hostOf(
+                        popupOpenerUrl == null ? "" : popupOpenerUrl));
+                if (!popupFlowCompleting
+                        && Tab.isAuthResponseUrl(url)
+                        && childBase.length() > 0
+                        && childBase.equals(openerBase)) {
+                    // THE MARK: the RP callback landed on the opener's base
+                    popupFlowCompleting = true;
+                    popupRpBase = childBase;
+                    ui.removeCallbacks(popupReturnWatchdogR);
+                    ui.postDelayed(popupReturnWatchdogR, 6000);
+                    try {
+                        Diag.log(BrowserActivity.this,
+                                "popup return door=mark rp=" + popupRpBase);
+                    } catch (Throwable ignored) {}
+                    return;
+                }
+                if (popupFlowCompleting && "close-refresh".equals(
+                        returnDecision(childBase, openerBase, true, false))) {
+                    // THE ACT: the completing child LEFT the RP — a new
+                    // leg started; the return door closes now
+                    try {
+                        Diag.log(BrowserActivity.this,
+                                "popup return door=left-rp rp=" + popupRpBase);
+                    } catch (Throwable ignored) {}
+                    closePopupChild();   // the completing close refreshes
+                }
             } catch (Throwable ignored) {}
+        }
+
+        /** v1.4.30 — THE NETWORK PASS ONLY (the posture law): the child
+         *  may ride the adblock ENGINE's NETWORK judgment — nothing else.
+         *  No JS injection, no cosmetic/procedural engine, no
+         *  userscripts, no data-saver/visual-search legs: a consent
+         *  popup is the IdP's page and Bolt's page-surface privileges
+         *  must not ride into it (the same law that keeps it
+         *  bridge-free). Body carriers (POST/PUT/...) are NEVER touched
+         *  (the v1.3.84 body-carrier law); the main frame is never
+         *  touched; judged against the CHILD's own page host only. */
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView v,
+                WebResourceRequest request) {
+            try {
+                if (request.isForMainFrame()) return null;
+                String method = request.getMethod();
+                if (method != null && !"GET".equals(method)
+                        && !"HEAD".equals(method)) return null;
+                Uri u = request.getUrl();
+                String url = u.toString();
+                if (!url.startsWith("http")) return null;
+                String pageHost = Fx.hostOf(v.getUrl() != null ? v.getUrl() : "");
+                if (pageHost == null || pageHost.isEmpty()) return null;
+                String base = Fx.baseDomain(pageHost);
+                if (prefs.siteAdblock(base) == 1) { /* site forces blocking */ }
+                else if (!prefs.adblockEnabled()) return null;
+                else if (prefs.siteBool(base, "noAds", false)) return null;
+                else if (prefs.siteAdblock(base) == 0) return null;
+                if (FilterEngine.get().blocked(url, pageHost,
+                        FilterEngine.Type.OTHER, null)) {
+                    return emptyChildResponse();
+                }
+            } catch (Throwable ignored) {}
+            return null;
+        }
+
+        private WebResourceResponse emptyChildResponse() {
+            return new WebResourceResponse("text/plain", "utf-8",
+                    new ByteArrayInputStream(new byte[0]));
         }
     }
 
@@ -7220,10 +7409,16 @@ public class BrowserActivity extends AppCompatActivity {
      *  and onDestroy all land here — exactly once. */
     private void closePopupChild() {
         WebView c = popupChild;
+        boolean completing = popupFlowCompleting;
+        String rp = popupRpBase;
         popupChild = null;
         popupChildVisible = false;
         popupOpenerUrl = null;
+        popupFlowCompleting = false;
+        popupRpBase = null;
+        popupNavigated = false;
         ui.removeCallbacks(popupTimeoutR);
+        ui.removeCallbacks(popupReturnWatchdogR);
         android.view.ViewGroup host = popupHost;
         popupHost = null;
         if (c != null) {
@@ -7243,6 +7438,44 @@ public class BrowserActivity extends AppCompatActivity {
         if (c != null) {
             try { com.bolt.browser.util.Diag.log(this, "popup child closed"); } catch (Throwable ignored) {}
         }
+        // v1.4.30 — ANY close of a completing child (its own
+        // window.close, the chip, Back, the watchdog, a left-RP bounce —
+        // every door funnels into this one teardown) refreshes the
+        // opener: the page beneath is STALE (it pre-dates the sign-in)
+        // and the field corpse was exactly the fall-through where the
+        // browser landed back on the IdP instead of the signed-in RP.
+        if (completing) {
+            try {
+                Diag.log(this, "popup return door=close rp=" + rp);
+            } catch (Throwable ignored) {}
+            refreshOpenerAfterReturn(rp);
+        }
+    }
+
+    /** v1.4.30 — the opener refresh after a completing child leaves:
+     *  reload when the tab still IS the RP, else loadUrl the RP base.
+     *  Never logs a URL — the base only. */
+    private void refreshOpenerAfterReturn(String rp) {
+        try {
+            if (rp == null || rp.length() == 0 || isFinishing() || isDestroyed())
+                return;
+            Tab t = activeTab();
+            if (t == null || t.web == null) return;
+            String cur = null;
+            try { cur = t.web.getUrl(); } catch (Throwable ignored) {}
+            String curBase = Fx.baseDomain(Fx.hostOf(cur == null ? "" : cur));
+            if (curBase.length() > 0 && curBase.equals(rp)) {
+                t.web.reload();
+                try {
+                    Diag.log(this, "popup return opener=reload rp=" + rp);
+                } catch (Throwable ignored) {}
+            } else {
+                t.web.loadUrl("https://" + rp);
+                try {
+                    Diag.log(this, "popup return opener=load rp=" + rp);
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
     }
 
     /** v1.3.86 — recent download-attribute names (href → name), recorded by
@@ -13659,6 +13892,11 @@ public class BrowserActivity extends AppCompatActivity {
      *  and its bytes must never enter :incognito (the identity-data law);
      *  the result routing also rides this activity's onActivityResult. */
     public boolean aiAttachAllowed() { return !incognito; }
+
+    /** v1.4.30 — the AI web-search leg never rides an incognito process
+     *  (the never-incognito law): BoltAi.ask reads this before its web
+     *  confirm, and the Web chip stays inert here. */
+    public boolean aiWebAllowed() { return !incognito; }
 
     /** v1.4.19 — PURE (probe-pinned): the label a long-press tooltip shows
      *  — the explicit tooltip when present, the contentDescription otherwise

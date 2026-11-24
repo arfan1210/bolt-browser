@@ -656,6 +656,35 @@ python3 scripts/test_v1428.py
 # classifier compiled + run (ride/prompt/unsafe tables), the Robolectric
 # TableScrollTest geometry probe
 python3 scripts/test_v1429.py
+
+# ---- 1z-30. v1.4.30 gate: THE FIELD ROUND (the Realme read-backs on
+# v1.4.29: the QR preview sat ~90 deg off DESPITE the verified cover/
+# center geometry — the camera HAL bakes a rotation into the picture
+# before the app sees it, and the PRODUCER transform is now probed on
+# the first frame + after every re-pin (extractProducerRotation:
+# atan2 snapped to quarter-turns, the y-flip ignored) and SUBTRACTED;
+# the scanner grew a rotate button (tap = +90 persisted per sensor/
+# display pair, long-press = reset, a live badge) — one honest user
+# correction beats another blind heuristic; the OAuth popup child
+# COMES HOME now — the RP callback flags flowCompleting, a ~6s return
+# watchdog + a left-RP commit + ANY close all close the child and
+# refresh the opener (reload-when-RP / loadUrl-the-base), the idle
+# retire went navigation-aware, the diag names door= + rp= base ONLY;
+# Bolt AI grew the WEB legs — the Web chip (default OFF, once-per-
+# process confirm, never incognito), L1 google_search grounding on the
+# CHAT body only with the honest refusal ladder, L2 the keyless DDG/
+# Bing retrieval ladder with PURE parseResults/htmlToText and the
+# numbered SOURCES block; popup hardening — a flowCompleting child is
+# never killed by a second window.open, the same-site destination pref
+# (default overlay), the child rides the adblock NETWORK pass only;
+# chat tables — the idempotent re-fill preserves each table scroller's
+# scrollX and the copy gesture wins THROUGH the grid) — probes: the
+# compiled REAL producer probe (4 quarter-turns x both flips + junk +
+# mirror), the compiled REAL returnDecision + secondPopupPolicy tables,
+# the transcribed web PUREs (parseResults over the three engine shapes,
+# htmlToText chrome-stripping, groundingSources/sourcesTail,
+# groundRefusal), the TableScrollTest re-fill + copy-through probes
+python3 scripts/test_v1430.py
 mark gates
 fi
 

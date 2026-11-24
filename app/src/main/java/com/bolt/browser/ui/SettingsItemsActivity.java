@@ -226,6 +226,16 @@ public class SettingsItemsActivity extends BaseListActivity {
                 () -> startActivity(new Intent(this, FilterListsActivity.class))));
         rows.add(toggle(R.drawable.ic_close, getString(R.string.popup_blocker),
                 prefs.popupBlock(), (b, on) -> prefs.set("popupBlock", on)));
+        // v1.4.30 — THE SAME-SITE POPUP DESTINATION (default OFF = the
+        // overlay child, which postMessage/window.opener OAuth flows
+        // NEED): ON sends a site's classified popup into a NEW TAB at its
+        // first classified navigation (the shared cookie jar rides; a
+        // flow that talks back through window.opener will not complete —
+        // the row's description names the trade-off).
+        rows.add(toggle(R.drawable.ic_open_new,
+                "Same-site popups open in a new tab",
+                prefs.b("popupNewTab", false),
+                (b, on) -> prefs.set("popupNewTab", on)));
         // v1.3.40 — URL TRACKER-PARAMETER CLEANER (round-4 #4): global master
         // switch (default ON). The per-site override lives on the page menu.
         rows.add(toggle(R.drawable.ic_filter, "Clean tracking parameters",

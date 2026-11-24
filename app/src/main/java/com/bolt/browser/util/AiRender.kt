@@ -1306,6 +1306,18 @@ object AiRender {
      * math-font hold rides the container ([holdForFonts] —
      * [refreshPendings] re-fills it when the pack lands). Never throws
      * (worst case: the plain reply text). Main thread.
+     *
+     * v1.4.30 — THE IDEMPOTENT RE-FILL + SCROLL PRESERVATION: this is a
+     * RE-fill — the container is CLEARED first (the streaming completion
+     * and the math-font re-render both land here; the stale children —
+     * the thinking dots, the pre-font fallback segments — must not stack
+     * below the fresh render). A user reading a WIDE table has often
+     * scrolled it sideways; a re-render that reset every
+     * HorizontalScrollView to 0 yanked the columns they were reading out
+     * of view. So each scroller's scrollX is captured BY TABLE INDEX
+     * before the clear and restored on the matching index after the
+     * re-fill (the capture order == the document order == the restore
+     * order).
      */
     @JvmStatic
     fun fillMarkdown(c: Context, box: android.widget.LinearLayout, md: String) {
@@ -1313,13 +1325,62 @@ object AiRender {
             holdForFonts(c, md, box)
             val spanned = render(c, md)
             val parts = splitTables(spanned)
+            val savedScroll = ArrayList<Int>()
+            for (i in 0 until box.childCount) {
+                val ch = box.getChildAt(i)
+                if (ch is android.widget.HorizontalScrollView) savedScroll.add(ch.scrollX)
+            }
+            box.removeAllViews()
             if (parts.size == 1 && parts[0] is Spanned) {
                 addSegment(c, box, parts[0] as Spanned)
                 return
             }
+            var sc = 0
             for (p in parts) {
                 if (p is Spanned) addSegment(c, box, p)
-                else if (p is TableMark) addTable(c, box, p)
+                else if (p is TableMark) {
+                    addTable(c, box, p)
+                    // this table's wrapper (when the v1.4.29 scroller-host
+                    // path ran) is the LAST child — restore its captured x
+                    val last = box.getChildAt(box.childCount - 1)
+                    if (last is android.widget.HorizontalScrollView
+                            && sc < savedScroll.size) {
+                        val x = savedScroll[sc]
+                        if (x > 0) {
+                            // the ATTACHED path (every real bubble): the
+                            // restore rides the view's own post — it must
+                            // wait for the re-fill's layout pass, or the
+                            // scroller clamps the x back to 0
+                            last.post {
+                                try { last.scrollTo(x, 0) } catch (_: Throwable) {}
+                            }
+                            // a DETACHED probe view (the Robolectric
+                            // geometry probes) never drains its post
+                            // queue — give the wrapper the layout pass
+                            // the attached world gets for free (measure
+                            // at the bubble's width = the viewport it
+                            // will own, lay out, then scroll: the clamp
+                            // runs against the REAL laid-out range)
+                            if (!last.isAttachedToWindow) {
+                                try {
+                                    val boxW = Math.max(box.measuredWidth,
+                                            if (box.width > 0) box.width else 0)
+                                    last.measure(
+                                            android.view.View.MeasureSpec
+                                                    .makeMeasureSpec(Math.max(boxW, 1),
+                                                            android.view.View.MeasureSpec.EXACTLY),
+                                            android.view.View.MeasureSpec
+                                                    .makeMeasureSpec(0,
+                                                            android.view.View.MeasureSpec.UNSPECIFIED))
+                                    last.layout(0, 0, Math.max(last.measuredWidth, 1),
+                                            Math.max(last.measuredHeight, 1))
+                                    last.scrollTo(x, 0)
+                                } catch (_: Throwable) {}
+                            }
+                        }
+                    }
+                    sc++
+                }
             }
         } catch (_: Throwable) {
             try {
@@ -1369,6 +1430,11 @@ object AiRender {
                 val hs = android.widget.HorizontalScrollView(c)
                 hs.isVerticalScrollBarEnabled = false
                 hs.isHorizontalScrollBarEnabled = true
+                // v1.4.30 — the wrapper never claims the press either:
+                // the bubble container's long-press copy wins THROUGH the
+                // table (the copy-through law, see the TableView init)
+                hs.isClickable = false
+                hs.isLongClickable = false
                 hs.addView(host, android.widget.FrameLayout.LayoutParams(
                         natural, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
                 host = hs
@@ -1421,6 +1487,20 @@ object AiRender {
          *  measures to its NATURAL width ([hostedInScroller] in onMeasure). */
         @JvmField
         var hostedInScroller: Boolean = false
+
+        init {
+            // v1.4.30 — THE COPY-THROUGH LAW: the grid stays
+            // NON-clickable / NON-long-clickable so a press that lands on
+            // a CELL still rises to the BUBBLE container's long-press
+            // listener (the raw-source copy — the v1.4.20 law: copy never
+            // yields placeholder glyphs). A custom View is not clickable
+            // by default — this pins the stance EXPLICITLY so a future
+            // touch feature (cell taps) cannot silently eat the copy
+            // gesture; the scroller wrapper is pinned too (a ScrollView
+            // family view CAN claim clicks for its touch handling).
+            isClickable = false
+            isLongClickable = false
+        }
 
         /** the geometry, at one type size (col widths = widest cell + 2x
          *  padH, the equal-split floor, row height = font box + 2x padV). */
