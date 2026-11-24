@@ -2450,6 +2450,23 @@ remain open on the future-plan list — still NOT field-verified, and
 the release report will carry no cookies, account data, OAuth codes,
 states or tokens.
 
+**v1.4.29 post-release: the known-good numbers.** APK 3,158,499 B (the
++2,572 B reachability round over v1.4.28's 3,155,927 B — the table
+scroller + the view-space QR transform + the related popup child);
+the FULL verification ran in the fresh post-wipe environment (the
+complete gates rung incl. test_v1429, the full testDebugUnitTest
+Robolectric suite incl. the launch law), the signed build was
+cert-verified against the pinned fingerprint and the 6,000,000 B size
+law held; dual-published in the mandated order (SOURCE first, RELEASES
+last — release ids 456367850 / 456367966), md5-verified on the
+download-back of BOTH uploads, and the anonymous live downloads
+verified on BOTH repos (sha256 7f5e150cd245adcb639a274b38f26b32e955cd
+272afe38e22d9c2725cbe3576f on the staged artifact; the releases-repo
+/latest endpoint the in-app update checker reads now serves
+143/1.4.29). Field checks (the QR preview device read-back, the real
+Imgur Google consent flow on a test account) remain open on the plan
+list below — the release claims them nowhere.
+
 **Plans / candidates for future versions (v1.4.29 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
   v1.4.23).
