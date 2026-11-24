@@ -1262,8 +1262,12 @@ object AiRender {
     }
 
     /** v1.4.28 — builds the drawn-grid [TableView] with theme-aware colors
-     *  and dp paddings; the width budget is the screen's own width (the
-     *  view shrinks its type once, bounded, when the content overflows).
+     *  and dp paddings. v1.4.29 — THE NATURAL-WIDTH LAW (the tiny/clipped
+     *  dense-table corpse): the view keeps its natural grid width and its
+     *  natural type size (NEVER shrunk to fit — 0.55x specks and clipped
+     *  right columns were the phone field report); [addTable] hosts it in
+     *  a HorizontalScrollView so a dense table overflows its viewport and
+     *  scrolls horizontally while the chat scrolls vertically.
      *  A construction failure falls to a plain TextView carrying the
      *  [renderTable] monospace grid (the never-eat-a-reply law). */
     fun tableView(c: Context, rows: List<List<String>>): android.view.View {
@@ -1271,7 +1275,6 @@ object AiRender {
         return try {
             val dark = try { Prefs.get(c).isDark() } catch (_: Throwable) { false }
             val dens = c.resources.displayMetrics.density
-            val maxW = (c.resources.displayMetrics.widthPixels * 0.94f).toInt()
             TableView(
                     c,
                     rows,
@@ -1279,7 +1282,7 @@ object AiRender {
                     if (dark) 0xFFD6DAE1.toInt() else 0xFF1F2430.toInt(),    // body text
                     Fx.accentText(c),                                        // header text
                     if (dark) 0x22FFFFFF.toInt() else 0x14000000.toInt(),    // header band
-                    10f * dens, 5f * dens, maxW)
+                    10f * dens, 5f * dens)
         } catch (_: Throwable) { tableFallback(c, rows) }
     }
 
@@ -1343,14 +1346,24 @@ object AiRender {
         box.addView(t, android.widget.LinearLayout.LayoutParams(-1, -2))
     }
 
-    /** one table view of a split bubble (its own margins inside the
-     *  bubble). */
+    /** one table view of a split bubble. v1.4.29 — THE HORIZONTAL
+     *  VIEWPORT: the table keeps its NATURAL width (type never shrinks)
+     *  and rides its own HorizontalScrollView inside the vertically
+     *  scrolling chat — a wide table overflows the viewport and its final
+     *  columns stay reachable by a horizontal fling; a normal-sized table
+     *  renders exactly as before (the child wraps content). */
     private fun addTable(c: Context, box: android.widget.LinearLayout, m: TableMark) {
         val v = tableView(c, m.rows)
+        val hs = android.widget.HorizontalScrollView(c)
+        hs.isHorizontalScrollBarEnabled = true
+        hs.clipToPadding = false
+        hs.addView(v, android.widget.HorizontalScrollView.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
         val lp = android.widget.LinearLayout.LayoutParams(-1, -2)
         lp.topMargin = Fx.dp(c, 6)
         lp.bottomMargin = Fx.dp(c, 6)
-        box.addView(v, lp)
+        box.addView(hs, lp)
     }
 
     /**
@@ -1361,8 +1374,13 @@ object AiRender {
      * VERTICAL rules (a 3x3 table draws 4 + 4), the BOLD header row sits
      * on its filled band, cells pad by [padH]/[padV], line/text colors
      * are theme-aware, and COLUMN WIDTHS come from the content (an
-     * equal-split floor keeps one dwarfing column from starving the rest;
-     * a too-wide table shrinks its type once against [maxW]). THE LAW
+     * equal-split floor keeps one dwarfing column from starving the rest).
+     * v1.4.29 — THE NATURAL-WIDTH LAW (the tiny/clipped dense-table
+     * corpse): the type size is NEVER shrunk to fit and onMeasure reports
+     * the grid's NATURAL width; [addTable] hosts the view in a
+     * HorizontalScrollView, so a dense table overflows its viewport and
+     * scrolls horizontally instead of degrading to unreadable specks or
+     * clipping its rightmost columns. THE LAW
      * that makes it un-hideable: a real attached View's onDraw is
      * INVOKED by the framework (unlike a ReplacementSpan whose draw sat
      * inside one text line and never painted in the field) — and the
@@ -1377,8 +1395,7 @@ object AiRender {
             private val headerColor: Int,
             private val headerBg: Int,
             private val padH: Float,
-            private val padV: Float,
-            private val maxW: Int) : android.view.View(ctx) {
+            private val padV: Float) : android.view.View(ctx) {
 
         private var cols = 0
         private var colW = FloatArray(0)
@@ -1421,15 +1438,11 @@ object AiRender {
             laid = true
             cols = 1
             for (r in rows) cols = maxOf(cols, r.size)
-            val base = paint.textSize
-            measureAt(paint, base)
-            // the width budget: shrink the type ONCE (bounded at 0.55x —
-            // under that a dense table honestly overflows rather than
-            // turning into unreadable specks)
-            if (totalW > maxW && totalW > 0f) {
-                val f = (maxW / totalW).coerceAtLeast(0.55f)
-                measureAt(paint, base * f)
-            }
+            // v1.4.29 — ONE measure, at the natural type size: the text is
+            // NEVER shrunk to fit a width budget (the 0.55x speck corpse —
+            // a dense table honestly overflows its viewport and scrolls
+            // horizontally inside [addTable]'s HorizontalScrollView)
+            measureAt(paint, paint.textSize)
         }
 
         override fun onMeasure(widthSpec: Int, heightSpec: Int) {
@@ -1437,13 +1450,18 @@ object AiRender {
                 val p = Paint(Paint.ANTI_ALIAS_FLAG)
                 p.textSize = 14.5f * resources.displayMetrics.scaledDensity
                 layout(p)
-                // measured content width, bounded by [maxW] + the clip
-                // guard so the outer rules never shave on a hairline
-                val want = Math.min(totalW + 2f, maxW.toFloat()).toInt()
+                // v1.4.29 — THE NATURAL-WIDTH LAW: the measured width is
+                // the grid's OWN width (+ the clip guard so the outer rules
+                // never shave on a hairline). The HorizontalScrollView host
+                // supplies the scrolling viewport; resolveSize still honours
+                // a narrower parent spec (the draw then clips at the
+                // viewport edge and the horizontal scroll reaches the rest)
+                val want = (totalW + 2f).toInt()
                 val w = resolveSize(want, widthSpec)
                 setMeasuredDimension(w, (totalH + 2f).toInt())
             } catch (_: Throwable) {
-                setMeasuredDimension(maxW, Fx.dp(context, 60))
+                setMeasuredDimension(resolveSize(Fx.dp(context, 240), widthSpec),
+                        Fx.dp(context, 60))
             }
         }
 

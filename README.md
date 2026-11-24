@@ -2280,6 +2280,100 @@ against the current source; dual-published, md5-verified.
 - (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
   candidate.
 
+**v1.4.29 — THE REACHABILITY + SIGN-IN ROUND** (the twenty-second
+session, 2026-11-23): three user-reported field corpses in one round.
+(1) Dense AI tables were unreadable on phones — the table view capped
+its width to the screen and shrank the cell type by a factor bounded at
+0.55x, so wide tables rendered as specks AND still clipped their right
+columns. Fix: the type is NEVER shrunk, the grid measures its NATURAL
+width, and the table rides a HorizontalScrollView inside the vertically
+scrolling chat (dense tables scroll sideways; grid lines, header bands,
+padding and the text/table order unchanged) — pinned by the TableRender
+pixel probe plus the new no-shrink + horizontal-viewport probes
+(`dense_table_overflowsViewport_textNotShrunk`,
+`fill_denseTable_ridesHorizontalViewport`) and a re-pointed natural-width
+pin in test_v1428.py (2026-11-23, the 0.55x pin retired). (2) The QR
+scanner preview landed rotated/misaligned with a black region (the
+portrait Realme C55's bottom half): the TextureView transform was
+reasoned in buffer coordinates while `Matrix.setTransform()` consumes
+view-local geometry. Fix: the new pure `util/QrPreviewGeom.java` derives
+M = T(v/2)*S(s)*R(0)*T(-b/2)*S(bw/vw, bh/vh) — the rightmost
+stretch-undo is the fix — recomputed on buffer-size change and first
+frame; the diag line carries the full probe with a MISMATCH verdict;
+the YUV decode path untouched. Verified by QrPreviewGeomTest + a
+compiled probe walking portrait/landscape x four quarter-turns
+(centered + covering + matrix-hull-equals-bounds) with the old
+buffer-space recipe DEMONSTRATED as non-covering; test_v1426.py's
+transform transcription re-pointed the same day (its old model baked in
+the corpse). (3) Google sign-in on Imgur died on a black page after
+consent: no multi-window support and popups got rejected/detached,
+breaking window.opener/postMessage/window.close() OAuth callbacks. Fix:
+multi-window on; `onCreateWindow` builds a REAL related child WebView
+via WebViewTransport (opener UA + cookie policy carried, one child at a
+time, 10 s never-navigated expiry); a compiled popup policy opens
+recognized Google/OAuth authorize + redirect chains through the blocker,
+prompts for ordinary popups with a SECRET-FREE target display
+(query/fragment/userinfo stripped — authorization codes/state/tokens
+never surface in UI or logs), denies unsafe schemes; the child closes on
+all four triggers (onCloseWindow, Back, tab switch, a native close chip)
+and carries NO privileged Bolt JS bridges; popup children never persist
+(TabManager save-skip + closeTransient). Pinned by PopupPolicyTest +
+the compiled policy probe. Status is honest per the standing law: NO
+device and NO Imgur/Google test account were available in this
+environment — all three fixes are verified by the pinned pixel/geometry/
+policy probes only; the device field checks (Realme C55 QR preview, a
+dense table rendered on a phone, the full Imgur -> Google consent ->
+callback flow) are OUTSTANDING and carry to the next edition's plans.
+Environment note: this session ran the full python gate suite on the
+pre-Gradle probe toolchain (javac 8 + android-34 stubs + source-built
+zxing/commonmark jars); the Gradle/Robolectric suite (`testDebugUnitTest`
+incl. LaunchSmokeTest + TableRenderTest) and `assembleRelease` could NOT
+run here (the Android SDK/Gradle/dependency hosts are unreachable from
+the sandbox — re-probed 2026-11-23: services.gradle.org, dl.google.com,
+maven.google.com and repo.maven.apache.org all refuse). The official
+`bolt.keystore` was supplied on 2026-11-23 and its file SHA-256 verified
+byte-exact against the recorded backup (0eadc7c2…3948 — which pins the
+signing cert SHA-256 bcd57eb4…8ae4); it lives OUTSIDE every repository
+and its credentials ride env vars or the gitignored local.properties
+only. Per the release law the pipeline still stops before signing here
+(no toolchain to build with) rather than publish an unsigned APK or
+mint a new key.
+
+**v1.4.29 pre-release numbers (this environment):** the gate suite runs
+on the pinned probes above; APK size and the Robolectric suite remain
+the v1.4.28 known-good values (3,155,927 B, suite green) until a
+keystore- and toolchain-equipped machine (the official bolt.keystore +
+Gradle 8.9 + Android SDK 34) reruns `scripts/release.sh` end to end.
+
+**Plans / candidates for future versions (v1.4.29 edition):**
+- THE LAUNCH LAW stays forever (carried from every edition since
+  v1.4.23).
+- THE V1.4.29 FIELD READ-BACKS (the outstanding three): (a) the QR
+  scanner preview on a Realme C55-class device — upright, full-screen,
+  no black region, and the `qr preview view=... buf=... sensor=...
+  display=... theta=... content=... scale=...` line showing no
+  MISMATCH; (b) a dense AI table on a phone — natural type, horizontal
+  scroll reaching the final columns, rules/header/order intact; (c) the
+  Imgur -> Google consent -> callback sign-in flow on a device with a
+  test account — the related child completes and closes itself, no
+  black page, no secret in any prompt or log. Until read back, all
+  three stay "fix verified by probes only."
+- The picture round wants its field read-back (carried): the census line
+  on a news site with picture-wrapped thumbnails (readable, no x-ray
+  negatives) and NO DIU regression.
+- The merged pipeline wants its field read-back (carried): `scr grid
+  tiles=... clusters=N path=ai|gtx` on a zoomed-out dense page, a manga
+  page (cards INSIDE bubbles), and 5 consecutive runs without failure.
+- (carried) The jlatexmath optional pack lands at ~289 KB one-time; the
+  EasyList/EasyPrivacy snapshots remain the next APK-size lever.
+- (carried) The engine-chip logo could still mirror on the toolbar
+  URL-bar glyph and the home search widget.
+- (carried) ACTION_VIEW links from other apps still resolve into
+  whichever face the OS picked.
+- (carried) The bundled EasyList/EasyPrivacy snapshot refresh stays a
+  candidate.
+
+
 
 ## License
 

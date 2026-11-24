@@ -293,15 +293,26 @@ need("for (c in 0..cols) {" in ar_raw
 need("head.typeface = Typeface.DEFAULT_BOLD" in ar_raw
      and "canvas.drawRect(x, top0, x + totalW, top0 + rowH, band)" in ar_raw,
      "the header row rides the BOLD paint on its filled band")
-need("val padH: Float" in ar_raw and "10f * dens, 5f * dens, maxW)" in ar_raw,
-     "cell padding: 10dp horizontal / 5dp vertical")
+need("val padH: Float" in ar_raw and "10f * dens, 5f * dens)" in ar_raw,
+     "cell padding: 10dp horizontal / 5dp vertical "
+     "  # v1.4.29 re-point (2026-11-23): the maxW ctor arg retired with "
+     "the bounded shrink (see the shrink pin below)")
 need("try { Prefs.get(c).isDark() } catch (_: Throwable) { false }" in ar_raw
      and "0x66FFFFFF.toInt() else 0x44000000" in ar_raw,
      "theme-aware rule/text colors (the dark/light branches)")
 need("probe.measureText(cell)" in ar_raw,
      "column widths measured from the CONTENT")
-need("coerceAtLeast(0.55f)" in ar_raw,
-     "the one bounded shrink against the width budget")
+need("NEVER shrunk to fit" in ar_raw
+     and "coerceAtLeast(0.55f)" not in ar_raw
+     and "android.widget.HorizontalScrollView" in ar_raw
+     and "val want = (totalW + 2f).toInt()" in ar_raw,
+     "the natural-width law: cell text is NEVER shrunk to fit and the "
+     "view measures the grid's natural width (the dense table overflows "
+     "its HorizontalScrollView viewport and scrolls) "
+     "  # v1.4.29 re-point (2026-11-23): the 0.55x bounded shrink was "
+     "itself the corpse — on phones dense tables shrank to unreadable "
+     "specks AND clipped their right columns; v1.4.29 keeps the natural "
+     "type + width and scrolls horizontally instead")
 
 # ---- D3. THE VIEW LAW (the fix's essence) ----
 need("override fun onMeasure(widthSpec: Int, heightSpec: Int)" in ar_raw
@@ -617,9 +628,9 @@ need(sweep == 0, "the standing sweep repinned every gate to 142/1.4.28 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1428.py")),
      "the v1.4.28 sweep script is checked in (provenance)")
-need('versionName "1.4.28"' in open(BG, encoding="utf8").read()
-     and "versionCode 142" in open(BG, encoding="utf8").read(),
-     "the build carries versionName 1.4.28 / versionCode 142")
+need('versionName "1.4.29"' in open(BG, encoding="utf8").read()
+     and "versionCode 143" in open(BG, encoding="utf8").read(),
+     "the build carries versionName 1.4.29 / versionCode 143")  # v1.4.29 re-point (2026-11-23): 142/1.4.28 -> 143/1.4.29 (the reachability + sign-in round)
 
 print()
 if failed:

@@ -111,8 +111,18 @@ need("(sensorOrientation - degrees + 360) % 360" in qr,
 need("float uw = (theta % 180 == 0) ? bw : bh;" in qr
      and "float s = Math.max(viewW / uw, viewH / uh);" in qr,
      "cover-scale keeps the aspect (never squished)")
-need("matrix.postRotate(theta);" in qr and "matrix.postScale(s, s);" in qr,
-     "the matrix rotates then cover-scales, centered")
+need("matrix.setValues(com.bolt.browser.util.QrPreviewGeom.matrix(" in qr
+     and "public static float[] matrix(" in open(
+         os.path.join(ROOT, "app/src/main/java/com/bolt/browser/util/QrPreviewGeom.java"),
+         encoding="utf8").read(),
+     "the matrix is derived in VIEW space by QrPreviewGeom.matrix and fed "
+     "to setValues  # v1.4.29 re-point (2026-11-23): the postRotate/"
+     "postScale buffer-space construction (pin 2026-11-06) was itself the "
+     "rotated/misaligned + black-region corpse — Matrix.setTransform "
+     "consumes VIEW-LOCAL geometry (the buffer is stretched to the view "
+     "first), so the recipe moved to util/QrPreviewGeom.java as "
+     "M = T(v/2).S(s).R(theta).T(-b/2).S(bw/vw, bh/vh) (the rightmost "
+     "stretch-undo is the fix), probe-pinned in test_v1426 + test_v1429")
 need("setRectToRect" not in qr,
      "the old landscape-only recipe is gone")
 need("PREVIEW stream is NOT rotated by camera2" in qr,
@@ -148,7 +158,7 @@ need("never receives the ongoing MOVE stream" in act,
      "the touch-target law is documented where it bit")
 
 print("I5 — version pin")
-need('versionName "1.4.28"' in gradle and "versionCode 142" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need('versionName "1.4.29"' in gradle and "versionCode 143" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "111 / 1.3.98")
 
 print()

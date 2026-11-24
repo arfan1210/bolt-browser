@@ -130,6 +130,14 @@ public class Tab {
      *  of Base64 covers deep histories (dozens of entries ≈ a few KB
      *  compressed); beyond it the tab keeps today's behavior. */
     static final int HIST_BLOB_CAP = 131072;
+    /** v1.4.29 — THE RELATED POPUP CHILD (the OAuth black-page corpse):
+     *  a transient child window opened by window.open() through
+     *  WebView.WebViewTransport (BrowserActivity.onCreateWindow). The
+     *  child keeps its opener relationship (window.opener / postMessage /
+     *  window.close() ride it intact), carries NO privileged Bolt JS
+     *  bridges, and is never persisted (tabs.json skips it — a restored
+     *  child without its opener is meaningless). Runtime-only. */
+    public boolean popupChild = false;
     /** v1.3.40 — TAB SEARCH BY PAGE CONTENT (round-4 #7): a transient slice
      *  of the page's visible text (≤4000 chars, captured in onPageFinished).
      *  Deliberately NOT persisted — it is a search aid, not history; and it
@@ -304,6 +312,15 @@ public class Tab {
         }
     }
 
+    /** v1.4.29 — the shared build-time viewport quirks (load-time prefs
+     *  applied BEFORE the first load, exactly once — never re-applied to
+     *  a live document, the v1.3.62 decoupling law; see test_fs 1i).
+     *  Shared by [buildWeb] and the popup child's build. */
+    public static void applyViewport(WebSettings s) {
+        s.setLoadWithOverviewMode(true);
+        s.setUseWideViewPort(true);
+    }
+
     public WebView buildWeb(Context c, WebViewClient vc, WebChromeClient cc,
                             Object jsBridge, boolean incognito) {
         if (web != null) return web;
@@ -356,14 +373,24 @@ public class Tab {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
+        applyViewport(s);
         s.setSupportZoom(true);
         s.setBuiltInZoomControls(true);
         s.setDisplayZoomControls(false);
         s.setMediaPlaybackRequiresUserGesture(false); // allows notification-triggered play
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        s.setJavaScriptCanOpenWindowsAutomatically(false);
+        // v1.4.29 — THE MULTI-WINDOW LAW (the OAuth black-page corpse):
+        // with multi-window OFF, window.open() had no real window to land
+        // in and OAuth flows (Imgur's "Sign in with Google") stranded on a
+        // black page — the related child browsing context (window.opener,
+        // postMessage, window.close()) died with the throwaway probe. The
+        // engine now creates REAL child windows; BrowserActivity's
+        // onCreateWindow gates every one of them (PopupPolicy: recognized
+        // Google/OAuth chains open through the blocker, ordinary popups
+        // prompt or block, unsafe schemes are rejected) and the child
+        // carries no privileged Bolt JS bridges.
+        s.setSupportMultipleWindows(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setAllowFileAccess(true); // needed to open saved offline .mht pages
         s.setAllowContentAccess(false);
         if (Prefs.get(c).dnt()) {

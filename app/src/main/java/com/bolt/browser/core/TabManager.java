@@ -192,6 +192,24 @@ public class TabManager {
         save();
     }
 
+    /** v1.4.29 — THE TRANSIENT CLOSE (the related popup child): removes
+     *  the tab WITHOUT trash/undo/save-history — a popup child is flow
+     *  state (window.open's WebViewTransport window), and its WebView is
+     *  destroyed by the caller (BrowserActivity.closePopupChild) before
+     *  this is reached. Returns the tab's old index, or -1. */
+    public int closeTransient(Tab t) {
+        int was;
+        synchronized (tabs) {
+            was = tabs.indexOf(t);
+            if (was < 0) return -1;
+            tabs.remove(was);
+            if (active >= tabs.size()) active = tabs.size() - 1;
+            if (active < 0) active = 0;
+        }
+        save();
+        return was;
+    }
+
     // ---------------- v1.3.36 undo-close ----------------
 
     /** the most recently closed tab (kept for the undo snackbar; the
@@ -251,7 +269,19 @@ public class TabManager {
                 // methods demand the UI thread, so a background flush keeps
                 // each tab's last captured blob instead of touching webs.
                 boolean onMain = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                int persistIdx = 0;
+                int persistActive = active;
                 for (Tab t : tabs) {
+                // v1.4.29 — THE TRANSIENT CHILD LAW: a related popup child
+                // (window.open's WebViewTransport window) is FLOW state,
+                // never tab state — restoring one without its opener would
+                // strand a dead OAuth stub in the tab list. Skipped here;
+                // the persisted active index shifts with the skip.
+                if (t.popupChild) {
+                    if (persistIdx <= active) persistActive--;
+                    persistIdx++;
+                    continue;
+                }
                 // v1.3.18: persist EVERY tab — including pure home/new-tab pages.
                 // The old filter (skip isHome tabs with empty url) is exactly how
                 // "open 2 new tabs, close via recents, reopen → tabs gone" lost
@@ -272,11 +302,12 @@ public class TabManager {
                 // v1.3.27: playing-media tabs persist a YouTube resume point
                 try { o.put("url", resumeUrl(t)); } catch (Throwable ignored) {}
                 a.put(o);
+                persistIdx++;
                 }
             }
             Fx.writeJsonArray(new java.io.File(prefs.filesDir(), "tabs.json"), a);
             Fx.writeText(new java.io.File(prefs.filesDir(), "tabs_active.json"),
-                    String.valueOf(active));
+                    String.valueOf(Math.max(0, persistActive)));
         } catch (Throwable ignored) {}
     }
 

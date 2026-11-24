@@ -607,19 +607,27 @@ public class QrScanActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
-    /** v1.3.88 — the preview transform, FIXED. The v1.3.37 comment believed
+    /** v1.3.88 — the preview transform. The v1.3.37 comment believed
      *  "preview streams are display-rotated by the framework" — that is
      *  camera1 setDisplayOrientation behavior; camera2 does NOT rotate, and
      *  portrait (ROTATION_0) applied NO transform at all, so the landscape
      *  sensor buffer was stretched onto the portrait TextureView — the field
      *  report: "QR scanning opens the camera with a squished view of the
-     *  camera video". The transform is now the general recipe: rotate the
-     *  buffer by (sensorOrientation - displayRotation + 360) % 360 (the
-     *  classic JPEG-orientation formula — the angle that makes the image
-     *  upright for how the device is held) and center-crop scale so the
-     *  upright content COVERS the view (aspect preserved, never squished).
-     *  The YUV analysis path is untouched: ZXing infers rotation from the
-     *  finder patterns, so raw sensor frames still decode as-is. */
+     *  camera video".
+     *  v1.4.29 — THE VIEW-SPACE RECIPE (the rotated/misaligned + black-
+     *  region corpse). The v1.3.88 matrix was built in BUFFER coordinates
+     *  (translate -bufW/2, rotate, cover-scale against the buffer dims) —
+     *  but TextureView.setTransform() transforms VIEW-LOCAL geometry: the
+     *  buffer is first stretched to fill the view (the implicit
+     *  buffer-to-view stretch), and the matrix then maps view coords to
+     *  view coords. A buffer-space "fills view" check could pass while the
+     *  APPLIED matrix left the real view uncovered — the preview landed
+     *  rotated/misaligned with a black region. [QrPreviewGeom] derives the
+     *  matrix in the coordinates TextureView consumes: undo the implicit
+     *  stretch, apply sensor/display rotation, uniformly scale to cover
+     *  BOTH view axes, and center. The YUV analysis path is untouched:
+     *  ZXing infers rotation from the finder patterns, so raw sensor
+     *  frames still decode as-is. */
     private void applyPreviewTransform(int viewW, int viewH) {
         if (viewW == 0 || viewH == 0) return;
         try {
@@ -657,20 +665,26 @@ public class QrScanActivity extends AppCompatActivity {
                 applyPreviewTransform(viewW, viewH);
                 return;
             }
-            float cx = viewW / 2f, cy = viewH / 2f;
+            // v1.4.29 — THE VIEW-SPACE MATRIX (see the doc above): the nine
+            // Matrix values come from QrPreviewGeom (pure — the release
+            // gates compile + run the same math), undoing the implicit
+            // buffer-to-view stretch BEFORE the rotate + cover-scale, so
+            // what "filled the view" in the math also covers the REAL view
             Matrix matrix = new Matrix();
-            // buffer center -> view center, rotate to upright, scale to cover
-            matrix.postTranslate(-bw / 2f, -bh / 2f);
-            matrix.postRotate(theta);
-            matrix.postScale(s, s);
-            matrix.postTranslate(cx, cy);
+            matrix.setValues(com.bolt.browser.util.QrPreviewGeom.matrix(
+                    viewW, viewH, bw, bh, theta));
             tvPreview.setTransform(matrix);
-            // v1.4.27 — THE READABLE RESIDUAL: view/buffer dims, the rotation
-            // and the cover scale ride the Diag — a mismatch left in the
-            // field is now readable from the log line instead of guesswork
+            // v1.4.27 — THE READABLE RESIDUAL + v1.4.29 the sensor/display/
+            // content fields: a mismatch left in the field is now readable
+            // from the log line instead of guesswork (no MISMATCH = the
+            // cover invariant held and the matrix covers both axes)
             try {
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
-                        " buf=" + bw + "x" + bh + " theta=" + theta +
+                        " buf=" + bw + "x" + bh +
+                        " sensor=" + sensorOrientation + " display=" + degrees +
+                        " theta=" + theta +
+                        " content=" + com.bolt.browser.util.QrPreviewGeom
+                                .contentLabel(viewW, viewH, bw, bh, theta) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
                         (fills ? "" : " MISMATCH"));
             } catch (Throwable ignored) {}
