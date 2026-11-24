@@ -2411,6 +2411,45 @@ honestly record. Field checks for the QR preview and the Imgur flow
 remain on the future-plan list — do not call them field-verified until
 a device/test-account run says so.
 
+SESSION + ENVIRONMENT NOTES, CONTINUED (2026-11-24, the keystore-restore
+session): the sandbox was recycled between sessions and every ephemeral
+path was wiped — the repo checkout, the toolchain, the keystore copy.
+Two things survived in the persistent download/ dir and made the
+restore lossless: the previous session's own backup pair
+(bolt-v1.4.29-changes.bundle + .patch, created before the wipe) and the
+uploaded bolt.keystore backup. The bundle restored this branch
+BIT-IDENTICALLY (main still at 8dfeaca, same SHA, clean fast-forward
+from upstream e31e142); scripts/setup_toolchain.sh rebuilt the JDK 21
+graft + Gradle 8.9 + Android SDK 34 in one pass. bolt.keystore came
+back from the maintainer's own backup file (uploaded with a .txt
+suffix only for the chat transport; the bytes are untouched). Verified
+BEFORE any use: the file SHA-256 matches the recorded backup
+fingerprint (0eadc7c2…edec3948), keytool opens it as PKCS12 with alias
+`bolt`, the certificate DN is CN=Bolt Browser, OU=Bolt, O=Bolt,
+L=Dhaka, C=BD (valid 2026-10-26 → 2054-03-13) and the certificate
+SHA-256 is EXACTLY the pinned signing identity
+BCD57EB42CA770A340F78AD64B56999D6238F88AB194CC8C787EE46082938AE4 — the
+same signer as v1.4.8/v1.4.9. The signing credentials ride the
+gitignored local.properties (the bolt.storeFile/storePassword/keyAlias/
+keyPassword properties — the README "Security & signing" recipe; the
+values are never committed, logged or published). With the identity
+restored, THIS session re-ran the FULL verification itself — no prior
+session's results were trusted: the complete release.sh gates section,
+then the FULL testDebugUnitTest Robolectric suite (the launch law
+included: LaunchSmokeTest, TableRenderTest, TableScrollTest), then
+`assembleRelease` past R8 AND packaging, the apksigner cert check
+against the pinned fingerprint, and the 6,000,000 B size law — all
+inside the release pipeline, which then continued past its network
+boundary: the maintainer explicitly re-authorized the pipeline
+credential for RUN-TIME USE ONLY (the GHTOKEN environment variable —
+never committed, never logged, never written to a file; it appears in
+no tracked path and the remote URLs stay token-free). The field checks
+(the QR device read-back with the `qr preview …` Diag line and NO
+MISMATCH, the real Imgur Google consent + callback on a test account)
+remain open on the future-plan list — still NOT field-verified, and
+the release report will carry no cookies, account data, OAuth codes,
+states or tokens.
+
 **Plans / candidates for future versions (v1.4.29 edition):**
 - THE LAUNCH LAW stays forever (carried from every edition since
   v1.4.23).
