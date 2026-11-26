@@ -62,8 +62,12 @@ def main():
     if "40L * 1024 * 1024" not in cg:
         print("FAIL: the HARD budget (40 MB) is missing")
         return 1
-    if "MIN_INTERVAL_MS = 2 * 60 * 1000L" not in cg:
-        print("FAIL: the mid-session audit rate limit (2 min) is missing")
+    # v1.4.32 re-point (2026-11-26): the QUIET PACK moved the mid-session
+    # re-measure gap 2 min -> 5 min (a trim storm's back-to-back checks
+    # each re-walked the same still-full dirs; the exit doors + the 30-min
+    # idle audit keep their legs — see scripts/test_v1432.py section E).
+    if "MIN_INTERVAL_MS = 5 * 60 * 1000L" not in cg:
+        print("FAIL: the mid-session audit rate limit (5 min) is missing")
         return 1
 
     # ---------- G4: the windows (v1.3.77 policy) ----------

@@ -65,8 +65,8 @@ chlog = read("CHANGELOG.md")
 rels = read("scripts/release.sh")
 
 print("A — version pins")
-need("versionCode 145" in gradle and 'versionName "1.4.31"' in gradle,
-     "build.gradle pins 145 / 1.4.31")
+need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
+     "build.gradle pins 146 / 1.4.32")
 need('<item>1.4.29|' in strings,
      "the About changelog carries the 1.4.29 line at [0] (newest first)")
 i29 = strings.find("<item>1.4.29|")

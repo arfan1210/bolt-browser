@@ -46,7 +46,7 @@ import java.io.File
  *    → physically empty every cache subtree (unchanged mechanics, the
  *    threshold moved from 150 to where it actually bites).
  *  - MID-SESSION AUDIT (onResume + a 3-minute foreground loop, one pass
- *    per 2 minutes): over SOFT → `WebView.clearCache(true)` posted to
+ *    per 5 minutes — the v1.4.32 quiet pack): over SOFT → `WebView.clearCache(true)` posted to
  *    main (the HTTP cache, safe with live renderers) AND the Service
  *    Worker / GPUCache / Media Cache subtrees swept physically (a live
  *    service worker answers a cache miss from the network — pages keep
@@ -89,8 +89,12 @@ object CacheGuard {
 
     /** mid-session audits are rate-limited (v1.3.77: one per 2 minutes —
      *  the foreground loop asks every 3, so a just-fired trim is not
-     *  re-measured while its own clearCache is still in flight) */
-    private const val MIN_INTERVAL_MS = 2 * 60 * 1000L
+     *  re-measured while its own clearCache is still in flight).
+     *  v1.4.32 — the QUIET PACK: the trim-driven check rate-limit goes
+     *  2 min -> 5 min — a trim storm's back-to-back checks each re-walked
+     *  the same still-full dirs; five minutes is the honest re-measure
+     *  gap (the exit doors + the 30-min idle audit keep their legs). */
+    private const val MIN_INTERVAL_MS = 5 * 60 * 1000L
 
     /** v1.3.79 — THE SITE-DATA DIET. The v1.3.78 close-out emptied every
      *  CACHE subtree and the field still read "46 mb in app data": the

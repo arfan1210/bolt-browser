@@ -708,6 +708,42 @@ python3 scripts/test_v1430.py
 # probes (the banana/apple/orange conversation) and the web body-builder
 # history-survival probe
 python3 scripts/test_v1431.py
+
+# ---- 1z-32. v1.4.32 gate: THE ORIENTATION ROUND (three QR fixes off the
+# v1.4.31 field read-backs + a bounded quiet/perf pack, no feature work:
+# THE BASE-ANGLE LAW — the upright angle split into the immutable device
+# base table (baseAngleFor: RMX2020 sensor=90 -> (270 + display) % 360,
+# field-proven over all four displays) + the additive user offset (the
+# button cycles ONLY the offset, long-press resets ONLY the offset, the
+# old qrRotOffset.* conflation never read again — a tap-cycle wrap or a
+# reset can no longer destroy the device default, and landscape finally
+# starts upright); THE COMPOUND-ANISOTROPY LAW — the calibration capture
+# runs under setTransform(identity) with the real transform restored
+# after the solve AND on the 900ms timeout path, net= became the COMPOUND
+# linear anisotropy (assumed implicit o undo; 1.000 = square pixels), and
+# the measured solve is accepted ONLY when the bijection passes AND the
+# compound ratio vs the chain prior sits in [0.98, 1.02] — a contaminated
+# capture falls down the chain, never applied; THE CHROMA + DUAL-BINARIZER
+# LADDER — chromaOf builds the |U-128|+|V-128| half-res plane, the ladder
+# gained the FINAL chroma leg (live U/V extraction ONLY on that failure
+# leg — the 4 fps budget holds), every leg tries HybridBinarizer THEN
+# GlobalHistogramBinarizer, the gallery path rides the same legs at full
+# res; THE QUIET PACK — the media core early-returns in non-top frames,
+# the bootstrap retry loop is bounded (<=10 tries then parked ceremonies
+# reject, the asset stays <=3,072 B), the CacheGuard destroy door is
+# gated on isFinishing() (a skin/locale recreate never sweeps), the
+# favicon + page-text evaluates ride a ~1200ms idle pass cancelled by the
+# next navigation, the trim-driven check re-measures at most once per
+# 5 minutes) — probes: the compiled REAL baseAngleFor over the four
+# displays + the separation/migration pins, the compiled REAL
+# compoundAnisotropy (the v1.4.30 corpse configuration reads 3.784, every
+# self-consistent leg 1.000) + measuredAcceptable (in-window accept /
+# off-window reject) over the contamination fixtures, the compiled REAL
+# QrCore probes (the equal-luma blue-on-green QR decodes ONLY via chroma —
+# every luma leg misses, both the ARGB and the live-YUV chroma forms hit;
+# the dot/wavy fixtures decode through the ladder; the budget order pin),
+# and the node probe for the bootstrap retry bound
+python3 scripts/test_v1432.py
 mark gates
 fi
 

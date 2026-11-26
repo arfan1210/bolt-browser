@@ -94,6 +94,14 @@ public class MediaHook {
     public static String core(Prefs p) {
         String settings = mediaSettingsJson(p);
         return "(function(){\n"
+                // v1.4.32 — MAIN-FRAME-ONLY (the v1.4.31 "*" registration
+                // widened coverage BY ACCIDENT: document-start rides every
+                // frame, and an ad iframe must never own the notification,
+                // the wake-lock or the media-session beats). The core
+                // early-returns in any non-top frame — the v1.4.30-and-
+                // earlier posture (onPageStarted was main-frame only)
+                // restored inside the registered script itself.
+                + "if(window!==window.top)return;\n"
                 + "if(window.__boltCore)return; window.__boltCore=1;\n"
                 + "var SET=" + settings + ";\n"
                 + "var chains=new WeakMap();\n"

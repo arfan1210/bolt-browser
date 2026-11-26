@@ -120,8 +120,8 @@ android {
         // Google sign-in) run in a REAL related child WebView (multi-window
         // support + WebViewTransport — window.opener/postMessage/window
         // .close() survive; the blocker still prompts ordinary popups).
-        versionCode 145
-        versionName "1.4.31"
+        versionCode 146
+        versionName "1.4.32"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

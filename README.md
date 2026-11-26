@@ -266,6 +266,33 @@ laws; the list below is the CURRENT law set (name → the one line):
   previous two user turns + the last assistant reply); a bounded
   transcript (4 turns / 2k chars) rides above the SOURCES block; the
   web leg APPENDS, never replaces turns.
+- THE BASE-ANGLE LAW (v1.4.32) — the scanner's upright angle is TWO
+  additive pieces: the device base (a pure immutable table — RMX2020
+  sensor=90 → (270 + display) % 360) and the user offset (the rotate
+  button's own key, default 0). No button ever writes the base; the
+  conflation that let a tap-cycle wrap delete the device default is
+  gone (old qrRotOffset.* keys are never read again).
+- THE COMPOUND-ANISOTROPY LAW (v1.4.32) — the calibration capture runs
+  under setTransform(identity) and restores the real transform after
+  the solve AND on the timeout path; net= reports the COMPOUND linear
+  anisotropy (assumed implicit ∘ undo — the recipe's uniform part is
+  isometric; 1.000 = square pixels); a measured solve is accepted only
+  when the whole-pattern bijection passes AND the compound ratio against
+  the chain prior sits in [0.98, 1.02] — a contaminated capture falls
+  down the chain (measured → table → fill), never applied.
+- THE CHROMA LADDER (v1.4.32) — every QR leg tries HybridBinarizer then
+  GlobalHistogramBinarizer; after the full luma ladder fails, a final
+  leg decodes the chroma-spread plane (|U−128|+|V−128|, half res — the
+  live U/V extraction happens ONLY on that failure leg, the 4 fps
+  budget holds); the gallery path rides the same legs at full res.
+- THE QUIET PACK (v1.4.32) — the media core early-returns in non-top
+  frames (ad iframes never own the notification/wake-lock); the passkey
+  bootstrap's retry loop is bounded (≤10 tries, then parked ceremonies
+  reject; the asset stays ≤3 KB); CacheGuard's destroy door is gated on
+  isFinishing() (a skin/locale recreate never sweeps); the favicon +
+  page-text evaluates ride a ~1200 ms idle pass cancelled by the next
+  navigation; the trim-driven cache check re-measures at most once per
+  5 minutes.
 
 **Environment lessons (merged — every one paid for itself once).**
 
@@ -308,6 +335,72 @@ end: a fresh sandbox restored losslessly from the bundle + keystore
 backup, rebuilt the toolchain with one script, and re-ran the FULL
 verification (gates + suite + signed build + cert check + size law)
 before publishing.
+
+**v1.4.32 — THE ORIENTATION ROUND** (the twenty-fifth session,
+2026-11-26). Three QR fixes off the v1.4.31 field read-backs plus a
+bounded quiet/perf pack, no feature work:
+
+1. *QR — THE BASE-ANGLE LAW.* The field: the scanner opened wrong-side-up
+   and needed a manual +90° tap EVERY session, portrait and landscape.
+   Root cause: the v1.4.31 seed persisted its +270 into the SAME prefs key
+   the rotate button writes — a tap-cycle wrap (270 → 0) or a reset
+   destroyed the device default, and landscape was never seeded; the
+   "default" was just the last tap. The fix splits the two angles: the
+   DEVICE BASE is a pure immutable table (baseAngleFor: RMX2020 sensor=90
+   → (270 + display) % 360 — display 0 → 270, 90 → 0, 180 → 90,
+   270 → 180; unknown models → 0) and the USER OFFSET rides a new
+   qrUserOffset.<sensor>.<display> key, default 0, additive on top. The
+   button cycles ONLY the offset; long-press resets ONLY the offset;
+   old qrRotOffset.* keys are never read again. Diag: `qr open model=…
+   sensor=… display=… base=… offset=… mode=…` at open + `base=` on the
+   preview line.
+2. *QR — THE COMPOUND-ANISOTROPY LAW + the calibration identity.* The
+   field: the preview rode a vertical stretch. Two corpses: the old net=
+   measured only the undo's own x/y ratio (the log could not see the
+   compound stretch), and the calibration arm posted the stripe pattern
+   WITHOUT resetting the view transform — the solve measured
+   implicit∘A_current, and the contaminated "measured" undo
+   re-introduced the stretch it exists to undo. The fix: identity before
+   the pattern post AND before getBitmap, restore after the solve AND on
+   the 900 ms timeout path; net= became the COMPOUND linear anisotropy
+   (assumed implicit ∘ undo — 1.000 = square pixels); the solve is
+   accepted only when the bijection passes AND the compound ratio vs the
+   chain prior sits in [0.98, 1.02] — else it falls down the chain
+   (measured → table → fill), never applied.
+3. *QR — THE CHROMA + DUAL-BINARIZER LADDER.* The field: stylized codes
+   (chess.com-style dot/rounded modules, wavy lines, colour-on-colour)
+   did not scan — the live path decoded ONLY the Y plane, so equal-luma
+   colour modules were literally invisible, and every pass rode
+   HybridBinarizer alone. Zero new deps: chromaOf builds the
+   chroma-spread plane (|U−128|+|V−128|) at half resolution; the ladder
+   gained a FINAL chroma leg (plain + invert) reached only after the
+   whole luma ladder fails (the U/V extraction rides that failure leg —
+   the 4 fps budget holds); every leg tries Hybrid THEN Global
+   (GlobalHistogramBinarizer — dot/rounded modules binarize better
+   globally); the gallery path gained the same legs at full res.
+4. *THE QUIET/PERF PACK.* The media core early-returns when
+   window !== window.top (the v1.4.31 "*" registration widened coverage
+   by accident — ad iframes must not own the notification/wake-lock);
+   webauthn_bootstrap's req() retry loop is bounded (≤10 tries, then
+   parked ceremonies reject — incognito and bridge-free popup children
+   stopped spinning every 300 ms forever; the asset stays ≤3,070 B);
+   CacheGuard's exit door=destroy is gated on isFinishing() (a skin/
+   locale recreate must not nuke the caches); the favicon extraction and
+   the page-text capture moved to a postDelayed(~1200 ms) idle pass
+   cancelled by the next navigation; the trim-driven CacheGuard check
+   re-measures at most once per 5 minutes. The perf nav line is
+   unchanged.
+5. *THE GATES.* test_v1432.py pins all of the above (the compiled REAL
+   baseAngleFor over the four displays; the compiled REAL
+   compoundAnisotropy — the v1.4.30 corpse configuration reads 3.784,
+   every self-consistent leg 1.000; the compiled REAL measuredAcceptable
+   with the contamination fixtures — a non-identity start transform is
+   rejected or corrected; the equal-luma colour QR decodes ONLY via
+   chroma — every luma leg misses, both the ARGB and the live-YUV chroma
+   forms hit; the dot/wavy fixtures decode through the ladder; the
+   bootstrap retry bound under node); repin_gates_1432.py swept the
+   ladder to 146/1.4.32; the v1.4.31 seed/net/theta pins re-pointed by
+   hand with dated notes.
 
 **v1.4.31 — THE PERFORMANCE-AND-QUIET ROUND** (the twenty-fourth session,
 2026-11-25). Seven fixes, every one traced to a v1.4.30 field diag line:
@@ -469,26 +562,34 @@ them. v1.4.31 builds on the same diagnostics; none of its fixes are
 field-verified yet either.
 
 **Open field read-backs (the acceptance list).**
-- The QR measured-implicit line (v1.4.31): `qr preview … mode=… net=…`
-  — upright, full-cover, no stretch, mode=measured (or table on the
-  Realme with the +270 seed showing in offset=), net≈1.0; the v1.4.30
-  line's `producer=`/`offset=`/`theta=` legs ride unchanged.
-- The exit-sweep cadence (v1.4.31): a session of tab switches produces
-  NO `cache guard exit … deep=1` lines while the browser stays in use;
-  the line appears once per true close (door=destroy) or after five
-  minutes away (door=delayed), and back/forward stops lagging after
+- The QR base-angle line (v1.4.32): `qr open model=… sensor=… display=…
+  base=… offset=… mode=…` at scanner open + the preview line's `base=` —
+  upright preview on open in portrait AND landscape, ZERO taps, across
+  restarts; a tap then a long-press returns exactly upright; the v1.4.31
+  mode=/net= legs ride (net= now reads the COMPOUND anisotropy — 1.000
+  in both orientations; the qr calib ok/fail/timeout line names the
+  leg).
+- The stylized-code read-back (v1.4.32): a chess.com-style QR (dot/
+  rounded modules, wavy lines, colour-on-colour) scans LIVE and from the
+  gallery; plain QRs unchanged (no regression on the common path).
+- (carried, v1.4.31) The exit-sweep cadence: a session of tab switches
+  produces NO `cache guard exit … deep=1` lines while the browser stays
+  in use; the line appears once per true close (door=destroy) or after
+  five minutes away (door=delayed), and back/forward stops lagging after
   trim storms (the `tabSleep … policy=idle3m-recent2` line names the
-  new policy).
-- The perf nav line (v1.4.31): `perf nav commit=… finish=… inj=…
-  bytes=…` — the inj/bytes numbers drop against the v1.4.30 BEFORE
-  ones (the single-injection evidence); `perf launch ms=` and
-  `perf blur ms= w= h=` ride alongside.
-- The real passkey ceremony (v1.4.31): a live passkey login still works
-  end to end through the ≤3 KB bootstrap (the ceremony parks, the full
-  layer loads once via Bolt.passkeyLoad and adopts); a real
-  GitHub/Google login is the acceptance test.
-- The Web context (v1.4.31): with the Web chip ON, "add apple and
-  orange to the table" AFTER a banana question answers with a
+  policy).
+- (carried, v1.4.31) The perf nav line: `perf nav commit=… finish=…
+  inj=… bytes=…` — the inj/bytes numbers hold their v1.4.31 drop
+  (single-injection); `perf launch ms=` and `perf blur ms= w= h=` ride
+  alongside.
+- (carried, v1.4.31) The real passkey ceremony: a live passkey login
+  still works end to end through the ≤3 KB bootstrap (the ceremony
+  parks, the full layer loads once via Bolt.passkeyLoad and adopts); a
+  real GitHub/Google login is the acceptance test — and a bridge-free
+  context (incognito / a popup child) now settles fast instead of
+  spinning (the v1.4.32 retry bound).
+- (carried, v1.4.31) The Web context: with the Web chip ON, "add apple
+  and orange to the table" AFTER a banana question answers with a
   banana+apple+orange table and cited [n] sources — the banana corpse
   closed on the device.
 - (carried) The Imgur return leg: the real Google consent on a test

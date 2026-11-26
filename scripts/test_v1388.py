@@ -112,9 +112,17 @@ print("I3 — the QR preview transform")
 # scripts/test_v1430.py section B for the producer probe + the rotate
 # button. The v1.3.88 JPEG-orientation formula survives inside the
 # compensated one (display leg unchanged).
-need("(sensorOrientation - degrees - producerRot + 720) % 360" in qr,
-     "rotates by (sensorOrientation - displayRotation - producerRotation) — "
-     "the v1.3.88 JPEG-orientation formula, COMPENSATED since v1.4.30")
+# v1.4.32 re-point (2026-11-26): THE BASE-ANGLE LAW — the angle is now
+# (sensor - display - producer + BASE + userOffset + 720) % 360: the
+# immutable device base table (baseAngleFor) + the separated user offset
+# (qrUserOffset.*, default 0). The producer compensation and the
+# user's-last-word law ride unchanged — see scripts/test_v1432.py
+# section B for the base table + the separation/migration pins.
+need("(sensorOrientation - degrees - producerRot + base" in qr
+     and "+ userOffset + 720) % 360" in qr,
+     "rotates by (sensorOrientation - displayRotation - producerRotation "
+     "+ base + userOffset) — the v1.3.88 JPEG-orientation formula, "
+     "COMPENSATED since v1.4.30, BASE-ANGLE split since v1.4.32")
 need("float uw = (theta % 180 == 0) ? bw : bh;" in qr
      and "float s = Math.max(viewW / uw, viewH / uh);" in qr,
      "cover-scale keeps the aspect (never squished)")
@@ -155,7 +163,7 @@ need("never receives the ongoing MOVE stream" in act,
      "the touch-target law is documented where it bit")
 
 print("I5 — version pin")
-need('versionName "1.4.31"' in gradle and "versionCode 145" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need('versionName "1.4.32"' in gradle and "versionCode 146" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "111 / 1.3.98")
 
 print()

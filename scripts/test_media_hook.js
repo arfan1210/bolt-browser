@@ -81,6 +81,10 @@ function makeEnv(opts) {
   DocumentProto.exitFullscreen = function () { exitCalls++; };
 
   const win = { addEventListener: (t, f, o) => reg(win, t, f, o), removeEventListener: (t, f, o) => unreg(win, t, f, o) };
+  // v1.4.32 re-point: the core early-returns in any non-top frame
+  // (MAIN-FRAME-ONLY — ad iframes must not own the media beats), so the
+  // mock world must model the MAIN frame: window.top === window.
+  win.top = win;
   // v1.3.63 document-fullscreen overlay sweep inputs: computed styles for
   // body-level overlays (tests set el.__cs; default = static/auto = skipped)
   win.getComputedStyle = (el) => (el && el.__cs) || { position: 'static', zIndex: 'auto' };

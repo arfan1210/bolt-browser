@@ -90,8 +90,8 @@ sia = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.java")
 lg = read("app/src/main/java/com/bolt/browser/util/LauncherGuard.kt")
 
 print("A — version pins")
-need("versionCode 145" in gradle and 'versionName "1.4.31"' in gradle,
-     "build.gradle pins 145 / 1.4.31")
+need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
+     "build.gradle pins 146 / 1.4.32")
 need('<item>1.4.31|' in strings,
      "the About changelog carries the 1.4.31 line at [0] (newest first)")
 i31 = strings.find("<item>1.4.31|")
@@ -106,8 +106,15 @@ print("B — QR: THE MEASURED-IMPLICIT LAW")
 # L2 the device table + L3 the seed (compiled from the REAL Java)
 need("static final String[] COVER_UNDO_MODELS = { \"RMX2020\" };" in qsa,
      "the device table: RMX2020 = cover-undo (the field device)")
-need("static int seedRotOffsetFor" in qsa and 'return 270;' in qsa,
-     "the offset seed: RMX2020 (sensor=90, display=0) -> 270")
+# v1.4.32 re-point (2026-11-26): the seed became the IMMUTABLE base table
+# (baseAngleFor) — the v1.4.31 seed persisted its +270 into the SAME key
+# the rotate button writes, so a tap-cycle wrap (270 -> 0) or a reset
+# destroyed the device default, and landscape was never seeded (the field
+# needed a manual +90 tap EVERY session). The base and the user offset are
+# separate now.
+need("static int baseAngleFor" in qsa and '(270 + display) % 360' in qsa,
+     "the device base: RMX2020 (sensor=90) -> (270 + display) % 360 "
+     "(field-proven: 0->270, 90->0, 180->90, 270->180), immutable by any button")
 # the measured session gate: calibrate after configure, before repeating
 need("if (armCalibration()) return;" in qsa,
      "the session gate: onConfigured calibrates FIRST (no repeating "
@@ -133,20 +140,33 @@ need('"table".equals(undoMode)' in qsa and
 need("undoSx = bw / viewW;" in qsa and
      "// undo the implicit buffer->view stretch (FILL)" in qsa,
      "the fill undo rides as the fallback (the historical default)")
+# v1.4.32 re-point (2026-11-26): net= became the COMPOUND linear anisotropy
+# (assumed implicit ∘ undo ∘ the recipe's linear part) — the old net= measured
+# only the undo's own x/y ratio and could not see the corpse's stretch
+# (fill-undo on a uniform-cover device composed to 3.784 while net= read 1.0
+# once the table leg fired). mode= rides unchanged.
 need('" mode=" + undoMode' in qsa and '" net=" ' in qsa,
-     "the diag line grew mode= and net= (the undo's own anisotropy)")
+     "the diag line grew mode= and net= (v1.4.32: net= is the compound "
+     "anisotropy, 1.000 = square pixels)")
 # the v1.4.30 laws ride unchanged
-need("theta = (sensorOrientation - degrees - producerRot + 720) % 360;"
-     in qsa and "theta = (theta + rotOffset + 360) % 360;" in qsa,
-     "the v1.4.30 compensated theta + the user offset ride unchanged")
+# v1.4.32 re-point (2026-11-26): the theta formula now carries the immutable
+# device base + the user offset as ONE additive pair (the base-angle law);
+# the producer compensation and the user's last-word law ride unchanged.
+need("(sensorOrientation - degrees - producerRot + base" in qsa and
+     "+ userOffset + 720) % 360" in qsa,
+     "the compensated theta + the device base + the user offset "
+     "(one additive pair, wrapped +720)")
 need("static int extractProducerRotation" in qsa,
      "the v1.4.30 producer probe rides unchanged")
-# the rotate button: user override still wins; reset lands on the default
-need("int def = seedRotOffsetFor(android.os.Build.MODEL, sensorOrientation,"
-     in qsa,
-     "long-press reset lands on the DEVICE DEFAULT (the seed), not 0")
-need("Prefs.get(this).i(rotOffsetKey(degrees), seed)" in qsa,
-     "a saved user offset still wins over the seed")
+# the rotate button: user offset only — the base is immutable by any button
+# v1.4.32 re-point (2026-11-26): the long-press resets ONLY the user offset
+# to 0 (the v1.4.31 reset landed on the conflated seed); the user offset
+# reads its own qrUserOffset.<sensor>.<display> key, default 0 — old
+# qrRotOffset.* keys are never read again (migration note in the source).
+need("userOffset = 0;" in qsa and '"Preview offset reset"' in qsa,
+     "long-press resets ONLY the user offset (the device base untouched)")
+need("Prefs.get(this).i(userOffsetKey(degrees), 0)" in qsa,
+     "the user offset rides qrUserOffset.<sensor>.<display>, default 0")
 
 print("  -- the compiled REAL probes (the parse-gate law: run the REAL "
       "methods) --")
@@ -175,9 +195,11 @@ def extract_method(src, anchor, end_anchor="\n    }"):
 javac = shutil.which("javac")
 node = shutil.which("node")
 
-# --- probe 1: the device table + the seed (REAL, no substitutions) ---
+# --- probe 1: the device table + the base angle (REAL, no substitutions) ---
 m_tbl = extract_method(qsa, '    static String undoModeFor(String model) {')
-m_seed = extract_method(qsa, '    static int seedRotOffsetFor(String model, int sensor, int display) {')
+# v1.4.32 re-point (2026-11-26): seedRotOffsetFor became baseAngleFor (the
+# extraction + the probe follow the rename; the display-scoped table below)
+m_seed = extract_method(qsa, '    static int baseAngleFor(String model, int sensor, int display) {')
 m_cnt = extract_method(qsa, '    static int stripeCount() {')
 m_pos = extract_method(qsa, '    static int stripePos(int span, int j) {')
 m_scan = extract_method(qsa, '    static int[] scanRunsArgb(int[] argb, int w, int h, boolean alongX, int test) {')
@@ -240,17 +262,21 @@ if m_tbl and m_seed and m_cnt and m_pos and m_scan and m_solve and javac:
         return null;
     }
     public static void main(String[] args) {
-        // ---- the device table + the seed ----
+        // ---- the device table + the base angle (v1.4.32 re-point) ----
         eq("table RMX2020", Probe.undoModeFor("RMX2020").equals("table"));
         eq("table exact-match only",
                 Probe.undoModeFor("RMX2020N").equals("fill")
                 && Probe.undoModeFor("Pixel 8").equals("fill")
                 && Probe.undoModeFor(null).equals("fill"));
-        eq("seed 270", Probe.seedRotOffsetFor("RMX2020", 90, 0) == 270);
-        eq("seed scoped to the pair",
-                Probe.seedRotOffsetFor("RMX2020", 90, 90) == 0
-                && Probe.seedRotOffsetFor("RMX2020", 180, 0) == 0
-                && Probe.seedRotOffsetFor("Pixel 8", 90, 0) == 0);
+        eq("base display 0", Probe.baseAngleFor("RMX2020", 90, 0) == 270);
+        eq("base display 90", Probe.baseAngleFor("RMX2020", 90, 90) == 0);
+        eq("base display 180", Probe.baseAngleFor("RMX2020", 90, 180) == 90);
+        eq("base display 270", Probe.baseAngleFor("RMX2020", 90, 270) == 180);
+        eq("base scoped (unknown models / sensors)",
+                Probe.baseAngleFor("Pixel 8", 90, 0) == 0
+                && Probe.baseAngleFor(null, 90, 0) == 0
+                && Probe.baseAngleFor("RMX2020", 180, 0) == 0
+                && Probe.baseAngleFor("RMX2020", 90, 45) == 315);
         // ---- the solver over fill / cover / fit synthetic rasters ----
         // the CORPSE dims: portrait view 1080x2298, landscape buffer
         int[] cases = {

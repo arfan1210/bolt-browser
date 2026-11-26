@@ -1,16 +1,20 @@
-/*! Bolt WebAuthn Bootstrap v1 (v1.4.31 PASSKEY LAZY): the <=3KB document-start
- * stub for the ~55KB webauthn_compat.js (detection here, lazy full layer). MIT. */
+/*!Bolt WebAuthn Bootstrap v2 (v1.4.32). MIT*/
 ;(function(){
 if(window.__BOLT_WEBAUTHN_BOOT__){return}
 window.__BOLT_WEBAUTHN_BOOT__=1
-var q=[];window.__BOLT_WEBAUTHN_PENDING=q;var asked=false
-function req(){try{if(window.Bolt&&Bolt.passkeyLoad){Bolt.passkeyLoad();return}}catch(e){}setTimeout(req,300)}
-function park(kind,options){
+var q=[],asked=false,tries=0,dead=false
+window.__BOLT_WEBAUTHN_PENDING=q
+function rb(v){return new DOMException(v||'bridge-gone','NotAllowedError')}
+function req(){try{if(window.Bolt&&Bolt.passkeyLoad){Bolt.passkeyLoad();return}}catch(e){}
+ if(++tries>=10){dead=true;while(q.length){try{q.pop().reject(rb())}catch(e){}}return}
+ setTimeout(req,300)}
+function park(k,o){
+ if(dead){return Promise.reject(rb())}
  if(!window.__BOLT_WEBAUTHN_FULL__&&!asked){asked=true;req()}
  return new Promise(function(res,rej){
-  var e={kind:kind,options:options,resolve:res,reject:rej}
+  var e={kind:k,options:o,resolve:res,reject:rej}
   q.push(e)
-  setTimeout(function(){var i=q.indexOf(e);if(i>=0){q.splice(i,1);rej(new DOMException('timeout','NotAllowedError'))}},20000)
+  setTimeout(function(){var i=q.indexOf(e);if(i>=0){q.splice(i,1);rej(rb('timeout'))}},20000)
  })
 }
 function b64(s){s=String(s).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4){s+='='}var b=atob(s),o=new Uint8Array(b.length);for(var i=0;i<b.length;i++){o[i]=b.charCodeAt(i)}return o.buffer}
@@ -22,7 +26,7 @@ function parseR(i){var o=obj(i),x={challenge:b64(o.challenge)};if(o.timeout!=nul
 var P=null;try{P=window.PublicKeyCredential}catch(e){}
 if(!P){P=function PKC(){};try{window.PublicKeyCredential=P}catch(e){}}
 function st(n,f){try{if(!P[n]){Object.defineProperty(P,n,{value:f,writable:true,configurable:true})}}catch(e){}}
-function YES(){return Promise.resolve(true)}
+function YES(){return Promise.resolve(!0)}
 st('isUserVerifyingPlatformAuthenticatorAvailable',YES)
 st('isPasskeyPlatformAuthenticatorAvailable',YES)
 st('isConditionalMediationAvailable',YES)

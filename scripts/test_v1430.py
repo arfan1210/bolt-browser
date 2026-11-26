@@ -85,8 +85,8 @@ settings = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.jav
 readme = read("README.md")
 
 print("A — version pins")
-need("versionCode 145" in gradle and 'versionName "1.4.31"' in gradle,
-     "build.gradle pins 145 / 1.4.31")
+need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
+     "build.gradle pins 146 / 1.4.32")
 need('<item>1.4.30|' in strings,
      "the About changelog carries the 1.4.30 line at [0] (newest first)")
 i30 = strings.find("<item>1.4.30|")
@@ -109,10 +109,19 @@ need("static int extractProducerRotation(float[] m) {" in qsa
 need("if (Double.isNaN(deg)) return 0;" in qsa,
      "the NaN guard (a singular matrix reads as 0, never crashes)")
 # the compensated angle + the user override ADD LAST
-need("(sensorOrientation - degrees - producerRot + 720) % 360" in qsa,
-     "theta is COMPENSATED: sensor - display - producer (the producer's "
-     "rotation is already on screen — subtract, never add again)")
-need("theta = (theta + rotOffset + 360) % 360;" in qsa,
+# v1.4.32 re-point (2026-11-26): THE BASE-ANGLE LAW split the angle into
+# the immutable device base (baseAngleFor) + the additive user offset
+# (qrUserOffset.*, default 0) — the compensation (producer subtracted)
+# and the user's-last-word law ride UNCHANGED inside the new formula; see
+# scripts/test_v1432.py section B for the base table + the separation
+# and migration pins.
+need("(sensorOrientation - degrees - producerRot + base" in qsa
+     and "+ userOffset + 720) % 360" in qsa,
+     "theta is COMPENSATED: sensor - display - producer + base + "
+     "userOffset (the producer's rotation is already on screen — "
+     "subtract, never add again; the base is the device table's, the "
+     "offset is the user's)")
+need("+ userOffset + 720) % 360" in qsa,
      "the user override ADDS LAST (the user sees the real render — their "
      "tap wins over every heuristic)")
 # the re-probe arms on the first frame and after every re-pin
@@ -122,19 +131,25 @@ need("probeProducer = true;" in qsa
      "the probe arms on the first frame AND after every re-pin (a fresh "
      "buffer may carry a fresh producer)")
 # the user override: persist per (sensor, display) pair
-need('"qrRotOffset." + sensorOrientation + "." + degrees' in qsa,
+# v1.4.32 re-point (2026-11-26): the offset key moved to qrUserOffset.*
+# (the old qrRotOffset.* held the CONFLATED angle — seed + taps — and is
+# never read again; the device base rides the immutable table, the user
+# offset defaults to 0).
+need('return "qrUserOffset." + sensorOrientation + "." + degrees;' in qsa,
      "the offset persists per (sensor, display) pair "
-     "(qrRotOffset.<sensor>.<degrees>)")
-need("rotOffset = (rotOffset + 90) % 360;" in qsa
-     and "rotOffset = 0;" in qsa and "setOnLongClickListener" in qsa,
-     "the rotate button: tap cycles +90 deg, long-press resets")
-need("rotBadge.setText(\"+\" + rotOffset + \"°\")" in qsa
+     "(qrUserOffset.<sensor>.<degrees>, default 0 — the base is the "
+     "table's and is never written)")
+need("userOffset = (userOffset + 90) % 360;" in qsa
+     and "userOffset = 0;" in qsa and "setOnLongClickListener" in qsa,
+     "the rotate button: tap cycles +90 deg (the OFFSET only), long-press "
+     "resets the offset to 0 (the device base is untouched)")
+need("rotBadge.setText(\"+\" + userOffset + \"°\")" in qsa
      and "rotBadge.setVisibility(View.GONE)" in qsa,
-     "the offset pill shows the live offset and hides at 0")
+     "the offset pill shows the live USER offset and hides at 0")
 need("R.drawable.ic_reload" in qsa and '"Rotate preview"' in qsa,
      "the rotate button rides an existing drawable + a content description")
 # the diag: producer= offset= joined the readable residual
-need('" producer=" + producerRot + " offset=" + rotOffset' in qsa
+need('" producer=" + producerRot + " offset=" + userOffset' in qsa
      and '" theta=" + theta' in qsa and '(fills ? "" : " MISMATCH")' in qsa,
      "the diag carries producer= offset= theta= (MISMATCH still marks ONLY "
      "a real cover failure)")

@@ -4,6 +4,105 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.32] — 2026-11-26
+
+**The orientation round — three QR fixes off the v1.4.31 field read-backs
+(the scanner opened wrong-side-up and needed a manual +90° tap every single
+session, portrait and landscape; the preview rode a vertical stretch; and
+stylized codes — dot/rounded modules, wavy lines, colour-on-colour designs —
+did not scan at all) plus a bounded quiet/perf pack. The upright angle is
+now a device FACT and the user's taps are a separate additive layer: the
+field-proven rotation base lives in an immutable table (a tap-cycle wrap or
+a reset can never destroy it again, and landscape finally starts upright
+too). The calibration capture that v1.4.31 added now runs against an
+identity transform and its answer is verified before it is trusted — the
+contaminated "measured" undo that re-introduced the stretch is rejected
+down the fallback chain instead of applied. And the decode ladder learned
+colour: a chroma-spread plane plus a second binarizer crack the stylized
+codes the brightness-only path was literally blind to.**
+
+### 1. QR: THE BASE-ANGLE LAW (orientation must never need a tap)
+- Corpse (v1.4.31 field): the +270 device seed was persisted into the SAME
+  key the rotate button writes (`qrRotOffset.<sensor>.<display>`), so a tap-
+  cycle wrap (270 → 0) or a reset destroyed the device default, and
+  landscape (sensor=90, display=90) was never seeded at all. The "default"
+  was just the last tap.
+- Law: split the two angles. (a) THE DEVICE BASE — a pure table
+  `baseAngleFor(model, sensor, display)`, immutable by any button:
+  RMX2020 (sensor=90) → (270 + display) % 360 (field-proven: display 0 →
+  270, 90 → 0, 180 → 90, 270 → 180); unknown models → 0. (b) THE USER
+  OFFSET — a new key `qrUserOffset.<sensor>.<display>`, default 0, additive
+  on top of the base; the rotate button cycles ONLY the offset and
+  long-press resets ONLY the offset to 0 (the base stays put — a tap then
+  a long-press returns exactly home). The old `qrRotOffset.*` keys are
+  ignored (they conflate base+tap; dated migration note).
+- theta = (sensor − display − producerRot + base + userOffset + 720) % 360.
+- Diag: the scanner logs `qr open model=… sensor=… display=… base=…
+  offset=… mode=…` at open, and the preview line gained `base=`.
+- Gate: the compiled REAL table over all four displays; the base/offset
+  separation pin (button writes never touch the base); the migration pin;
+  dated re-points of the v1.4.31 seed pins.
+
+### 2. QR: THE COMPOUND-ANISOTROPY LAW + the calibration identity (the vertical-stretch corpse)
+- Corpse (v1.4.31 field): the preview rode a vertical stretch again. Two
+  root causes: (a) the `net=` diag measured only the undo's own x/y ratio,
+  so the log read 1.000 while the COMPOUND displayed map (implicit ∘ undo ∘
+  recipe) was stretched — the log could not see the corpse; (b) the
+  calibration arm posted the stripe pattern WITHOUT resetting the view
+  transform to identity, so the solve measured implicit ∘ A_current instead
+  of implicit — a "measured" undo built from a contaminated capture
+  re-introduced the very stretch it exists to undo.
+- Law: (a) the pattern posts and the bitmap is read with
+  `setTransform(identity)` in force, and the REAL transform is restored
+  immediately after the solve AND on the 900 ms timeout path; (b) `net=`
+  became the COMPOUND linear anisotropy — per mode, the assumed implicit
+  (measured: solved i/t; table: uniform cover k; fill: anisotropic fill)
+  composed with the undo and the recipe's linear part; 1.000 = square
+  pixels; (c) a calibration solve is accepted ONLY when the whole-pattern
+  bijection passes AND the compound ratio against the chain prior sits
+  within [0.98, 1.02] — anything else falls down the chain
+  (measured → table → fill); a contaminated solve is never applied.
+- Gate: the compiled REAL compoundAnisotropy (the v1.4.30 corpse
+  configuration reads 3.784; every self-consistent leg reads 1.000); the
+  compiled REAL measuredAcceptable (in-window accept, off-window reject);
+  synthetic contamination fixtures (a non-identity start transform) — the
+  solve rejects or corrects; dated re-point of the v1.4.31 net= pin.
+
+### 3. QR: THE CHROMA + DUAL-BINARIZER LADDER (stylized codes)
+- Corpse: the live path decoded ONLY the Y plane, so colour-on-colour
+  modules with EQUAL luma were invisible to every binarizer; and every
+  pass rode HybridBinarizer alone, whose block grid can lose rounded/dot
+  modules and wavy edges.
+- Law (zero new deps): (a) QrCore gained a PURE `chromaOf` building the
+  chroma-spread plane (|U−128| + |V−128|) at HALF resolution; (b) the
+  decode ladder gained a FINAL chroma leg (plain + invert) — the live path
+  extracts U/V (pixelStride-aware, subsampled 2) ONLY on that failure leg,
+  keeping the 4 fps budget and the plane-reuse law; (c) every leg now
+  tries HybridBinarizer THEN GlobalHistogramBinarizer (dot/rounded modules
+  binarize better globally); (d) the gallery's decodeRobust gained the
+  same chroma + dual-binarizer legs at the caller's resolution. The
+  250 ms throttle is untouched.
+- Gate: synthetic probes — an equal-luma blue-on-green QR decodes ONLY via
+  chroma (every luma leg misses, both the ARGB and the live-YUV chroma
+  forms hit); dot-module and wavy-edge fixtures decode through the ladder;
+  the dual-binarizer order is pinned; the runtime-budget pin (the chroma
+  leg runs only after the luma ladder fails).
+
+### 4. THE QUIET/PERF PACK (four small cuts)
+- MediaHook's core script early-returns when `window !== window.top` —
+  the v1.4.31 "*" document-start registration had widened coverage by
+  accident; ad iframes must not own the notification or the wake-lock.
+- `webauthn_bootstrap.js`'s req() retry loop is bounded (≤10 tries, then
+  parked ceremonies reject) — the stub used to spin every 300 ms forever
+  in incognito and bridge-free popup children; the asset stays ≤3 KB.
+- CacheGuard's exit door=destroy is gated on `isFinishing()` — a
+  skin/locale recreate must not nuke the caches the recreated activity is
+  about to reuse.
+- Finish-path diet: the favicon extraction and the page-text capture move
+  to a postDelayed(~1200 ms) idle pass, cancelled by the next navigation;
+  CacheGuard's trim-driven check rate-limit went 2 min → 5 min. The perf
+  nav line is unchanged.
+
 ## [1.4.31] — 2026-11-25
 
 **The performance-and-quiet round — every fix traced to a line in the

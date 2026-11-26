@@ -146,8 +146,8 @@ tsl_code = strip_comments_strings(tsl)
 ba_code = strip_comments_strings(ba)
 
 print("V — the version pin")
-need("versionCode 145" in gradle, "versionCode 135 (Android only installs RISING codes)")
-need('versionName "1.4.31"' in gradle, 'versionName "1.4.31"')
+need("versionCode 146" in gradle, "versionCode 135 (Android only installs RISING codes)")
+need('versionName "1.4.32"' in gradle, 'versionName "1.4.32"')
 
 print("A — fix 1: the per-channel artwork copies + the API-29 off default")
 need("Bitmap art = artCopy();\n                if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);\n"
@@ -336,7 +336,7 @@ need("jlatexmath-android" in thirdparty and "GPL-2.0" in thirdparty,
      "linking exception)")
 
 print("G — the standing sweep count")
-need(gradle.count("versionCode 145") == 1,
+need(gradle.count("versionCode 146") == 1,
      "exactly one versionCode pin in build.gradle")
 
 # the compiled probe: every extractable pure body, transcribed and RUN

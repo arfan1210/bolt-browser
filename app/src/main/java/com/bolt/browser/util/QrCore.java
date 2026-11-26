@@ -11,6 +11,7 @@ import com.google.zxing.LuminanceSource;
 import com.google.zxing.NotFoundException;
 import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.Result;
+import com.google.zxing.common.GlobalHistogramBinarizer;
 import com.google.zxing.common.HybridBinarizer;
 import com.google.zxing.qrcode.QRCodeReader;
 import com.google.zxing.qrcode.QRCodeWriter;
@@ -35,24 +36,50 @@ public final class QrCore {
 
     private QrCore() {}
 
-    /** Decode a QR code from ARGB pixels. Returns the embedded text or null. */
+    /** Decode a QR code from ARGB pixels. Returns the embedded text or null.
+     *  v1.4.32 — THE DUAL-BINARIZER LAW: every leg tries HybridBinarizer
+     *  THEN GlobalHistogramBinarizer (dot/rounded/stylized modules binarize
+     *  better globally than on Hybrid's adaptive block grid — the
+     *  chess.com-style corpse). Order: Hybrid plain, Hybrid invert,
+     *  Global plain, Global invert. The extra attempts ride the FAILURE
+     *  path only — a clean code still exits on the first attempt. */
     public static String decode(int[] pixels, int width, int height) {
         if (pixels == null || width <= 0 || height <= 0 || pixels.length < width * height) return null;
         try {
             LuminanceSource src = new RGBLuminanceSource(width, height, pixels);
-            BinaryBitmap bmp = new BinaryBitmap(new HybridBinarizer(src));
+            return decodeDual(src);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.32 — the dual-binarizer, plain+invert core EVERY leg rides:
+     *  Hybrid plain → Hybrid invert → Global plain → Global invert. */
+    private static String decodeDual(LuminanceSource src) {
+        try {
             QRCodeReader reader = new QRCodeReader();
             Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
             hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
             hints.put(DecodeHintType.POSSIBLE_FORMATS, java.util.Collections.singletonList(BarcodeFormat.QR_CODE));
             try {
-                Result r = reader.decode(bmp, hints);
+                Result r = reader.decode(new BinaryBitmap(new HybridBinarizer(src)), hints);
                 return r.getText();
             } catch (NotFoundException first) {
-                // one retry inverted (dark screenshots / night-mode screens can flip)
                 try {
                     Result r = reader.decode(new BinaryBitmap(new HybridBinarizer(src.invert())), hints);
                     return r.getText();
+                } catch (NotFoundException second) {
+                    try {
+                        Result r = reader.decode(new BinaryBitmap(new GlobalHistogramBinarizer(src)), hints);
+                        return r.getText();
+                    } catch (NotFoundException third) {
+                        try {
+                            Result r = reader.decode(new BinaryBitmap(new GlobalHistogramBinarizer(src.invert())), hints);
+                            return r.getText();
+                        } catch (Throwable ignored) {
+                            return null;
+                        }
+                    }
                 } catch (Throwable ignored) {
                     return null;
                 }
@@ -105,27 +132,13 @@ public final class QrCore {
         return null;
     }
 
-    /** the two-attempt core (plain, then inverted) both higher callers ride. */
+    /** the dual-binarizer two-attempt core (plain, invert, Global pair)
+     *  every luma caller rides. v1.4.32 — Hybrid THEN Global per leg. */
     private static String decodeLuma2(byte[] y, int width, int height) {
         try {
             LuminanceSource src = new com.google.zxing.PlanarYUVLuminanceSource(
                     y, width, height, 0, 0, width, height, false);
-            BinaryBitmap bmp = new BinaryBitmap(new HybridBinarizer(src));
-            QRCodeReader reader = new QRCodeReader();
-            Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
-            hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
-            hints.put(DecodeHintType.POSSIBLE_FORMATS, java.util.Collections.singletonList(BarcodeFormat.QR_CODE));
-            try {
-                Result r = reader.decode(bmp, hints);
-                return r.getText();
-            } catch (NotFoundException first) {
-                try {
-                    Result r = reader.decode(new BinaryBitmap(new HybridBinarizer(src.invert())), hints);
-                    return r.getText();
-                } catch (Throwable ignored) {
-                    return null;
-                }
-            }
+            return decodeDual(src);
         } catch (Throwable t) {
             return null;
         }
@@ -191,6 +204,81 @@ public final class QrCore {
     }
 
     /**
+     * v1.4.32 — THE CHROMA-SPREAD PLANE (PURE, probe-pinned; the
+     * colour-on-colour corpse: the live path decoded ONLY the Y plane, so
+     * modules with EQUAL luma but different hue — blue-on-green — were
+     * literally invisible to every binarizer). Builds |U-128| + |V-128|
+     * per pixel from tight, already-de-strided half-resolution U/V planes
+     * (YUV420 chroma is natively subsampled 2): two hues of equal luma
+     * separate on chroma distance even when luma cannot see them. Returns
+     * null on a degenerate pair. The caller decodes the result through
+     * {@link #decodeChroma} — the FINAL leg of the luma ladder (plain +
+     * invert, dual-binarizer), reached only after plain+invert+stretch+
+     * half all fail (the runtime-budget law: the U/V extraction and this
+     * plane run ONLY on that failure leg, keeping the 4 fps budget).
+     */
+    public static byte[] chromaOf(byte[] u, byte[] v, int cw, int ch) {
+        try {
+            if (u == null || v == null || cw <= 0 || ch <= 0
+                    || u.length < cw * ch || v.length < cw * ch) return null;
+            int n = cw * ch;
+            byte[] out = new byte[n];
+            for (int i = 0; i < n; i++) {
+                int du = (u[i] & 0xFF) - 128;
+                int dv = (v[i] & 0xFF) - 128;
+                int s = Math.abs(du) + Math.abs(dv);
+                out[i] = (byte) (s > 255 ? 255 : s);
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * v1.4.32 — decode the CHROMA-SPREAD plane (the luma ladder's final
+     * leg): plain + invert through the dual-binarizer core. PURE w.r.t.
+     * the plane (no extraction here — the caller owns when U/V leave the
+     * camera frame). */
+    public static String decodeChroma(byte[] chroma, int cw, int ch) {
+        if (chroma == null || cw <= 0 || ch <= 0 || chroma.length < cw * ch) return null;
+        return decodeLuma2(chroma, cw, ch);
+    }
+
+    /**
+     * v1.4.32 — PURE (probe-pinned): the chroma-spread plane of an ARGB
+     * int[] buffer at HALF resolution (nearest-neighbour 2:1 subsample) —
+     * the gallery leg. Per pixel the BT.601 chroma spread
+     * |U-128| + |V-128| (U = (-169R - 331G + 500B)/1000 + 128,
+     * V = (500R - 419G - 81B)/1000 + 128) — the same measure the live
+     * YUV planes ride, derived from the RGB triple when no real U/V plane
+     * exists. Output dims: ceil(w/2) x ceil(h/2).
+     */
+    public static byte[] chromaOfArgb(int[] px, int width, int height) {
+        try {
+            if (px == null || width <= 0 || height <= 0
+                    || px.length < width * height) return null;
+            int cw = (width + 1) / 2, ch = (height + 1) / 2;
+            byte[] out = new byte[cw * ch];
+            for (int r = 0; r < ch; r++) {
+                int sr = Math.min(2 * r, height - 1);
+                for (int c = 0; c < cw; c++) {
+                    int sc = Math.min(2 * c, width - 1);
+                    int p = px[sr * width + sc];
+                    int red = p & 0xFF, grn = (p >> 8) & 0xFF, blu = (p >> 16) & 0xFF;
+                    int du = (-169 * red - 331 * grn + 500 * blu) / 1000;
+                    int dv = (500 * red - 419 * grn - 81 * blu) / 1000;
+                    int s = Math.abs(du) + Math.abs(dv);
+                    out[r * cw + c] = (byte) (s > 255 ? 255 : s);
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
      * v1.4.27 — THE ARGB MULTI-PASS (the photo-from-device corpse): the
      * gallery path's decode used to be the plain two-attempt ARGB call on
      * one 2000px downsample — a stylized / low-contrast QR inside a large
@@ -208,6 +296,17 @@ public final class QrCore {
             byte[] y = lumaOf(pixels, width, height);
             r = decodeLuma(y, width, height);
             if (r != null) return r;
+        } catch (Throwable ignored) {}
+        // v1.4.32 — THE CHROMA LEG (the gallery colour-on-colour corpse):
+        // after the ARGB pair and the full luma ladder both fail, the
+        // half-resolution chroma-spread plane gets its plain+invert,
+        // dual-binarizer pass at the same scale the caller handed over.
+        try {
+            byte[] chroma = chromaOfArgb(pixels, width, height);
+            if (chroma != null) {
+                r = decodeChroma(chroma, (width + 1) / 2, (height + 1) / 2);
+                if (r != null) return r;
+            }
         } catch (Throwable ignored) {}
         return null;
     }

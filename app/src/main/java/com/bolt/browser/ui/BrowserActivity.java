@@ -318,6 +318,20 @@ public class BrowserActivity extends AppCompatActivity {
         "next();" +
         "}catch(e){try{Bolt.favMiss(location.host);}catch(x){}}})();";
 
+    // v1.4.32 — THE FINISH-PATH DIET: the favicon extraction pass and the
+    // page-text capture leave the SYNCHRONOUS finish path — they ride ONE
+    // posted idle pass (~1200 ms after onPageFinished), cancelled by the
+    // next navigation (onPageStarted). The commit-critical path stops
+    // paying two evaluateJavascript round-trips per page.
+    private Runnable finishIdlePass;
+
+    private void cancelFinishIdlePass() {
+        try {
+            if (finishIdlePass != null) ui.removeCallbacks(finishIdlePass);
+        } catch (Throwable ignored) {}
+        finishIdlePass = null;
+    }
+
     // ---- v1.3.77 cache-guard loops (the storage law: under 50 MB total,
     // ideally under 40 while using, around 20 after closing) ----
     /** v1.3.77 — THE FOREGROUND AUDIT LOOP. v1.4.31 — THE CADENCE LAW (the
@@ -1619,8 +1633,15 @@ public class BrowserActivity extends AppCompatActivity {
         // skipped — the next cold start finishes them). Runs for incognito
         // too (before its early return below): incognito wipes MORE, never
         // less. v1.4.31 — door=destroy: onDestroy is the real-close door
-        // of the exit-sweep cadence law.
-        try { com.bolt.browser.util.CacheGuard.exit(this, "destroy"); } catch (Throwable ignored) {}
+        // of the exit-sweep cadence law. v1.4.32 — THE REAL-CLOSE GATE:
+        // onDestroy ALSO fires for a skin/locale RECREATE (isFinishing()
+        // == false) — the v1.4.31 door ran the full close-out + deep diet
+        // on every recreate, nuking the caches the recreated activity was
+        // about to reuse. Only a TRUE close sweeps here; the delayed/user
+        // doors are untouched.
+        if (isFinishing()) {
+            try { com.bolt.browser.util.CacheGuard.exit(this, "destroy"); } catch (Throwable ignored) {}
+        }
         if (incognito) {
             wipeIncognito();
             return;
@@ -4711,7 +4732,7 @@ public class BrowserActivity extends AppCompatActivity {
         applyRendererPolicies("trim");
         // v1.4.31 — THE TRIM-DRIVEN CACHE CHECK (the foreground-cadence
         // law): memory pressure is the moment a cache measure is worth its
-        // I/O. CacheGuard.check rate-limits internally (one pass per 2
+        // I/O. CacheGuard.check rate-limits internally (one pass per 5
         // minutes) so the storm cannot spam it, and every mid-session pass
         // carries a file-visit budget. The 30-minute idle audit + the exit
         // doors keep their own legs.
@@ -6190,6 +6211,10 @@ public class BrowserActivity extends AppCompatActivity {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
+            // v1.4.32 — THE FINISH-PATH DIET: a new navigation cancels the
+            // previous page's posted idle pass (favicon + page-text) — it
+            // belongs to the document that is going away
+            cancelFinishIdlePass();
             // v1.3.92 — the AI-export picker dies with the document it was
             // reading (the new document has no markers/state; the native
             // chrome would float over an unrelated page)
@@ -6526,28 +6551,55 @@ public class BrowserActivity extends AppCompatActivity {
                 ((MediaAwareContent) flContent).setRefreshing(false);
             // v1.3.35: refresh the glass-blur backdrops for the new content
             ui.postDelayed(BrowserActivity.this::updateBlurSnapshots, 120);
-            // v1.3.79 — THE UNIVERSAL FAVICON PASS: once per host per session,
-            // ask the PAGE to rasterize its own <link rel=icon> (the browser's
-            // SVG renderer draws SVG favicons to a canvas — BitmapFactory
-            // cannot, onReceivedIcon often never fires for them, and DDG/root
-            // ico have no SVG support: that was the z.ai logo.svg miss). The
-            // page fetches the icon bytes (CORS-permitting), draws them into a
-            // 96px canvas and hands Bolt a PNG data URL. Skip when we already
-            // hold an icon for the host or already tried this session.
-            try {
-                if (!incognito) {
-                    String host = Fx.hostOf(url == null ? "" : url);
-                    if (com.bolt.browser.util.FaviconStore.domPending(host)) {
-                        view.evaluateJavascript(FAV_EXTRACT_JS, null);
-                    }
-                }
-            } catch (Throwable ignored) {}
+            // v1.3.79 — THE UNIVERSAL FAVICON PASS + v1.3.40 PAGE-TEXT:
+            // v1.4.32 — both left the synchronous finish path (the
+            // FINISH-PATH DIET) — they ride the posted idle pass below
+            // (~1200 ms), cancelled by the next navigation.
             // v1.3.60: a load that finished while the app has no customView
             // must not carry a PHANTOM renderer-side fullscreen into the
             // fresh document (see healRendererFullscreen) — cheap probe,
             // no-op on healthy pages.
             try { healRendererFullscreen(view, "pageFinished"); } catch (Throwable ignored) {}
             Tab t = tabOf(view);
+            // v1.4.32 — THE FINISH-PATH DIET (the posted idle pass): the
+            // favicon extraction + the page-text capture ride ONE
+            // postDelayed(~1200 ms) — cancelled by the next navigation
+            // (onPageStarted). The finish path stops paying two
+            // evaluateJavascript round-trips on the critical path.
+            cancelFinishIdlePass();
+            final Tab fTab = t;
+            final WebView fView = view;
+            final String fUrl = url;
+            finishIdlePass = () -> {
+                try {
+                    // v1.3.79 — THE UNIVERSAL FAVICON PASS: once per host per
+                    // session, ask the PAGE to rasterize its own <link
+                    // rel=icon> (the SVG renderer draws SVG favicons to a
+                    // canvas — BitmapFactory cannot). Unchanged except timing.
+                    if (!incognito) {
+                        String host = Fx.hostOf(fUrl == null ? "" : fUrl);
+                        if (com.bolt.browser.util.FaviconStore.domPending(host)) {
+                            fView.evaluateJavascript(FAV_EXTRACT_JS, null);
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                try {
+                    // v1.3.40 — TAB SEARCH BY PAGE CONTENT: a slice of the
+                    // visible text so the switcher's search finds tabs by
+                    // what is ON the page. Never in incognito; never persisted.
+                    if (fTab != null && !incognito && !fTab.isHome && fTab.web != null) {
+                        fTab.web.evaluateJavascript(
+                                "(function(){try{return JSON.stringify((document.body&&document.body.innerText||'').slice(0,4000))}catch(e){return '\"\"'}})()",
+                                v -> {
+                                    try {
+                                        Object o = new org.json.JSONTokener(v).nextValue();
+                                        if (o instanceof String) fTab.pageText = (String) o;
+                                    } catch (Throwable ignored) {}
+                                });
+                    }
+                } catch (Throwable ignored) {}
+            };
+            ui.postDelayed(finishIdlePass, 1200L);
             if (t != null) {
                 t.url = url;
                 if (view.getTitle() != null) t.title = view.getTitle();
@@ -6563,22 +6615,6 @@ public class BrowserActivity extends AppCompatActivity {
                 // that race — a restored page still blank at tap time).
                 try { com.bolt.browser.util.PageTranslate.onPageLoaded(view); }
                 catch (Throwable ignored) {}
-                // v1.3.40 — TAB SEARCH BY PAGE CONTENT (round-4 #7):
-                // remember a slice of the visible text so the switcher's
-                // search finds tabs by what is ON the page, not just
-                // title/url. Never in incognito; never persisted.
-                if (!incognito && !t.isHome && t.web != null) {
-                    try {
-                        view.evaluateJavascript(
-                                "(function(){try{return JSON.stringify((document.body&&document.body.innerText||'').slice(0,4000))}catch(e){return '\"\"'}})()",
-                                v -> {
-                                    try {
-                                        Object o = new org.json.JSONTokener(v).nextValue();
-                                        if (o instanceof String) t.pageText = (String) o;
-                                    } catch (Throwable ignored) {}
-                                });
-                    } catch (Throwable ignored) {}
-                }
                 // v1.3.40: in fullscreen browsing a finished page hides the
                 // chrome right away (bars cover content otherwise)
                 if (com.bolt.browser.util.Fullscreen.on(BrowserActivity.this) && customView == null)

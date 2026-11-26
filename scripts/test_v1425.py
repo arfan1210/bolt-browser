@@ -108,9 +108,9 @@ mh_code = strip(mh_raw)
 thin_code = strip(thin)
 
 print("V0 — version + changelog")
-need(re.search(r"versionCode\s+145\b", gradle) is not None, "versionCode 145")
-need(re.search(r'versionName\s+"1\.4\.31"', gradle) is not None,
-     'versionName "1.4.31"')
+need(re.search(r"versionCode\s+146\b", gradle) is not None, "versionCode 146")
+need(re.search(r'versionName\s+"1\.4\.32"', gradle) is not None,
+     'versionName "1.4.32"')
 need("<item>1.4.25|" in strings, "the 1.4.25 About-changelog entry landed")
 need("Math fonts" in strings, "the changelog tells the math-reliability story")
 need("WHOLE page" in strings, "the changelog tells the grid-coverage story")

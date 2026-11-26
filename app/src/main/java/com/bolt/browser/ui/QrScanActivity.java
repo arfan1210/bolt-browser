@@ -117,14 +117,21 @@ public class QrScanActivity extends AppCompatActivity {
     private final float[] stMatrix = new float[16];
     private int producerRot = 0;
     private boolean probeProducer = true;
-    // v1.4.30 — THE USER'S OVERRIDE (the rotation-input law): if a device
-    // still shows a turned preview (SENSOR_ORIENTATION mis-report is the
-    // third ranked suspect), the scanner's rotate button shifts the angle
-    // by +90° steps and PERSISTS the offset per (sensor, display) pair —
-    // one honest, bounded user correction instead of another blind
-    // heuristic. Long-press resets it to the DEVICE DEFAULT (the v1.4.31
-    // seed below — 0 on unknown devices).
-    private int rotOffset = 0;
+    // v1.4.30 — THE USER'S OVERRIDE. v1.4.32 — THE BASE-ANGLE LAW SPLIT:
+    // this field is now ONLY the additive USER offset (the rotate button's
+    // own degrees, persisted under qrUserOffset.<sensor>.<display>, default
+    // 0). The device's standing correction moved to the immutable
+    // baseAngleFor table (below) — the v1.4.31 seed conflated the two under
+    // one key, so a tap-cycle wrap (270 -> 0) or a reset destroyed the
+    // device default and landscape (sensor=90, display=90) was never
+    // seeded: the field needed a manual +90 tap EVERY session. Old
+    // qrRotOffset.* keys are IGNORED (they conflate base+tap; migration
+    // note dated 2026-11-26 — they are never read again).
+    private int userOffset = 0;
+    // v1.4.32 — the fallback leg BELOW measured in the chain
+    // (measured -> table -> fill): the acceptance composes the solved undo
+    // against THIS leg's implicit (the contamination guard).
+    private String chainMode = "fill";
     // v1.4.31 — THE MEASURED-IMPLICIT LAW (the stretched-preview corpse:
     // the v1.4.29-30 matrix assumed the implicit buffer->view mapping is
     // the anisotropic FILL stretch, but the field device renders the
@@ -404,46 +411,49 @@ public class QrScanActivity extends AppCompatActivity {
 
         ImageButton rot = quietBtn(R.drawable.ic_reload);
         rot.setContentDescription("Rotate preview");
+        // v1.4.32 — THE BASE-ANGLE LAW: the button cycles ONLY the user
+        // offset; the device base (baseAngleFor) is immutable by any button.
         rot.setOnClickListener(v -> {
-            rotOffset = (rotOffset + 90) % 360;
-            saveRotOffset();
-            Fx.toast(this, rotOffset == 0
+            userOffset = (userOffset + 90) % 360;
+            saveUserOffset();
+            Fx.toast(this, userOffset == 0
                     ? "Preview offset +90° (back to 0)"
-                    : "Preview offset +" + rotOffset + "° — long-press to reset");
+                    : "Preview offset +" + userOffset + "° — long-press to reset");
             reapplyTransform();
         });
         rot.setOnLongClickListener(v -> {
-            // v1.4.31 — reset lands on the DEVICE DEFAULT (the L3 seed),
-            // never blindly on 0 — a seeded device keeps its standing fix
-            int def = seedRotOffsetFor(android.os.Build.MODEL, sensorOrientation,
-                    displayDegrees());
-            if (rotOffset == def) return false;
-            rotOffset = def;
-            saveRotOffset();
-            Fx.toast(this, def == 0 ? "Preview offset reset"
-                    : "Preview offset reset to device default +" + def + "°");
+            // v1.4.32 — reset lands on 0 — ONLY the user offset; the device
+            // base is untouched (the upright-on-open angle rides the table).
+            if (userOffset == 0) return false;
+            userOffset = 0;
+            saveUserOffset();
+            Fx.toast(this, "Preview offset reset");
             reapplyTransform();
             return true;
         });
         topBar.addView(rot, new LinearLayout.LayoutParams(-2, -2));
     }
 
-    /** the offset pill: visible only while the override is non-zero. */
+    /** the offset pill: visible only while the USER offset is non-zero
+     *  (the device base never shows — it is the table's business). */
     private void renderRotBadge() {
         if (rotBadge == null) return;
-        if (rotOffset == 0) {
+        if (userOffset == 0) {
             rotBadge.setVisibility(View.GONE);
         } else {
             rotBadge.setVisibility(View.VISIBLE);
-            rotBadge.setText("+" + rotOffset + "°");
+            rotBadge.setText("+" + userOffset + "°");
         }
     }
 
-    /** the persisted override key: PER (sensor, display) pair — a fix made
-     *  in portrait never leaks into landscape. NEVER logged with values
-     *  beyond the pair itself (no device identifiers ride the diag). */
-    private String rotOffsetKey(int degrees) {
-        return "qrRotOffset." + sensorOrientation + "." + degrees;
+    /** v1.4.32 — the USER offset key: PER (sensor, display) pair — a fix
+     *  made in portrait never leaks into landscape. The v1.4.31 key
+     *  (qrRotOffset.*) held the CONFLATED angle (seed + taps) and is
+     *  deliberately never read again: a tap-cycle wrap or a reset destroyed
+     *  the device default under it. NEVER logged with values beyond the
+     *  pair itself (no device identifiers ride the diag). */
+    private String userOffsetKey(int degrees) {
+        return "qrUserOffset." + sensorOrientation + "." + degrees;
     }
 
     /** the display rotation in degrees for the current (sensor, display)
@@ -459,24 +469,23 @@ public class QrScanActivity extends AppCompatActivity {
         }
     }
 
-    private void saveRotOffset() {
+    private void saveUserOffset() {
         try {
-            Prefs.get(this).set(rotOffsetKey(displayDegrees()), rotOffset);
+            Prefs.get(this).set(userOffsetKey(displayDegrees()), userOffset);
             renderRotBadge();
         } catch (Throwable ignored) {}
     }
 
-    /** reads the persisted override for the CURRENT (sensor, display) pair
-     *  (a fresh read every apply: cheap, and a button tap lands on the
-     *  very next transform). v1.4.31 — the DEFAULT is the device seed
-     *  (L3), so a seeded device starts upright before any tap; a saved
-     *  user value still wins over the seed. */
-    private int loadRotOffset(int degrees) {
-        int seed = seedRotOffsetFor(android.os.Build.MODEL, sensorOrientation, degrees);
+    /** reads the persisted USER offset for the CURRENT (sensor, display)
+     *  pair (a fresh read every apply: cheap, and a button tap lands on
+     *  the very next transform). v1.4.32 — the DEFAULT is 0: the upright-
+     *  on-open angle rides the baseAngleFor table, NOT this key — the two
+     *  angles are one additive pair and only the offset is a user thing. */
+    private int loadUserOffset(int degrees) {
         try {
-            return Prefs.get(this).i(rotOffsetKey(degrees), seed);
+            return Prefs.get(this).i(userOffsetKey(degrees), 0);
         } catch (Throwable t) {
-            return seed;
+            return 0;
         }
     }
 
@@ -584,7 +593,20 @@ public class QrScanActivity extends AppCompatActivity {
         // v1.4.31 — every camera open is a fresh measurement session
         calibDone = false;
         calibArmed = false;
-        undoMode = undoModeFor(android.os.Build.MODEL);
+        // v1.4.32 — the chain prior (the leg below measured) is fixed at
+        // open; the calibration may promote undoMode to measured but never
+        // demotes the prior
+        chainMode = undoModeFor(android.os.Build.MODEL);
+        undoMode = chainMode;
+        try {
+            Diag.log(this, "qr open model=" + android.os.Build.MODEL
+                    + " sensor=" + sensorOrientation
+                    + " display=" + displayDegrees()
+                    + " base=" + baseAngleFor(android.os.Build.MODEL,
+                            sensorOrientation, displayDegrees())
+                    + " offset=" + loadUserOffset(displayDegrees())
+                    + " mode=" + undoMode);
+        } catch (Throwable ignored) {}
         try {
             CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
             String id = null;
@@ -725,11 +747,22 @@ public class QrScanActivity extends AppCompatActivity {
      *  device table (undoModeFor). */
     private boolean armCalibration() {
         try {
-            undoMode = undoModeFor(android.os.Build.MODEL);
+            undoMode = chainMode;   // v1.4.32 — the chain prior, every fresh arm
             calibDone = false;
             calibArmed = false;
             SurfaceTexture st = tvPreview.getSurfaceTexture();
             if (st == null || previewSurface == null || bufW <= 0 || bufH <= 0) return false;
+            // v1.4.32 — THE IDENTITY RESET (the contaminated-solve corpse:
+            // the v1.4.31 arm posted the pattern WITHOUT resetting the view
+            // transform, so finishCalibration solved implicit∘A_current —
+            // the "measured" undo re-introduced the very stretch it exists
+            // to undo). The capture must see the view EXACTLY as the
+            // implicit mapping leaves it: setTransform(identity) BEFORE the
+            // pattern posts. Restored right after the solve (the ok path)
+            // and on the 900ms timeout path below.
+            try { tvPreview.post(() -> { try {
+                tvPreview.setTransform(new Matrix());
+            } catch (Throwable ignored) {} }); } catch (Throwable ignored) {}
             android.graphics.Canvas c = previewSurface.lockCanvas(null);
             if (c == null) return false;
             try {
@@ -765,11 +798,15 @@ public class QrScanActivity extends AppCompatActivity {
                 try {
                     if (!calibDone) {
                         calibArmed = false;
-                        undoMode = undoModeFor(android.os.Build.MODEL);
+                        undoMode = chainMode;   // v1.4.32 — fall down the chain
                         try {
                             Diag.log(this, "qr calib timeout mode=" + undoMode);
                         } catch (Throwable ignored) {}
                     }
+                    // v1.4.32 — restore the REAL transform on the timeout
+                    // path too (the identity capture transform must never
+                    // outlive the calibration)
+                    reapplyTransform();
                     if (session != null && camera != null && !cameraFailed) startRepeating();
                 } catch (Throwable ignored) {}
             }, 900L);
@@ -786,6 +823,11 @@ public class QrScanActivity extends AppCompatActivity {
         try {
             int vw = tvPreview.getWidth(), vh = tvPreview.getHeight();
             if (vw <= 0 || vh <= 0) return false;
+            // v1.4.32 — identity AGAIN right before the read (belt and
+            // braces: the capture frame must be the implicit map alone —
+            // if a stale transform rode the render, the acceptance below
+            // rejects the solve down the chain instead of applying it)
+            try { tvPreview.setTransform(new Matrix()); } catch (Throwable ignored) {}
             android.graphics.Bitmap b = tvPreview.getBitmap();
             if (b == null) return false;
             boolean ok = false;
@@ -816,12 +858,31 @@ public class QrScanActivity extends AppCompatActivity {
                 }
                 float[] sx = rx != null ? solveAxis(rx, bufW, vw) : null;
                 float[] sy = gy != null ? solveAxis(gy, bufH, vh) : null;
+                // v1.4.32 — THE ACCEPTANCE GATE: the solve is applied ONLY
+                // when the whole-pattern bijection passed (solveAxis non-null)
+                // AND the compound anisotropy of the solved undo against the
+                // chain prior's implicit sits within [0.98, 1.02] — a solve
+                // captured under a stale non-identity transform reads off-
+                // window and is REJECTED down the chain (measured -> table
+                // -> fill), never applied.
                 if (sx != null && sy != null) {
-                    calibIx = sx[0]; calibTx = sx[1];
-                    calibIy = sy[0]; calibTy = sy[1];
-                    undoMode = "measured";
-                    calibDone = true;
-                    ok = true;
+                    float priorX, priorY;
+                    if ("table".equals(chainMode)) {
+                        float k = Math.max(vw / (float) bufW, vh / (float) bufH);
+                        priorX = k; priorY = k;
+                    } else {
+                        priorX = vw / (float) bufW;
+                        priorY = vh / (float) bufH;
+                    }
+                    if (measuredAcceptable(sx[0], sy[0], priorX, priorY)) {
+                        calibIx = sx[0]; calibTx = sx[1];
+                        calibIy = sy[0]; calibTy = sy[1];
+                        undoMode = "measured";
+                        calibDone = true;
+                        ok = true;
+                    } else {
+                        undoMode = chainMode;
+                    }
                 }
             } finally {
                 try { b.recycle(); } catch (Throwable ignored) {}
@@ -829,7 +890,7 @@ public class QrScanActivity extends AppCompatActivity {
             try {
                 Diag.log(this, ok
                         ? "qr calib ok mode=measured ix=" + fmt(calibIx) + " iy=" + fmt(calibIy)
-                        : "qr calib fail mode=" + undoModeFor(android.os.Build.MODEL));
+                        : "qr calib fail mode=" + chainMode);
             } catch (Throwable ignored) {}
             return ok;
         } catch (Throwable t) {
@@ -960,15 +1021,58 @@ public class QrScanActivity extends AppCompatActivity {
         return "fill";
     }
 
-    /** v1.4.31 — L3 THE OFFSET SEED (probe-pinned): devices whose preview
-     *  needs a standing rotation correction get it the FIRST time the
-     *  scanner opens, persisted under the same (sensor, display) key the
-     *  rotate button writes. The user's own saved offset still wins — the
-     *  seed is only the DEFAULT. RMX2020 (sensor=90, display=0): the field
-     *  proved +270 upright. */
-    static int seedRotOffsetFor(String model, int sensor, int display) {
-        if ("RMX2020".equals(model) && sensor == 90 && display == 0) return 270;
+    /** v1.4.32 — THE BASE-ANGLE LAW (PURE, gate-pinned): the DEVICE base
+     *  rotation correction — IMMUTABLE by any button. The v1.4.31 seed
+     *  wrote its +270 into the SAME key the rotate button writes, so a
+     *  tap-cycle wrap (270 -> 0) or a reset destroyed the device default
+     *  and landscape was never seeded — the field needed a manual +90 tap
+     *  EVERY session. Now the base is a pure table answer and the user's
+     *  taps live in a separate additive offset (qrUserOffset.*). Table:
+     *  RMX2020 (sensor=90) -> (270 + display) % 360 — field-proven:
+     *  display 0 -> 270, 90 -> 0, 180 -> 90, 270 -> 180; unknown models
+     *  -> 0. The table grows only from field read-backs. */
+    static int baseAngleFor(String model, int sensor, int display) {
+        if ("RMX2020".equals(model) && sensor == 90) return (270 + display) % 360;
         return 0;
+    }
+
+    /** v1.4.32 — PURE (gate-pinned): THE COMPOUND LINEAR ANISOTROPY — the
+     *  x/y stretch ratio of the DISPLAYED map (assumed implicit ∘ undo ∘
+     *  the recipe's linear part). The recipe's linear part (the uniform
+     *  cover scale after a rotation) is isometric — the ratio rides
+     *  diag(undo)∘diag(implicit) alone; 1.000 = square pixels. The old net=
+     *  measured only the undo's own x/y ratio and could not see the corpse:
+     *  the v1.4.30 configuration (anisotropic-fill undo on a device whose
+     *  real implicit is uniform COVER) composes to 3.784 here — exactly
+     *  the reported ~3.8x stretch; every self-consistent leg reads 1.000. */
+    static float compoundAnisotropy(float impX, float impY, float undoX, float undoY) {
+        try {
+            float ax = undoX * impX, ay = undoY * impY;
+            if (!(ax > 0f) || !(ay > 0f) || Float.isNaN(ax) || Float.isNaN(ay)) return 1f;
+            return Math.max(ax, ay) / Math.min(ax, ay);
+        } catch (Throwable t) {
+            return 1f;
+        }
+    }
+
+    /** v1.4.32 — PURE (gate-pinned): THE MEASURED-SOLVE ACCEPTANCE. The
+     *  stripe solve is applied ONLY when its whole-pattern bijection passed
+     *  (the caller holds that) AND the compound anisotropy of the solved
+     *  undo against the chain prior's implicit sits within [0.98, 1.02].
+     *  A capture that rode a stale non-identity transform (the
+     *  contamination corpse) reads off-window and is rejected down the
+     *  chain — never applied. */
+    static boolean measuredAcceptable(float ix, float iy, float priorX, float priorY) {
+        try {
+            if (!(ix > 0f) || !(iy > 0f) || !(priorX > 0f) || !(priorY > 0f)) return false;
+            float ax = priorX / ix, ay = priorY / iy;
+            if (Float.isNaN(ax) || Float.isNaN(ay) || Float.isInfinite(ax)
+                    || Float.isInfinite(ay)) return false;
+            float r = Math.max(ax, ay) / Math.min(ax, ay);
+            return r >= 0.98f && r <= 1.02f;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** v1.4.31 — PURE (gate-compiled): the stripe test-pattern geometry.
@@ -1125,12 +1229,18 @@ public class QrScanActivity extends AppCompatActivity {
                     : rotation == Surface.ROTATION_270 ? 270 : 0;
             // v1.4.30 — THE COMPENSATED ANGLE: the producer's own rotation
             // (already on screen via TextureView's internal transform) is
-            // SUBTRACTED; the persisted user override ADDS last (the user
-            // sees the real render — their tap must win over every
-            // heuristic). Both wrap in +720 so the result stays non-negative.
-            rotOffset = loadRotOffset(degrees);
-            int theta = (sensorOrientation - degrees - producerRot + 720) % 360;
-            theta = (theta + rotOffset + 360) % 360;
+            // SUBTRACTED; the user override ADDS last (the user sees the
+            // real render — their tap must win over every heuristic).
+            // v1.4.32 — THE BASE-ANGLE LAW: the angle is now TWO additive
+            // pieces — the immutable device base (baseAngleFor, per model+
+            // sensor+display) + the user offset (the button's key, default
+            // 0) — the old conflation let a tap-cycle wrap or a reset
+            // destroy the device default. Both wrap in +720 so the result
+            // stays non-negative.
+            userOffset = loadUserOffset(degrees);
+            int base = baseAngleFor(android.os.Build.MODEL, sensorOrientation, degrees);
+            int theta = (sensorOrientation - degrees - producerRot + base
+                    + userOffset + 720) % 360;
             renderRotBadge();
             // v1.4.26 — the ACTUAL pinned buffer dims (the 640x480 pre-open
             // placeholder made the old previewSize-null early return leave
@@ -1225,15 +1335,28 @@ public class QrScanActivity extends AppCompatActivity {
                 // still marks ONLY a real cover failure. No URLs, no
                 // tokens, nothing device-identifying rides this line.
                 // v1.4.31 — the line grew mode= (measured|table|fill —
-                // which undo leg fired) and net= (the undo's own x/y
-                // anisotropy — the displayed-stretch predictor; the v1.4.30
-                // corpse read 3.784 here, a measured/table undo reads
-                // 1.0xx). Same privacy posture as before.
-                float net = (undoSy != 0f) ? undoSx / undoSy : 1f;
+                // which undo leg fired) and net=. v1.4.32 — net= became the
+                // COMPOUND linear anisotropy (assumed implicit ∘ undo — the
+                // recipe's uniform-cover/rotation part is isometric) and
+                // the line grew base= (the immutable device base — the
+                // v1.4.31 line could not separate the base from the user
+                // offset, so a tap-destroyed seed read as "no offset").
+                // 1.000 = square pixels under the mode's model. Same
+                // privacy posture as before.
+                float net;
+                if ("measured".equals(undoMode) && calibDone && calibIx > 0f) {
+                    net = compoundAnisotropy(calibIx, calibIy, undoSx, undoSy);
+                } else if ("table".equals(undoMode)) {
+                    float kk = Math.max(viewW / bw, viewH / bh);
+                    net = compoundAnisotropy(kk, kk, undoSx, undoSy);
+                } else {
+                    net = compoundAnisotropy(viewW / bw, viewH / bh, undoSx, undoSy);
+                }
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
                         " buf=" + Math.round(bw) + "x" + Math.round(bh) +
                         " sensor=" + sensorOrientation + " display=" + degrees +
-                        " producer=" + producerRot + " offset=" + rotOffset +
+                        " base=" + base +
+                        " producer=" + producerRot + " offset=" + userOffset +
                         " theta=" + theta +
                         " content=" + Math.round(uw * s) + "x" + Math.round(uh * s) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
@@ -1258,6 +1381,27 @@ public class QrScanActivity extends AppCompatActivity {
             lastDecodeAt = now;
             byte[] y = yPlane(im);
             String text = QrCore.decodeLuma(y, im.getWidth(), im.getHeight());
+            // v1.4.32 — THE CHROMA LEG (failure-only: the colour-on-colour
+            // corpse — blue-on-green modules of equal luma are invisible to
+            // every Y-plane binarizer). U/V are extracted HERE and ONLY here,
+            // after the whole luma ladder failed — the success path never
+            // pays the extraction (the 4 fps budget law holds). The tight
+            // half-res buffers persist across frames (the plane-reuse law).
+            if (text == null || text.trim().isEmpty()) {
+                try {
+                    Image.Plane pu = im.getPlanes()[1];
+                    Image.Plane pv = im.getPlanes()[2];
+                    int cw = (im.getWidth() + 1) / 2, ch = (im.getHeight() + 1) / 2;
+                    if (uBuf == null || uBuf.length < cw * ch) uBuf = new byte[cw * ch];
+                    if (vBuf == null || vBuf.length < cw * ch) vBuf = new byte[cw * ch];
+                    destridePlane(pu, uBuf, cw, ch);
+                    destridePlane(pv, vBuf, cw, ch);
+                    byte[] chroma = QrCore.chromaOf(uBuf, vBuf, cw, ch);
+                    if (chroma != null) {
+                        text = QrCore.decodeChroma(chroma, cw, ch);
+                    }
+                } catch (Throwable ignored) {}
+            }
             if (text != null && !text.trim().isEmpty()) deliver(text.trim());
         } catch (Throwable ignored) {
         } finally {
@@ -1297,6 +1441,37 @@ public class QrScanActivity extends AppCompatActivity {
             }
         }
         return out;
+    }
+
+    // v1.4.32 — the chroma leg's reused half-res planes (the plane-reuse
+    // law: allocated once, grown only when a bigger frame arrives — the
+    // failure-leg extraction never churns GC on the camera thread).
+    private static byte[] uBuf = null, vBuf = null;
+
+    /** v1.4.32 — de-stride one YUV plane (rowStride can exceed width;
+     *  pixelStride > 1 handled) into a tight w*h buffer. Shared by the
+     *  U/V failure-leg extraction. */
+    private static void destridePlane(Image.Plane p, byte[] out, int w, int h) {
+        ByteBuffer buf = p.getBuffer();
+        int rs = p.getRowStride(), ps = p.getPixelStride();
+        int cap = buf.capacity();
+        if (ps == 1) {
+            for (int row = 0; row < h; row++) {
+                int off = row * rs;
+                if (off >= cap) break;
+                int len = Math.min(w, cap - off);
+                buf.position(off);
+                buf.get(out, row * w, len);
+            }
+        } else {
+            for (int row = 0; row < h; row++) {
+                for (int col = 0; col < w; col++) {
+                    int idx = row * rs + col * ps;
+                    if (idx >= cap) break;
+                    out[row * w + col] = buf.get(idx);
+                }
+            }
+        }
     }
 
     private void deliver(String text) {
