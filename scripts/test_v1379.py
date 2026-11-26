@@ -104,9 +104,15 @@ need("postDelayed(cacheBgSweep, 45 * 1000L)" not in act,
 # exit … deep=1"-at-every-backgrounding storm); it arms the 5-minute
 # delayed sweep (door=delayed), cancelled by onResume, with onDestroy
 # (door=destroy) the real-close door.
+# v1.4.33 re-point (2026-11-27): the delayed door waits 10 minutes (the
+# recents-wipe corpse: "door=delayed deep=1 freed=16mb" fired after 1-2
+# minutes in recents — merely switching apps wiped logins-adjacent
+# stores), and the delayed door runs the CACHE-SUBTREE SWEEP ONLY (deep=0,
+# the CacheGuard door/deep matrix — test_v1433.py pins it).
 need('CacheGuard.exit(BrowserActivity.this, "delayed")' in act
-     and "ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L);" in act,
-     "onStop arms the 5-minute delayed sweep (the v1.4.31 cadence law)")
+     and "ui.postDelayed(cacheBgSweep, 10 * 60 * 1000L);" in act,
+     "onStop arms the delayed sweep (the v1.4.31 cadence law; v1.4.33: "
+     "10 minutes, deep=0 on the delayed door)")
 need('File(a.cacheDir, "ocrfast")' in read(APP / "util/ScreenTranslate.kt"),
      "OCR models must live in cacheDir (re-downloadable = cache)")
 need("public boolean deepCleanExit() { return b(\"deepCleanExit\", true); }" in prefs,
@@ -125,7 +131,14 @@ need("net.execute { storeLocked" in fav,
 need("allCache" in read(APP / "scripts/UserscriptEngine.java"),
      "UserscriptEngine needs the parse cache (menu open read every script)")
 need("histFloor" in act, "the omnibox history scan must be capped")
-need("lastBlurSnap < 400" in act, "the glass blur refresh must be throttled to 400 ms")
+# v1.4.33 re-point (2026-11-27): THE STALE-BACKDROP LAW — the throttle
+# is scroll-aware now (no snapshot mid-scroll; a stale backdrop restores
+# at ~120ms after idle; the standing 400ms throttle holds in the steady
+# state — the battery law rides).
+need("long gap = (blurStale[0] || blurStale[1]) ? 120 : 400;" in act,
+     "the glass blur refresh is throttled (400ms steady state; the "
+     "v1.4.33 stale-backdrop law adds the mid-scroll skip + the 120ms "
+     "post-idle restore)")
 need("d=4000" in hook, "the media scan must idle at 4 s when no media exists")
 need("chipsScan.join(200)" in act, "the cookie-scan join must stay bounded small")
 

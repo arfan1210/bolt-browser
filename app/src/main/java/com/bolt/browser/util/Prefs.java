@@ -86,6 +86,17 @@ public class Prefs {
         } catch (Throwable ignored) {}
     }
 
+    /** v1.4.33 — drop a key entirely (the dated-migration mechanic: a
+     *  stored value EQUAL to a retired default is reset by REMOVING the
+     *  key, so the new default takes over while an explicit user
+     *  override — a different value — survives). Debounced like set. */
+    public void remove(String k) {
+        try {
+            synchronized (WRITE_LOCK) { global.remove(k); }
+            scheduleWrite();
+        } catch (Throwable ignored) {}
+    }
+
     // ---- v1.3.79 — THE WRITE DEBOUNCE (the tap-lag fix, root cause #1) ----
     // set() used to serialize the ENTIRE prefs.json and write it to flash
     // on the CALLING thread (the main thread) on EVERY change — and the

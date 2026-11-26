@@ -216,6 +216,20 @@ object CacheGuard {
      *             onResume (the v1.3.77 cadence restored; the OEM-kill
      *             window is still covered by the start/done marker pair
      *             + the next cold start's pending-exit finisher).
+     * v1.4.33 — THE DOOR/DEEP MATRIX (the recents-wipe corpse: the field
+     * diag read "cache guard exit door=delayed ... deep=1 freed=16mb"
+     * after MERELY BACKGROUNDED to recents for 1-2 minutes — the delayed
+     * door ran the full DEEP site-data diet and the logins-adjacent
+     * stores went with it). The matrix:
+     *   destroy (isFinishing-gated in the caller) — deep rides the pref;
+     *   user    — deep rides the pref (an explicit sweep is a user act);
+     *   update  — deep rides the pref (the installer close-out);
+     *   delayed — deep=0 ALWAYS: a cache-subtree sweep ONLY, and the
+     *             door itself waits 10 minutes of backgrounding (the
+     *             BrowserActivity cadence). Merely switching apps can
+     *             never again touch site data; the ~20 MB promise still
+     *             holds at true close (destroy/user/update + the startup
+     *             sweep + the pending-exit finisher are unchanged).
      * The door rides the diag line so the field can see which door
      * fired. The startup sweep and the pending-exit finisher are
      * UNCHANGED — the ~20 MB promise still holds at true close.
@@ -255,10 +269,16 @@ object CacheGuard {
                 // v1.3.86 — LOGIN PRESERVATION: Local Storage survives
                 // unless it is the grower (see LOCAL_STORAGE_KEEP_BYTES);
                 // IndexedDB / Service Worker / File System / Session
-                // Storage / legacy databases always go
+                // Storage / legacy databases always go.
+                // v1.4.33 — THE DOOR/DEEP MATRIX: the delayed door is the
+                // cache-subtree sweep ONLY (deep=0) — merely backgrounding
+                // to recents must never run the site-data diet; the deep
+                // diet rides destroy/user/update alone.
                 var deep = false
                 try {
-                    if (Prefs.get(ctx).deepCleanExit()) {
+                    if (door == "delayed") {
+                        deep = false
+                    } else if (Prefs.get(ctx).deepCleanExit()) {
                         deep = true
                         val lsDirs = localStorageDirs(ctx)
                         val lsSize = sizeOf(lsDirs)
@@ -291,7 +311,13 @@ object CacheGuard {
                 try {
                     Diag.log(ctx, "cache guard exit door=" + door + " " +
                             mb(before) + "mb freed=" + mb(freed) + "mb" +
-                            (if (deep) " deep=1" else "") + breakdown(ctx))
+                            // v1.4.33 — the door/deep matrix rides the line:
+                            // deep=1 on a diet door, an explicit deep=0 on
+                            // the delayed door (the sweep ran, the diet did
+                            // not), nothing on the no-pref doors
+                            (if (deep) " deep=1"
+                             else if (door == "delayed") " deep=0" else "")
+                            + breakdown(ctx))
                 } catch (_: Throwable) {}
                 markExit(ctx, started = false)
             } catch (_: Throwable) {

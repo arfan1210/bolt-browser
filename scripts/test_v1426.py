@@ -863,8 +863,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 140/1.4.26 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1426.py")),
      "the v1.4.26 sweep script is checked in (provenance)")
-need('versionName "1.4.32"' in open(BG, encoding="utf8").read()
-     and "versionCode 146" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.33"' in open(BG, encoding="utf8").read()
+     and "versionCode 147" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
      # v1.4.27 re-point (2026-11-22): the build pin + its label moved to
      # 141/1.4.27 (the picture-stack + merged-pipeline round)

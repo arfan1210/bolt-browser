@@ -166,6 +166,14 @@ public class QrScanActivity extends AppCompatActivity {
     private int sensorOrientation = 90;
     private boolean torchOn, cameraFailed, denied, done, flashAvailable;
     private long lastDecodeAt;
+    // v1.4.33 — THE ACTIVE-ARRAY PADDING LAW (the slight-vertical-stretch
+    // corpse: buf=1920x1088 is stride-aligned; the ACTIVE image is
+    // 1920x1080 — the cover/undo math that used 1088 carried a 0.74%
+    // vertical aspect error). activeW/H hold the ACTIVE (scene) dims the
+    // buffer carries; 0 = unknown (every pad factor degenerates to 1 and
+    // the law no-ops). Read from SENSOR_INFO_ACTIVE_ARRAY_SIZE at
+    // openCamera (clamped to the stream) + the stride-alignment fallback.
+    private int activeW = 0, activeH = 0;
 
     // ------------------------------------------------------------ UI
 
@@ -631,6 +639,43 @@ public class QrScanActivity extends AppCompatActivity {
             previewSize = pickLargest(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920);
             Size yuv = pickLargest(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920);
             if (previewSize == null || yuv == null) { cameraFailure(); return; }
+            // v1.4.33 — THE ACTIVE-ARRAY READ (the padding-compensation
+            // input): the ACTIVE (scene) dims the buffer carries. The
+            // characteristics may report the FULL sensor array (bigger than
+            // any stream) — clamped to the stream dims it contributes
+            // nothing and pad degenerates to 1.000; a HAL that reports the
+            // stream-active crop lands directly. The stride-alignment
+            // fallback below covers the field shape (buf 1920x1088 carries
+            // a 1920x1080 16:9 scene — the 8 extra rows are allocation
+            // padding, never scene).
+            activeW = previewSize.getWidth();
+            activeH = previewSize.getHeight();
+            try {
+                android.graphics.Rect aa = ch.get(
+                        CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                if (aa != null && aa.width() > 0 && aa.height() > 0) {
+                    activeW = Math.min(aa.width(), previewSize.getWidth());
+                    activeH = Math.min(aa.height(), previewSize.getHeight());
+                }
+            } catch (Throwable ignored) {}
+            int nine = Math.round(previewSize.getWidth() * 9f / 16f);
+            if (activeH >= previewSize.getHeight()
+                    && previewSize.getHeight() > nine
+                    && previewSize.getHeight() - nine
+                            <= Math.max(16, previewSize.getHeight() / 32)) {
+                activeH = nine;
+            }
+            if (activeW <= 0 || activeH <= 0
+                    || activeW > previewSize.getWidth()
+                    || activeH > previewSize.getHeight()) {
+                activeW = 0; activeH = 0;   // junk guard: the law no-ops
+            }
+            try {
+                Diag.log(this, "qr active " + previewSize.getWidth() + "x"
+                        + previewSize.getHeight() + " active=" + activeW + "x" + activeH
+                        + " pad=" + String.format(java.util.Locale.US, "%.3f",
+                                padY(previewSize.getWidth(), previewSize.getHeight())));
+            } catch (Throwable ignored) {}
             // v1.4.26 — pin + re-apply (the surface may already be live with
             // the 640x480 placeholder buffer)
             pinBuffer();
@@ -868,11 +913,15 @@ public class QrScanActivity extends AppCompatActivity {
                 if (sx != null && sy != null) {
                     float priorX, priorY;
                     if ("table".equals(chainMode)) {
-                        float k = Math.max(vw / (float) bufW, vh / (float) bufH);
+                        // v1.4.33 — the prior rides the ACTIVE (scene) dims
+                        // (the padding law: k on the padded 1088 carried the
+                        // 0.74% error into the acceptance window too)
+                        float k = Math.max(vw / (float) awPrior(),
+                                vh / (float) ahPrior());
                         priorX = k; priorY = k;
                     } else {
-                        priorX = vw / (float) bufW;
-                        priorY = vh / (float) bufH;
+                        priorX = vw / (float) awPrior();
+                        priorY = vh / (float) ahPrior();
                     }
                     if (measuredAcceptable(sx[0], sy[0], priorX, priorY)) {
                         calibIx = sx[0]; calibTx = sx[1];
@@ -1027,12 +1076,19 @@ public class QrScanActivity extends AppCompatActivity {
      *  tap-cycle wrap (270 -> 0) or a reset destroyed the device default
      *  and landscape was never seeded — the field needed a manual +90 tap
      *  EVERY session. Now the base is a pure table answer and the user's
-     *  taps live in a separate additive offset (qrUserOffset.*). Table:
-     *  RMX2020 (sensor=90) -> (270 + display) % 360 — field-proven:
-     *  display 0 -> 270, 90 -> 0, 180 -> 90, 270 -> 180; unknown models
-     *  -> 0. The table grows only from field read-backs. */
+     *  taps live in a separate additive offset (qrUserOffset.*).
+     *  v1.4.33 — THE PORTRAIT-ONLY LAW: the scanner activity is LOCKED
+     *  portrait in the manifest (QR decoding is orientation-independent —
+     *  ZXing infers rotation from the finder patterns — and the landscape
+     *  preview path was pure liability). The table keeps ONLY the portrait
+     *  entry (RMX2020 sensor=90 display=0 -> 270, field-proven); every
+     *  landscape display branch is DELETED (dated note 2026-11-27: the
+     *  v1.4.32 (270 + display) % 360 rows for display 90/180/270 are
+     *  retired with the landscape path — display= is always 0 now).
+     *  Unknown models / sensors -> 0. The table grows only from field
+     *  read-backs. */
     static int baseAngleFor(String model, int sensor, int display) {
-        if ("RMX2020".equals(model) && sensor == 90) return (270 + display) % 360;
+        if ("RMX2020".equals(model) && sensor == 90 && display == 0) return 270;
         return 0;
     }
 
@@ -1074,6 +1130,33 @@ public class QrScanActivity extends AppCompatActivity {
             return false;
         }
     }
+
+    /** v1.4.33 — PURE (gate-pinned): the padding factor of an axis — the
+     *  buffer span over the ACTIVE (scene) span. 1.000 when no active dims
+     *  are known (the law no-ops) or the axis carries no padding. The
+     *  field corpse: buf 1920x1088 carries a 1920x1080 scene — the
+     *  vertical factor is 1088/1080 = 1.00741, exactly the reported
+     *  slight vertical stretch. */
+    static float padFactor(int buf, int active) {
+        try {
+            if (buf <= 0 || active <= 0 || active > buf) return 1f;
+            return buf / (float) active;
+        } catch (Throwable t) {
+            return 1f;
+        }
+    }
+
+    /** the buffer's vertical padding factor for the CURRENT open session
+     *  (the diag's pad= and the transform's compensation). */
+    private float padY(int bw, int bh) {
+        if (activeW <= 0 || activeH <= 0) return 1f;
+        return padFactor(bh, activeH);
+    }
+
+    /** v1.4.33 — the ACTIVE (scene) dims the chain-prior composes against:
+     *  the active read when known, the buffer dims otherwise. */
+    private int awPrior() { return activeW > 0 ? activeW : bufW; }
+    private int ahPrior() { return activeH > 0 ? activeH : bufH; }
 
     /** v1.4.31 — PURE (gate-compiled): the stripe test-pattern geometry.
      *  7 vertical stripes at bufW*j/8 and 7 horizontal stripes at bufH*j/8
@@ -1246,12 +1329,19 @@ public class QrScanActivity extends AppCompatActivity {
             // placeholder made the old previewSize-null early return leave
             // the view UNTRANSFORMED forever — the race); the recipe is the
             // v1.3.88 general one: rotate by the JPEG-orientation angle, then
-            // cover-scale the upright content, centered
+            // cover-scale the upright content, centered.
+            // v1.4.33 — THE ACTIVE-ARRAY PADDING LAW: the cover/undo math
+            // rides the ACTIVE (scene) dims — the buffer's stride-aligned
+            // overhang (1088 for a 1920x1080 scene) is never scene, and
+            // math that used it carried the 0.74% vertical aspect error the
+            // field reported. Unknown active dims degenerate to the buffer.
             float bw = bufW;
             float bh = bufH;
-            // upright content dimensions after the rotation
-            float uw = (theta % 180 == 0) ? bw : bh;
-            float uh = (theta % 180 == 0) ? bh : bw;
+            float aw = activeW > 0 ? activeW : bw;
+            float ah = activeH > 0 ? activeH : bh;
+            // upright content dimensions after the rotation (ACTIVE dims)
+            float uw = (theta % 180 == 0) ? aw : ah;
+            float uh = (theta % 180 == 0) ? ah : aw;
             // cover scale: fill the view, keep the aspect, crop the overflow
             float s = Math.max(viewW / uw, viewH / uh);
             // v1.4.27 — THE FILLS-BOTH-AXES ASSERTION (the bottom-half-black
@@ -1303,20 +1393,33 @@ public class QrScanActivity extends AppCompatActivity {
                 matrix.postScale(undoSx, undoSy);
                 matrix.postTranslate(-calibTx / calibIx, -calibTy / calibIy);
             } else if ("table".equals(undoMode)) {
-                float k = Math.max(viewW / bw, viewH / bh);
+                // v1.4.33 — the cover-undo k rides the ACTIVE (scene) dims:
+                // k built on the padded buffer height (1088) picked the
+                // wrong governing axis by the 0.74% padding factor
+                float k = Math.max(viewW / (float) aw, viewH / (float) ah);
                 if (!(k > 0f) || Float.isNaN(k) || Float.isInfinite(k)) k = 1f;
                 undoSx = 1f / k;
                 undoSy = 1f / k;
                 matrix.postScale(undoSx, undoSy);
-                matrix.postTranslate(bw / 2f - viewW / (2f * k),
-                        bh / 2f - viewH / (2f * k));
+                matrix.postTranslate(aw / 2f - viewW / (2f * k),
+                        ah / 2f - viewH / (2f * k));
             } else {
                 undoSx = bw / viewW;
                 undoSy = bh / viewH;
                 matrix.postScale(undoSx, undoSy);   // undo the implicit buffer->view stretch (FILL)
             }
             if (undoMode == null) undoMode = "fill";
-            matrix.postTranslate(-bw / 2f, -bh / 2f);   // buffer center -> origin
+            // v1.4.33 — THE PADDING COMPENSATION (after the undo ops, per
+            // the active-array law): the undo ops above leave BUFFER
+            // coordinates; the scene occupies only the ACTIVE region
+            // (1920x1080 of the 1920x1088 buffer). postScale(buf/active)
+            // maps buffer coords to SCENE coords — the 0.74% vertical
+            // aspect error the field reported is exactly the factor this
+            // cancels. activeW/H == 0 (unknown) degenerates to identity.
+            float padX = padFactor(bufW, activeW);
+            float padYf = padFactor(bufH, activeH);
+            if (padX != 1f || padYf != 1f) matrix.postScale(padX, padYf);
+            matrix.postTranslate(-aw / 2f, -ah / 2f);   // scene center -> origin
             matrix.postRotate(theta);                    // upright
             matrix.postScale(s, s);                      // cover BOTH axes
             matrix.postTranslate(cx, cy);                // center in the view
@@ -1343,17 +1446,30 @@ public class QrScanActivity extends AppCompatActivity {
                 // offset, so a tap-destroyed seed read as "no offset").
                 // 1.000 = square pixels under the mode's model. Same
                 // privacy posture as before.
-                float net;
+                // v1.4.33 — THE HONEST NET (the tautology corpse): the
+                // v1.4.32 net= composed each mode with its OWN undo —
+                // table and fill read 1.000 BY CONSTRUCTION, so the log
+                // could not see the padding corpse (mode=table net=1.000
+                // on a stretched preview). Now: a MEASURED solve exists →
+                // net = compound(measured implicit, APPLIED undo incl. the
+                // padding compensation) — a real agreement number; any
+                // other mode → agree=unknown (never a fake 1.000). The
+                // line grew active= + pad= (the padding law's inputs).
+                String agree;
                 if ("measured".equals(undoMode) && calibDone && calibIx > 0f) {
-                    net = compoundAnisotropy(calibIx, calibIy, undoSx, undoSy);
-                } else if ("table".equals(undoMode)) {
-                    float kk = Math.max(viewW / bw, viewH / bh);
-                    net = compoundAnisotropy(kk, kk, undoSx, undoSy);
+                    float net = compoundAnisotropy(calibIx, calibIy,
+                            undoSx * padFactor(bufW, activeW),
+                            undoSy * padFactor(bufH, activeH));
+                    agree = "net=" + String.format(java.util.Locale.US, "%.3f", net);
                 } else {
-                    net = compoundAnisotropy(viewW / bw, viewH / bh, undoSx, undoSy);
+                    agree = "agree=unknown";
                 }
                 Diag.log(this, "qr preview view=" + viewW + "x" + viewH +
                         " buf=" + Math.round(bw) + "x" + Math.round(bh) +
+                        " active=" + Math.round(aw) + "x" + Math.round(ah) +
+                        " pad=" + String.format(java.util.Locale.US, "%.3f",
+                                Math.max(padFactor(bufW, activeW),
+                                        padFactor(bufH, activeH))) +
                         " sensor=" + sensorOrientation + " display=" + degrees +
                         " base=" + base +
                         " producer=" + producerRot + " offset=" + userOffset +
@@ -1361,7 +1477,7 @@ public class QrScanActivity extends AppCompatActivity {
                         " content=" + Math.round(uw * s) + "x" + Math.round(uh * s) +
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
                         " mode=" + undoMode +
-                        " net=" + String.format(java.util.Locale.US, "%.3f", net) +
+                        " " + agree +
                         (fills ? "" : " MISMATCH"));
             } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
@@ -1399,6 +1515,30 @@ public class QrScanActivity extends AppCompatActivity {
                     byte[] chroma = QrCore.chromaOf(uBuf, vBuf, cw, ch);
                     if (chroma != null) {
                         text = QrCore.decodeChroma(chroma, cw, ch);
+                    }
+                } catch (Throwable ignored) {}
+            }
+            // v1.4.33 — THE LIVE DOT-CLOSING LEG (failure-only, the LAST
+            // leg): dot/rounded modules (chess.com-style) mis-bin under
+            // every binarizer; the closing morphology merges them. The
+            // live leg rides DILATE-ONLY at HALF resolution (the frame-
+            // budget permission — one max-filter pass on a quarter-size
+            // plane, then the dual-binarizer core there) so the failure
+            // path stays inside the 4 fps budget. decodeLuma's own
+            // full-res closing leg ran above; this is the final geometry
+            // (half + dilated) for the frames where only the combination
+            // cracks it.
+            if (text == null || text.trim().isEmpty()) {
+                try {
+                    int hw = im.getWidth() / 2, hh = im.getHeight() / 2;
+                    if (hw >= 64 && hh >= 64) {
+                        byte[] hs = QrCore.halfLuma(y, im.getWidth(), im.getHeight());
+                        if (hs != null) {
+                            byte[] dl = QrCore.dilate3x3(hs, hw, hh);
+                            if (dl != null) {
+                                text = QrCore.decodeClosed(dl, hw, hh);
+                            }
+                        }
                     }
                 } catch (Throwable ignored) {}
             }

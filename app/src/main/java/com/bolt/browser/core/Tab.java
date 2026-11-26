@@ -352,6 +352,27 @@ public class Tab {
         try {
             w.setBackgroundColor(Fx.webBg(c));
         } catch (Throwable ignored) {}
+        // v1.4.33 — THE BOTTOM-FLASH KILL (leg a): fast scrolling showed an
+        // UNPAINTED canvas strip at the bottom — the WebView's overscroll
+        // region rendering the background before the renderer paints it.
+        // OVER_SCROLL_NEVER stops the glow/stretch from ever asking for
+        // pixels past the content, and setOffscreenPreRaster (API 26+,
+        // where supported) keeps one screenful pre-rastered off-viewport
+        // so a fast fling never outruns the raster. The pre-raster call
+        // rides REFLECTION: it is public API since 26, but stripped SDK
+        // platforms do not carry it at compile time (this one provably
+        // does not) — a reflective invoke is unrestricted for public APIs
+        // and every Throwable degrades to the default behavior. Never
+        // throws.
+        try { w.setOverScrollMode(android.view.View.OVER_SCROLL_NEVER); }
+        catch (Throwable ignored) {}
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                java.lang.reflect.Method m = android.webkit.WebView.class
+                        .getMethod("setOffscreenPreRaster", boolean.class);
+                m.invoke(w, true);
+            }
+        } catch (Throwable ignored) {}
         WebSettings s = w.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);

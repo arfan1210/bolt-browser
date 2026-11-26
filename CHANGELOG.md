@@ -4,6 +4,166 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.33] — 2026-11-27
+
+**The field round, off the v1.4.32 diagnostics: the scanner goes
+portrait-only, the last preview stretch (the stride padding) is
+compensated and the preview log stops lying, the dot-module codes get a
+morphology leg, the Google account chooser stops hijacking the consent
+overlay, the scroll bottom-flash dies on two legs, backgrounding to
+recents can no longer wipe site data, and the repeated-injection corpse
+gets named, bounded, and removed.**
+
+### 1. QR: THE PORTRAIT-ONLY LAW (remove the landscape liability)
+- Corpse: the landscape preview path carried its own base-angle rows, its
+  own offset keys and its own failure surface for a feature that is
+  orientation-independent by construction (ZXing infers rotation from the
+  finder patterns — the YUV decode never needed the preview orientation at
+  all).
+- Law: the scanner activity is LOCKED portrait
+  (`android:screenOrientation="portrait"` in the manifest). baseAngleFor
+  keeps ONLY the portrait entry (RMX2020 sensor=90 display=0 → 270,
+  field-proven); the v1.4.32 landscape rows (display 90/180/270 → the
+  (270+display)%360 family) are deleted (dated re-point of the four-display
+  pins). The rotate offset key stays portrait-only; diag display= is
+  always 0 now.
+- Gate: the manifest pin, the base-table pin (portrait entry + unknown → 0
+  + the landscape rows GONE), the dated re-point of the v1.4.32
+  four-display pins.
+- Field read-back: rotating the phone while scanning never changes the
+  preview; portrait upright zero-tap.
+
+### 2. QR: THE ACTIVE-ARRAY PADDING LAW (the slight vertical stretch) + the honest net=
+- Corpse (v1.4.32 field): mode=table net=1.000 buf=1920x1088 with a slight
+  vertical stretch the log insisted was not there. Two roots: (a) buf
+  1920x1088 is stride-aligned — the ACTIVE image is 1920x1080
+  (SENSOR_INFO_ACTIVE_ARRAY_SIZE); cover/undo math on 1088 carries a
+  0.74% vertical aspect error = the reported stretch; (b) net= composed
+  each mode with its OWN undo — a tautology that read 1.000 by
+  construction.
+- Law: (a) the scanner reads SENSOR_INFO_ACTIVE_ARRAY_SIZE at openCamera
+  (clamped to the stream, stride-alignment fallback for the 16:9 field
+  shape, junk-guarded); after the undo ops the transform applies
+  postScale(bufW/activeW, bufH/activeH) — the padding compensation — and
+  the cover/undo math (uw/uh, the table k, the chain prior) rides the
+  ACTIVE dims; diag gained `qr active … active=… pad=…` and the preview
+  line gained active= + pad=. (b) net= became honest: a measured solve →
+  compound(measured implicit, the APPLIED undo incl. the padding
+  compensation); any other mode → `agree=unknown` (never a fake 1.000).
+- Gate: the compiled REAL padFactor + the 1088/1080 compound fixture
+  (1.007 uncompensated, 1.000 compensated); the honest agree= pin; the
+  active-read source pin.
+- Field read-back: square pixels against a known square target; diag
+  active=1920x1080 pad=1.007 net/agree line.
+
+### 3. QR: THE DOT-CLOSING LEG (chess.com-style dot modules)
+- Corpse: dot modules at ~50% duty cycle mis-bin under BOTH binarizers —
+  Hybrid's adaptive block grid AND Global's histogram slice through the
+  dots' soft edges; the ladder had no morphology leg. Gallery is already
+  full-res-first, so resolution is not the corpse.
+- Law (zero new deps, PURE + probe-pinned): QrCore gained close3x3 (the
+  3x3 max-filter then min-filter) and dilate3x3 (the max pass alone);
+  decodeLuma gained a FINAL closing leg (plain+invert through the
+  dual-binarizer core on the closed plane); decodeMulti gained a final
+  closing leg AFTER the chroma leg (the half-scale closed plane — closing
+  plus the half-scale edge sharpening together); decodeRobust rides both
+  via decodeMulti; the live failure leg rides DILATE-ONLY at HALF res
+  (the frame-budget permission) after the chroma leg; the chroma leg now
+  SKIPS a degenerate plane (max spread < 8 — a hue-flat scene never pays
+  its four binarizer runs).
+- Gate: a synthetic dot-module QR (50% duty, solid finders, centre logo
+  block) MISSES the pre-1.4.33 ladder and HITS the closing leg (the
+  honest pin); the degenerate-chroma skip pin; plain QRs unchanged; the
+  runtime-budget pin (the closing legs ride the failure path only).
+- Field read-back: the attached chess.com photo scans from gallery AND
+  live; plain QR latency unchanged.
+
+### 4. POPUPS: THE CHOOSER-IS-NOT-CONSENT LAW (account switch → new tab)
+- Corpse: same-base children default to the overlay child, and the Google
+  account chooser matched ONLY because its host sat on the IdP base list
+  — the chooser carries no OAuth shape, yet it rode the overlay (and its
+  X chip), so switching Gmail accounts never opened the new account as a
+  tab.
+- Law: the overlay child exists ONLY for flows that need
+  window.opener/postMessage (consent). popupDestination (PURE,
+  gate-compiled): an OAuth-shape first navigation
+  (Tab.isAuthRequestUrl/isAuthResponseUrl) or an IdP consent path
+  (isIdpConsentPath: a known IdP host whose path is
+  oauth/authorize/consent/signin/auth/token/challenge) keeps the overlay
+  (+ the return-leg watchdog) unless the user's popupNewTab override says
+  tabs; EVERY other classified popup opens a NEW TAB. Migration: a stored
+  popupNewTab equal to the old default (false) is reset by removing the
+  key (dated note); an explicit override (true) survives.
+- Gate: the compiled REAL decision table — accounts.google.com
+  chooser/AddSession → newtab; imgur/google consent → overlay; ordinary
+  third-party popup → the standing prompt paths; the dated re-point of
+  the v1.4.30 popup pins.
+- Field read-back: switching Gmail accounts opens the new account in a
+  NEW TAB; Imgur Google sign-in still ends on imgur via the overlay
+  return leg.
+
+### 5. SCROLL: THE BOTTOM-FLASH KILL
+- Corpse: a temporary black/white strip appeared at the bottom while
+  scrolling. Two legs: the WebView painted its overscroll region before
+  the renderer painted the content, and the glass backdrop strip
+  (perf blur w=180 h=17) showed the STALE colour of the content that had
+  already scrolled away (the snapshot was up to 400 ms behind).
+- Law: (a) WebView.setOverScrollMode(OVER_SCROLL_NEVER) +
+  setOffscreenPreRaster(true) (API 26+) on every tab WebView — a fast
+  fling never outruns the raster; (b) on onScrollChanged the backdrops
+  are marked STALE and paint the SOLID theme bar colour
+  (Fx.barSolidColor — the opaque end of the bar treatment) until the next
+  snapshot lands; no snapshot is taken mid-scroll (it would land stale);
+  after the scroll idles the first snapshot runs on the ~120 ms cadence
+  and the standing 400 ms throttle resumes; the hidden-chrome skip is
+  unchanged.
+- Gate: the overscroll/pre-raster pins, the compiled REAL backdropState
+  state machine (stale → solid, fresh snapshot → glass), the cadence
+  pins, the Robolectric scroll-state probe (stale → solid, idle →
+  snapshot).
+- Field read-back: no black/white bottom strip while scrolling on light
+  AND dark sites, glass and non-glass skins.
+
+### 6. CACHE DOORS + TRIM POLICY (the recents-wipe corpse)
+- Corpse: the delayed (5-minute background) exit door still ran the DEEP
+  site-data diet (diag door=delayed deep=1 freed=16mb) — merely switching
+  apps wiped logins-adjacent stores and caches; and the trim table still
+  showed cold restores on ordinary switches.
+- Law: THE DOOR/DEEP MATRIX — the delayed door is the cache-subtree sweep
+  ONLY (deep=0, and the line now SAYS deep=0) and waits 10 minutes of
+  backgrounding; the deep diet rides door=destroy (isFinishing-gated) /
+  user / update alone. The startup sweep + the pending-exit finisher are
+  unchanged (the ~20 MB promise holds at true close). TRIM: the recency
+  exemption grew 2 → 4 most-recent tabs and the idle threshold 3 → 10
+  minutes (policy=idle10m-recent4).
+- Gate: the door/deep matrix pin (delayed → deep=0 in the Kotlin source;
+  destroy/user/update keep the pref), the 10-minute cadence pin, the
+  compiled REAL trimSleepDecision table (the v1.4.31 rows re-pointed with
+  dated notes).
+- Field read-back: switch to recents and back after 1-2 min: no exit
+  line, warm back/forward; real close still lands ~20 MB.
+
+### 7. PERF: THE REPEATED-INJECTION GUARD (inj=17 bytes=250441)
+- Corpse: perf nav accumulated +2 injections (~32 KB) per YouTube SPA
+  event — the single-injection law was violated on SPA-heavy sites, and
+  nothing in the log said WHICH hook re-evaluated or WHY.
+- Law: (a) THE FALLBACK DIAG — every hook fallback that actually fires
+  names itself: `hook fallback name=<core|fh|shr> armed=<bool>
+  feature=<bool>` (armed = the document-start registration landed,
+  feature = the WebView supports DOCUMENT_START_SCRIPT at all; no URL,
+  no host, nothing page-derived — the no-secret-diag law holds); (b) the
+  once-per-document guards INSIDE each script carry the law names —
+  window.__boltCoreArmed / __boltFhArmed / __boltShrArmed — so any stray
+  evaluate is a cheap no-op in the page; (c) the finish-time core/hook
+  re-evaluation is REMOVED (the unconditional bolt-adcss evaluate at
+  every finish — uncounted by evalInj, invisible to the perf nav line —
+  is gone; the cosmetic CSS keeps its commit-marker backstop only).
+- Gate: the per-hook diag format pin (all three hooks), the guard-name
+  pins, the finish-path pin (the unconditional evaluate is gone), the
+  compiled REAL needsFallbackEval decision.
+- Field read-back: perf nav inj stays <= 2 and bytes <= ~2 KB on a
+  YouTube watch session.
+
 ## [1.4.32] — 2026-11-26
 
 **The orientation round — three QR fixes off the v1.4.31 field read-backs

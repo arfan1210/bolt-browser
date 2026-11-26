@@ -65,8 +65,8 @@ chlog = read("CHANGELOG.md")
 rels = read("scripts/release.sh")
 
 print("A — version pins")
-need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
-     "build.gradle pins 146 / 1.4.32")
+need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
+     "build.gradle pins 147 / 1.4.33")
 need('<item>1.4.29|' in strings,
      "the About changelog carries the 1.4.29 line at [0] (newest first)")
 i29 = strings.find("<item>1.4.29|")
@@ -148,15 +148,21 @@ print("C — QR: THE VIEW-SPACE PREVIEW TRANSFORM (v1.4.30 re-point, dated "
 # fill) but the ORDER law is intact: the undo (in whichever mode) is
 # still the FIRST ops, then T(-bufCenter) -> R(theta) -> S(cover) ->
 # T(center). The measured/table modes pin their own order below.
+# v1.4.33 re-point (2026-11-27): THE ACTIVE-ARRAY PADDING LAW — the
+# padding compensation postScale(buf/active) rides BETWEEN the undo and
+# the center translate, and the center translate maps the SCENE center
+# (-aw/2, -ah/2) instead of the buffer center (the stride overhang is
+# never scene). The ORDER law is intact: undo (whichever mode) -> pad
+# compensation -> center -> rotate -> cover -> center.
 need(qsa.find("matrix.postScale(undoSx, undoSy);") >= 0
      and qsa.find("matrix.postScale(undoSx, undoSy);") <
-     qsa.find("matrix.postTranslate(-bw / 2f, -bh / 2f);") <
+     qsa.find("matrix.postTranslate(-aw / 2f, -ah / 2f);") <
      qsa.find("matrix.postRotate(theta);") <
      qsa.find("matrix.postScale(s, s);") <
      qsa.find("matrix.postTranslate(cx, cy);"),
      "the matrix ORDER is the law: undo the implicit mapping (measured/"
-     "table/fill) -> center -> rotate -> cover -> center (setTransform "
-     "consumes view-local geometry)")
+     "table/fill) -> pad compensation (v1.4.33) -> center -> rotate -> "
+     "cover -> center (setTransform consumes view-local geometry)")
 need("setTransform() transforms the" in qsa or
      "TextureView.setTransform() transforms" in qsa,
      "the corpse is named: the old matrix reasoned about raw buffer dims")

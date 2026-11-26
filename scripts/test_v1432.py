@@ -76,8 +76,8 @@ readme = read("README.md")
 boot_js = read("app/src/main/assets/webauthn_bootstrap.js")
 
 print("A — version pins")
-need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
-     "build.gradle pins 146 / 1.4.32")
+need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
+     "build.gradle pins 147 / 1.4.33")
 need('<item>1.4.32|' in strings,
      "the About changelog carries the 1.4.32 line at [0] (newest first)")
 i32 = strings.find("<item>1.4.32|")
@@ -90,9 +90,16 @@ need("## [1.4.32] — 2026-11-26" in chlog and
 print()
 print("B — QR: THE BASE-ANGLE LAW (orientation must never need a tap)")
 # the immutable device base table + the separated user offset
-need("static int baseAngleFor" in qsa and '(270 + display) % 360' in qsa,
-     "the device base: RMX2020 (sensor=90) -> (270 + display) % 360, "
-     "immutable by any button")
+# v1.4.33 re-point (2026-11-27): THE PORTRAIT-ONLY LAW — the scanner
+# activity is LOCKED portrait in the manifest; the table keeps ONLY the
+# portrait entry (RMX2020 sensor=90 display=0 -> 270) and the v1.4.32
+# (270 + display) % 360 family for display 90/180/270 is retired with the
+# landscape path (diag display= is always 0 now). test_v1433.py pins the
+# portrait table compiled from the REAL Java.
+need("static int baseAngleFor" in qsa and
+     '"RMX2020".equals(model) && sensor == 90 && display == 0' in qsa,
+     "the device base: the PORTRAIT entry RMX2020 (sensor=90, display=0) "
+     "-> 270, immutable by any button (the landscape rows retired — v1.4.33)")
 need('return "qrUserOffset." + sensorOrientation + "." + degrees;' in qsa,
      "the user offset rides qrUserOffset.<sensor>.<display>")
 # MIGRATION PIN: the old conflation is never read again (the string lives
@@ -166,10 +173,15 @@ if m_base and m_undo and m_comp and m_acc and javac:
     }
     public static void main(String[] args) {
         // ---- the base table over all four displays (field-proven) ----
+        // v1.4.33 re-point (2026-11-27): the PORTRAIT-ONLY LAW — the
+        // v1.4.32 display-scoped rows (90 -> 0, 180 -> 90, 270 -> 180)
+        // are retired with the landscape path; every non-portrait answer
+        // is 0 now.
         eq("base display 0", Probe.baseAngleFor("RMX2020", 90, 0) == 270);
-        eq("base display 90", Probe.baseAngleFor("RMX2020", 90, 90) == 0);
-        eq("base display 180", Probe.baseAngleFor("RMX2020", 90, 180) == 90);
-        eq("base display 270", Probe.baseAngleFor("RMX2020", 90, 270) == 180);
+        eq("base landscape rows retired",
+                Probe.baseAngleFor("RMX2020", 90, 90) == 0
+                && Probe.baseAngleFor("RMX2020", 90, 180) == 0
+                && Probe.baseAngleFor("RMX2020", 90, 270) == 0);
         eq("base unknown model/sensor",
                 Probe.baseAngleFor("Pixel 8", 90, 0) == 0
                 && Probe.baseAngleFor(null, 90, 0) == 0
@@ -263,8 +275,13 @@ need(fin and "measuredAcceptable(sx[0], sy[0], priorX, priorY)" in fin
      "the solve is accepted ONLY in the compound window — else it falls "
      "down the chain (measured -> table -> fill)")
 need('"table".equals(chainMode)' in fin and
-     "Math.max(vw / (float) bufW, vh / (float) bufH)" in fin,
-     "the chain prior implicit: table = uniform cover k, fill = anisotropic")
+     # v1.4.33 re-point (2026-11-27): the chain prior rides the ACTIVE
+     # (scene) dims via awPrior()/ahPrior() — the buffer's stride padding
+     # (1088 for a 1080-row scene) is never scene, and k on the padded
+     # span carried the 0.74% error into the acceptance window too
+     "Math.max(vw / (float) awPrior()," in fin,
+     "the chain prior implicit: table = uniform cover k, fill = anisotropic "
+     "(v1.4.33 re-point: the prior rides the ACTIVE dims)")
 # the contamination fixture: a synthetic raster captured under a
 # non-identity start transform — the solve must reject or correct
 if m_base and javac and node is not None:
@@ -408,11 +425,17 @@ if javac:
                      "true implicit"
                      + ("" if r2.returncode == 0 else r2.stdout[:400]))
         # the compound net= diag rides the REAL compoundAnisotropy
-        need('net = compoundAnisotropy(calibIx, calibIy, undoSx, undoSy);' in qsa
-             and 'net = compoundAnisotropy(kk, kk, undoSx, undoSy);' in qsa and
-             'net = compoundAnisotropy(viewW / bw, viewH / bh, undoSx, undoSy);' in qsa,
-             "net= composes the mode's assumed implicit with the undo "
-             "(measured / table / fill legs)")
+        # v1.4.33 re-point (2026-11-27): THE HONEST NET — the v1.4.32 net=
+        # composed each mode with its OWN undo (a tautology: the table and
+        # fill legs read 1.000 by construction, and the padding corpse rode
+        # in invisible at mode=table net=1.000). net= now appears ONLY on a
+        # measured solve (compound(measured implicit, the APPLIED undo incl.
+        # the padding compensation)); every other mode emits agree=unknown.
+        need('compoundAnisotropy(calibIx, calibIy,\n                            undoSx * padFactor(bufW, activeW),\n                            undoSy * padFactor(bufH, activeH))' in qsa
+             and '"agree=unknown"' in qsa,
+             "net= became honest: measured -> the compound of the measured "
+             "implicit vs the APPLIED undo (pad included); otherwise "
+             "agree=unknown (never a fake 1.000)")
 
 print()
 print("D — QR: THE CHROMA + DUAL-BINARIZER LADDER (stylized codes)")
@@ -650,7 +673,10 @@ print("E — THE QUIET/PERF PACK (four small cuts)")
 # (a) MediaHook main-frame-only
 core_src = mh[mh.find("public static String core(Prefs p)"):mh.find("public static String cssInjectOnce")]
 need('if(window!==window.top)return;' in core_src and
-     core_src.find('if(window!==window.top)return;') < core_src.find('if(window.__boltCore)return'),
+     # v1.4.33 re-point (2026-11-27): the boot mark grew the LAW name —
+     # window.__boltCoreArmed (the repeated-injection guard's
+     # once-per-document flag; __boltCore rides for the standing refs)
+     core_src.find('if(window!==window.top)return;') < core_src.find('if(window.__boltCoreArmed'),
      "the media core early-returns in any non-top frame (before the boot "
      "mark — ad iframes never own the notification/wake-lock)")
 # (b) the bootstrap retry bound
@@ -807,9 +833,14 @@ need("THE BASE-ANGLE LAW" in readme and "THE COMPOUND-ANISOTROPY LAW" in readme
      "the README names the v1.4.32 laws")
 need("twenty-fifth session" in readme,
      "the README carries the v1.4.32 session narrative")
-need("The QR base-angle line (v1.4.32)" in readme and
-     "The stylized-code read-back (v1.4.32)" in readme,
-     "the README carries the v1.4.32 open field read-backs")
+# v1.4.33 re-point (2026-11-27): the README's open-read-back list is
+# ALWAYS CURRENT — the v1.4.33 list replaced it, carrying the still-open
+# v1.4.32 legs (the tap-then-long-press return home; the calib line) as
+# carried entries. The v1.4.33 read-backs are pinned in test_v1433.py.
+need("(carried, v1.4.32) The tap-then-long-press return home" in readme
+     and "The portrait-lock read-back (v1.4.33)" in readme,
+     "the README carries the open field read-backs (the v1.4.32 legs "
+     "ride as carried entries under the v1.4.33 list)")
 
 print()
 if fails:

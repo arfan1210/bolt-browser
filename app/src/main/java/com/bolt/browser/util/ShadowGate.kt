@@ -121,6 +121,14 @@ object ShadowGate {
         if (ARMED.containsKey(web)) return
         evalCount++
         evalBytes += GATE_JS.length
+        // v1.4.33 — THE FALLBACK DIAG: fires name=shr armed= feature= (see
+        // MediaHook.injectCore — the repeated-injection corpse wants the
+        // WHICH and the WHY on every fallback that actually runs).
+        try {
+            com.bolt.browser.util.Diag.log(web.context.applicationContext,
+                    "hook fallback name=shr armed=" + ARMED.containsKey(web)
+                            + " feature=" + com.bolt.browser.media.MediaHook.featureSupported())
+        } catch (_: Throwable) {}
         try {
             web.post {
                 try { web.evaluateJavascript(GATE_JS, null) } catch (ignored: Throwable) {}

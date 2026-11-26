@@ -129,6 +129,21 @@ public final class QrCore {
                 }
             }
         } catch (Throwable ignored) {}
+        // (c) v1.4.33 — THE DOT-CLOSING LEG (the final leg): dot/rounded
+        // modules at ~50% duty cycle mis-bin under BOTH binarizers —
+        // Hybrid's adaptive block grid and Global's histogram both slice
+        // through the dots' soft edges and the finder runs come out
+        // speckled. A morphological CLOSING (max-filter then min-filter,
+        // 3x3) seals the dots into solid connected blobs before the
+        // same dual-binarizer core rides again. Rides the FAILURE path
+        // only — a plain QR exits on the first leg (the budget law).
+        try {
+            byte[] cl = close3x3(y, width, height);
+            if (cl != null) {
+                r = decodeLuma2(cl, width, height);
+                if (r != null) return r;
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 
@@ -142,6 +157,17 @@ public final class QrCore {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * v1.4.33 — the PRE-CLOSED plane's entry: plain + invert through the
+     * dual-binarizer core, for a caller that already ran its own
+     * morphology (the live failure leg's dilate-only half-res plane).
+     * No extraction, no ladder — the caller owns the geometry; this is
+     * the core only. */
+    public static String decodeClosed(byte[] y, int width, int height) {
+        if (y == null || width <= 0 || height <= 0 || y.length < width * height) return null;
+        return decodeLuma2(y, width, height);
     }
 
     /**
@@ -203,6 +229,100 @@ public final class QrCore {
         }
     }
 
+    /** v1.4.33 — PURE (probe-pinned): the 3x3 MAX filter (grayscale
+     *  dilation) — every pixel becomes the brightest of its 3x3
+     *  neighborhood. Isolated dark modules shrink; the light background
+     *  grows over single-pixel speckle. The closing leg's first pass. */
+    public static byte[] dilate3x3(byte[] y, int width, int height) {
+        try {
+            if (y == null || width <= 2 || height <= 2
+                    || y.length < width * height) return null;
+            byte[] out = new byte[width * height];
+            for (int r = 0; r < height; r++) {
+                int r0 = Math.max(0, r - 1), r2 = Math.min(height - 1, r + 1);
+                for (int c = 0; c < width; c++) {
+                    int c0 = Math.max(0, c - 1), c2 = Math.min(width - 1, c + 1);
+                    int m = 0;
+                    for (int rr = r0; rr <= r2; rr++) {
+                        int base = rr * width;
+                        for (int cc = c0; cc <= c2; cc++) {
+                            int v = y[base + cc] & 0xFF;
+                            if (v > m) m = v;
+                        }
+                    }
+                    out[r * width + c] = (byte) m;
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.33 — PURE (probe-pinned): the 3x3 MIN filter (grayscale
+     *  erosion) — every pixel becomes the darkest of its 3x3 neighborhood.
+     *  The closing leg's second pass (restores what the dilation grew). */
+    private static byte[] erode3x3(byte[] y, int width, int height) {
+        try {
+            if (y == null || width <= 2 || height <= 2
+                    || y.length < width * height) return null;
+            byte[] out = new byte[width * height];
+            for (int r = 0; r < height; r++) {
+                int r0 = Math.max(0, r - 1), r2 = Math.min(height - 1, r + 1);
+                for (int c = 0; c < width; c++) {
+                    int c0 = Math.max(0, c - 1), c2 = Math.min(width - 1, c + 1);
+                    int m = 255;
+                    for (int rr = r0; rr <= r2; rr++) {
+                        int base = rr * width;
+                        for (int cc = c0; cc <= c2; cc++) {
+                            int v = y[base + cc] & 0xFF;
+                            if (v < m) m = v;
+                        }
+                    }
+                    out[r * width + c] = (byte) m;
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.33 — PURE (probe-pinned): the morphological CLOSING of a luma
+     *  plane — dilate3x3 then erode3x3. Dark dot modules at ~50% duty
+     *  merge into solid connected blobs the binarizers can segment; thin
+     *  light gaps BETWEEN dots stay light (a closing never widens a dark
+     *  structure past its dilation). The dot-closing leg's plane. */
+    public static byte[] close3x3(byte[] y, int width, int height) {
+        try {
+            byte[] d = dilate3x3(y, width, height);
+            if (d == null) return null;
+            byte[] e = erode3x3(d, width, height);
+            return e;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.33 — PURE (probe-pinned): the MAX chroma spread of a chroma
+     *  plane — the degeneracy check. A plane whose brightest chroma
+     *  distance is under 8 carries no hue structure at all (a flat/gray
+     *  scene): the chroma leg SKIPS it (the skip law — decoding a flat
+     *  plane through four binarizer runs buys nothing). */
+    public static int chromaMaxSpread(byte[] chroma) {
+        try {
+            if (chroma == null) return 0;
+            int m = 0;
+            for (byte b : chroma) {
+                int v = b & 0xFF;
+                if (v > m) m = v;
+            }
+            return m;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     /**
      * v1.4.32 — THE CHROMA-SPREAD PLANE (PURE, probe-pinned; the
      * colour-on-colour corpse: the live path decoded ONLY the Y plane, so
@@ -239,9 +359,15 @@ public final class QrCore {
      * v1.4.32 — decode the CHROMA-SPREAD plane (the luma ladder's final
      * leg): plain + invert through the dual-binarizer core. PURE w.r.t.
      * the plane (no extraction here — the caller owns when U/V leave the
-     * camera frame). */
+     * camera frame).
+     * v1.4.33 — THE DEGENERATE SKIP: a chroma plane whose max spread is
+     * under 8 is hue-FLAT (a gray/monochrome scene — every |U-128|+|V-128|
+     * read noise-level) — decodeChroma returns null without spending the
+     * four binarizer runs; the ladder moves on (to the closing leg).
+     */
     public static String decodeChroma(byte[] chroma, int cw, int ch) {
         if (chroma == null || cw <= 0 || ch <= 0 || chroma.length < cw * ch) return null;
+        if (chromaMaxSpread(chroma) < 8) return null;   // the degenerate skip
         return decodeLuma2(chroma, cw, ch);
     }
 
@@ -292,8 +418,10 @@ public final class QrCore {
     public static String decodeMulti(int[] pixels, int width, int height) {
         String r = decode(pixels, width, height);
         if (r != null) return r;
+        byte[] fullLuma = null;
         try {
             byte[] y = lumaOf(pixels, width, height);
+            fullLuma = y;
             r = decodeLuma(y, width, height);
             if (r != null) return r;
         } catch (Throwable ignored) {}
@@ -301,11 +429,32 @@ public final class QrCore {
         // after the ARGB pair and the full luma ladder both fail, the
         // half-resolution chroma-spread plane gets its plain+invert,
         // dual-binarizer pass at the same scale the caller handed over.
+        // v1.4.33 — the leg SKIPS a degenerate plane (max spread < 8 —
+        // decodeChroma refuses flat hue) instead of spending its runs.
         try {
             byte[] chroma = chromaOfArgb(pixels, width, height);
             if (chroma != null) {
                 r = decodeChroma(chroma, (width + 1) / 2, (height + 1) / 2);
                 if (r != null) return r;
+            }
+        } catch (Throwable ignored) {}
+        // v1.4.33 — THE FINAL CLOSING LEG (after the chroma leg, per the
+        // dot-closing law): the chroma plane said "no hue structure" (or
+        // simply missed) — the last geometry is the HALF-scale closed
+        // luma plane: closing merges the dots AND the half-scale
+        // sharpens module edges, the pair that cracks chess.com-style
+        // dot grids at photo resolution. Rides the failure path only.
+        try {
+            int hw = width / 2, hh = height / 2;
+            if (fullLuma != null && hw >= 64 && hh >= 64) {
+                byte[] hs = halfLuma(fullLuma, width, height);
+                if (hs != null) {
+                    byte[] cl = close3x3(hs, hw, hh);
+                    if (cl != null) {
+                        r = decodeLuma2(cl, hw, hh);
+                        if (r != null) return r;
+                    }
+                }
             }
         } catch (Throwable ignored) {}
         return null;

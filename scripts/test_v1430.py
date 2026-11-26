@@ -85,8 +85,8 @@ settings = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.jav
 readme = read("README.md")
 
 print("A — version pins")
-need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
-     "build.gradle pins 146 / 1.4.32")
+need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
+     "build.gradle pins 147 / 1.4.33")
 need('<item>1.4.30|' in strings,
      "the About changelog carries the 1.4.30 line at [0] (newest first)")
 i30 = strings.find("<item>1.4.30|")
@@ -157,14 +157,19 @@ need('" producer=" + producerRot + " offset=" + userOffset' in qsa
 # v1.4.31 re-point (2026-11-25): the v1.4.29 ORDER law rides, with the
 # undo now the measured/table/fill three-mode form (the law: the undo
 # is the FIRST ops in every mode; the recipe tail is byte-identical)
+# v1.4.33 re-point (2026-11-27): the ORDER law rides with the padding
+# compensation between the undo and the center translate (the ACTIVE
+# dims own the center now — the active-array padding law; pinned in
+# test_v1433.py).
 need(qsa.find("matrix.postScale(undoSx, undoSy);") >= 0
      and qsa.find("matrix.postScale(undoSx, undoSy);") <
-     qsa.find("matrix.postTranslate(-bw / 2f, -bh / 2f);") <
+     qsa.find("matrix.postTranslate(-aw / 2f, -ah / 2f);") <
      qsa.find("matrix.postRotate(theta);") <
      qsa.find("matrix.postScale(s, s);") <
      qsa.find("matrix.postTranslate(cx, cy);"),
      "the v1.4.29 view-space matrix ORDER rides unchanged (undo the "
-     "implicit mapping -> center -> rotate -> cover -> center)")
+     "implicit mapping -> pad compensation -> center -> rotate -> cover "
+     "-> center)")
 need("fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f" in qsa,
      "the v1.4.27 fills-both-axes assertion rides unchanged")
 need("st.setDefaultBufferSize(bufW, bufH);" in qsa,
@@ -644,9 +649,19 @@ need("refill_preservesTableScrollX_andDoesNotDuplicateChildren" in trs
 
 print()
 print("F — POPUP HARDENING: THE DESTINATION + THE SETTINGS ROW")
-need('prefs.b("popupNewTab", false) && !popupChildVisible' in ba,
+# v1.4.33 re-point (2026-11-27): THE CHOOSER-IS-NOT-CONSENT LAW — the
+# same-site destination DEFAULT flipped. The v1.4.30 pref-only row
+# (popupNewTab && !popupChildVisible) became the popupDestination decision:
+# an OAuth-shape or IdP-consent-path first navigation keeps the overlay
+# (the pref can still send it to a tab); EVERY other classified popup —
+# the Google account chooser included — opens a NEW TAB now. The
+# first-classified-navigation-only law rides (the !popupChildVisible
+# guard); test_v1433.py pins the compiled REAL decision table.
+need('String dest = popupDestination(url,\n                        prefs.b("popupNewTab", false));' in ba and
+     'if (dest.equals("newtab") && !popupChildVisible) {' in ba,
      "the new-tab destination fires at the FIRST classified navigation "
-     "only (a visible child always rides as v1.4.29)")
+     "only (a visible child always rides as v1.4.29) — via the "
+     "popupDestination decision (v1.4.33: the chooser-is-not-consent law)")
 need("closePopupChild();\n                    openNewTab(pu);" in ba,
      "the new-tab path retires the child + openNewTab (the shared cookie "
      "jar rides)")
@@ -657,7 +672,8 @@ need('"refuse".equals(secondPopupPolicy(\n                        popupFlowCompl
      "(refused + toasted)")
 need('"Same-site popups open in a new tab"' in settings
      and 'prefs.set("popupNewTab", on)' in settings,
-     "the Settings row exists (default OFF = the overlay child)")
+     "the Settings row exists (v1.4.33: the override rides ON TOP of the "
+     "consent legs; the non-consent default is the new tab)")
 
 print()
 print("G — THE PIPELINE + THE README COMPRESSION")

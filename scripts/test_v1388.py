@@ -123,9 +123,15 @@ need("(sensorOrientation - degrees - producerRot + base" in qr
      "rotates by (sensorOrientation - displayRotation - producerRotation "
      "+ base + userOffset) — the v1.3.88 JPEG-orientation formula, "
      "COMPENSATED since v1.4.30, BASE-ANGLE split since v1.4.32")
-need("float uw = (theta % 180 == 0) ? bw : bh;" in qr
+# v1.4.33 re-point (2026-11-27): the cover-scale rides the ACTIVE
+# (scene) dims — the buffer's stride-aligned overhang (1088 for a
+# 1080-row scene) is never scene, and cover math on it carried the
+# 0.74% vertical aspect error (the active-array padding law; pinned in
+# test_v1433.py).
+need("float uw = (theta % 180 == 0) ? aw : ah;" in qr
      and "float s = Math.max(viewW / uw, viewH / uh);" in qr,
-     "cover-scale keeps the aspect (never squished)")
+     "cover-scale keeps the aspect (never squished) — on the ACTIVE "
+     "dims since v1.4.33")
 need("matrix.postRotate(theta);" in qr and "matrix.postScale(s, s);" in qr,
      "the matrix rotates then cover-scales, centered")
 need("setRectToRect" not in qr,
@@ -163,7 +169,7 @@ need("never receives the ongoing MOVE stream" in act,
      "the touch-target law is documented where it bit")
 
 print("I5 — version pin")
-need('versionName "1.4.32"' in gradle and "versionCode 146" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need('versionName "1.4.33"' in gradle and "versionCode 147" in gradle,  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
      "111 / 1.3.98")
 
 print()

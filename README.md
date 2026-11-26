@@ -294,6 +294,49 @@ laws; the list below is the CURRENT law set (name → the one line):
   page-text evaluates ride a ~1200 ms idle pass cancelled by the next
   navigation; the trim-driven cache check re-measures at most once per
   5 minutes.
+- THE PORTRAIT-ONLY LAW (v1.4.33) — the QR scanner activity is LOCKED
+  portrait in the manifest: QR decoding is orientation-independent and
+  the landscape preview path was pure liability. The base table keeps
+  ONE portrait entry (RMX2020 sensor=90 display=0 → 270); display= in
+  every diag is always 0.
+- THE ACTIVE-ARRAY PADDING LAW (v1.4.33) — the camera buffer is
+  stride-aligned (buf 1920x1088 carries a 1920x1080 ACTIVE image): the
+  cover/undo math rides the ACTIVE dims and the transform applies
+  postScale(buf/active) after the undo ops; net= is HONEST (a measured
+  solve composes the measured implicit against the APPLIED undo — any
+  other mode emits agree=unknown, never a fake 1.000).
+- THE DOT-CLOSING LEG (v1.4.33) — the QR ladder's final leg closes the
+  plane (close3x3 = max then min, 3x3) before the dual-binarizer core:
+  ~50%-duty dot modules that mis-bin under BOTH binarizers seal into
+  solid blobs; the live failure leg may ride dilate-only at half res
+  (the frame budget); a hue-flat chroma plane (max spread < 8) is
+  skipped, never decoded.
+- THE CHOOSER-IS-NOT-CONSENT LAW (v1.4.33) — the popup overlay child
+  exists ONLY for consent-shaped flows (the OAuth URL shape or an IdP
+  consent path — popupDestination is PURE); every other classified
+  popup (the Google account chooser included) opens a NEW TAB; a stored
+  popupNewTab equal to the old default is reset (dated migration), an
+  explicit override survives.
+- THE STALE-BACKDROP LAW (v1.4.33) — a scroll marks the glass blur
+  backdrops STALE: they paint the SOLID theme bar colour until the next
+  snapshot lands; no snapshot is taken mid-scroll; after idle the first
+  snapshot runs on the ~120 ms cadence. Plus the WebView leg:
+  OVER_SCROLL_NEVER + setOffscreenPreRaster(true) (API 26+) — the
+  bottom strip never shows unpainted canvas.
+- THE DOOR/DEEP MATRIX (v1.4.33) — the delayed cache exit door is the
+  cache-subtree sweep ONLY (deep=0, the line says so) and waits 10
+  minutes of backgrounding; the DEEP site-data diet rides
+  destroy(isFinishing-gated)/user/update alone — merely switching apps
+  can never wipe logins-adjacent stores. Trim spares the FOUR most
+  recent background tabs and idles the sleep threshold at 10 minutes
+  (policy=idle10m-recent4).
+- THE REPEATED-INJECTION GUARD (v1.4.33) — every hook fallback that
+  actually fires names itself (`hook fallback name=<core|fh|shr>
+  armed= feature=`); the once-per-document guards inside each script
+  carry the law names (window.__boltCoreArmed / __boltFhArmed /
+  __boltShrArmed) so any stray evaluate is a cheap no-op; the
+  finish-time core/hook re-evaluation is gone (the cosmetic CSS keeps
+  its commit-marker backstop only).
 
 **Environment lessons (merged — every one paid for itself once).**
 
@@ -336,6 +379,84 @@ end: a fresh sandbox restored losslessly from the bundle + keystore
 backup, rebuilt the toolchain with one script, and re-ran the FULL
 verification (gates + suite + signed build + cert check + size law)
 before publishing.
+
+**v1.4.33 — THE FIELD ROUND** (the twenty-sixth session, 2026-11-27).
+Seven fixes off the v1.4.32 field diagnostics, no feature work:
+
+1. *QR — THE PORTRAIT-ONLY LAW.* The field: the v1.4.32 orientation
+   round landed (portrait opens upright zero-tap) and the landscape
+   path was exposed as pure liability — a second base-angle branch, a
+   second offset key, a second failure surface, for a decode that is
+   orientation-independent by construction. The scanner activity is
+   LOCKED portrait in the manifest; baseAngleFor keeps ONLY the
+   portrait entry (RMX2020 sensor=90 display=0 → 270); the landscape
+   rows are deleted; diag display= is always 0.
+2. *QR — THE ACTIVE-ARRAY PADDING LAW + the honest net=.* The field:
+   a SLIGHT vertical stretch remained, with mode=table net=1.000 and
+   buf=1920x1088 — the log said square pixels while the preview said
+   otherwise. Two corpses: the buffer is stride-aligned (the ACTIVE
+   image is 1920x1080 — cover/undo math on 1088 carries the 0.74%
+   aspect error), and net= composed each mode with its OWN undo (a
+   tautology). The fix reads SENSOR_INFO_ACTIVE_ARRAY_SIZE at
+   openCamera, applies postScale(buf/active) after the undo ops, rides
+   ACTIVE dims for uw/uh/cover/the chain prior, and net= became the
+   honest measured-vs-applied agreement (agree=unknown otherwise).
+   Diag: `qr active … active=… pad=…` + active=/pad= on the preview
+   line.
+3. *QR — THE DOT-CLOSING LEG.* The field: a chess.com QR (green DOT
+   modules on black, solid finders, centre logo, screen glare) failed
+   live AND gallery. Dot modules at ~50% duty mis-bin under BOTH
+   binarizers; the ladder had no morphology leg. close3x3 (max then
+   min) + dilate3x3 (max only) joined QrCore; decodeLuma gained the
+   final closing leg, decodeMulti a final closing leg after the chroma
+   leg (half-scale closed plane), decodeRobust rides both, the live
+   failure leg rides dilate-only at half res, and a hue-flat chroma
+   plane (max spread < 8) is skipped. Plain QRs exit on leg one —
+   unchanged.
+4. *POPUPS — THE CHOOSER-IS-NOT-CONSENT LAW.* The field: the Google
+   account chooser opened as the overlay child with an X chip; the
+   user wants the switched account in a NEW TAB. popupDestination
+   (PURE): OAuth-shape or IdP-consent-path → overlay (the pref can
+   still send it to a tab); everything else classified → NEW TAB.
+   Migration: stored popupNewTab == old default (false) is removed
+   (dated note); explicit overrides survive.
+5. *SCROLL — THE BOTTOM-FLASH KILL.* The field: a temporary black/
+   white strip at the bottom while scrolling. Leg (a):
+   OVER_SCROLL_NEVER + setOffscreenPreRaster(true) (API 26+) on every
+   tab WebView. Leg (b): the glass backdrop (perf blur w=180 h=17)
+   showed STALE colour mid-scroll — on onScrollChanged the backdrops
+   mark stale and paint the SOLID theme bar colour until the next
+   snapshot; no snapshot mid-scroll; ~120 ms after idle the glass
+   returns; the hidden-chrome skip is unchanged.
+6. *CACHE DOORS + TRIM POLICY.* The field: "cache guard exit
+   door=delayed … deep=1" fired after MERELY BACKGROUNDED to recents
+   (1-2 minutes), wiping logins-adjacent stores. The door/deep matrix:
+   the delayed door = cache-subtree sweep ONLY (deep=0, printed) after
+   10 minutes; the deep diet rides destroy(isFinishing)/user/update
+   alone. Trim: recency exemption 2 → 4 tabs, idle threshold 3 → 10 min
+   (policy=idle10m-recent4) — the diag still showed cold restores on
+   ordinary switches.
+7. *PERF — THE REPEATED-INJECTION GUARD.* The field: `perf nav …
+   inj=17 bytes=250441` on m.youtube.com — +2 injections (~32 KB) per
+   SPA event, and nothing named the culprit. Every hook fallback now
+   logs `hook fallback name=<core|fh|shr> armed= feature=`; the
+   once-per-document guards inside each script carry the law names
+   (__boltCoreArmed / __boltFhArmed / __boltShrArmed); the finish-time
+   unconditional bolt-adcss evaluate (uncounted, invisible to the perf
+   line) is REMOVED — the cosmetic CSS keeps its commit-marker backstop
+   only.
+8. *THE GATES.* test_v1433.py pins all of the above (the compiled REAL
+   base table over the portrait entry + the landscape rows GONE; the
+   compiled REAL padFactor + the 1088/1080 compound fixture — 1.007
+   uncompensated, 1.000 compensated; the compiled REAL dot-closing
+   probe — a 50%-duty dot fixture MISSES the pre-1.4.33 ladder and HITS
+   the closing leg, the degenerate-chroma skip, plain QRs unchanged;
+   the compiled REAL popupDestination decision table — the chooser rows
+   newtab, the consent rows overlay; the compiled REAL backdropState +
+   trimSleepDecision + padFactor probes; the per-hook diag format
+   pins); repin_gates_1433.py sweeps the ladder to 147/1.4.33; the
+   semantic re-points by hand with dated notes (the v1.4.32 base-table
+   four-display pins, the v1.4.32 net= pin, the v1.4.31 trim pins).
 
 **v1.4.32 — THE ORIENTATION ROUND** (the twenty-fifth session,
 2026-11-26). Three QR fixes off the v1.4.31 field read-backs plus a
@@ -580,44 +701,45 @@ them. v1.4.31 builds on the same diagnostics; none of its fixes are
 field-verified yet either.
 
 **Open field read-backs (the acceptance list).**
-- The QR base-angle line (v1.4.32): `qr open model=… sensor=… display=…
-  base=… offset=… mode=…` at scanner open + the preview line's `base=` —
-  upright preview on open in portrait AND landscape, ZERO taps, across
-  restarts; a tap then a long-press returns exactly upright; the v1.4.31
-  mode=/net= legs ride (net= now reads the COMPOUND anisotropy — 1.000
-  in both orientations; the qr calib ok/fail/timeout line names the
-  leg).
-- The stylized-code read-back (v1.4.32): a chess.com-style QR (dot/
-  rounded modules, wavy lines, colour-on-colour) scans LIVE and from the
-  gallery; plain QRs unchanged (no regression on the common path).
-- (carried, v1.4.31) The exit-sweep cadence: a session of tab switches
-  produces NO `cache guard exit … deep=1` lines while the browser stays
-  in use; the line appears once per true close (door=destroy) or after
-  five minutes away (door=delayed), and back/forward stops lagging after
-  trim storms (the `tabSleep … policy=idle3m-recent2` line names the
-  policy).
-- (carried, v1.4.31) The perf nav line: `perf nav commit=… finish=…
-  inj=… bytes=…` — the inj/bytes numbers hold their v1.4.31 drop
-  (single-injection); `perf launch ms=` and `perf blur ms= w= h=` ride
-  alongside.
+- The portrait-lock read-back (v1.4.33): rotating the phone while the
+  scanner is open NEVER changes the preview; portrait opens upright
+  zero-tap (the v1.4.32 base-angle law rides); diag display= reads 0.
+- The active-array read-back (v1.4.33): `qr active … active=1920x1080
+  pad=1.007` at open, the preview line's active=/pad= fields, and the
+  honest net/agree leg (net=1.000 on a measured solve, agree=unknown on
+  table/fill); square pixels verified against a known square target.
+- The dot-closing read-back (v1.4.33): the attached chess.com photo (green
+  dot modules on black, solid finders, centre logo, glare) scans from the
+  GALLERY and LIVE; plain QR latency unchanged.
+- The chooser read-back (v1.4.33): switching Gmail accounts opens the
+  chosen account in a NEW TAB (never the overlay X chip); the Imgur
+  Google sign-in still ends ON imgur via the overlay return leg.
+- The scroll read-back (v1.4.33): no black/white bottom strip while
+  scrolling on light AND dark sites, glass and non-glass skins.
+- The door-matrix read-back (v1.4.33): switch to recents and back after
+  1-2 min — no exit line, warm back/forward; a real close still lands
+  ~20 MB (door=destroy deep=1), and a delayed line (if the app really
+  sat 10+ minutes) reads deep=0.
+- The perf read-back (v1.4.33): `perf nav inj=` stays <= 2 and bytes
+  <= ~2 KB on a YouTube watch session; a stray fallback names itself
+  (`hook fallback name=… armed=… feature=…`).
+- (carried, v1.4.32) The tap-then-long-press return home; the v1.4.31
+  mode= legs ride (the compound net= line now reads the honest agree
+  leg); the `qr calib ok/fail/timeout` line names the leg.
+- (carried, v1.4.31) A session of tab switches produces NO `cache guard
+  exit … deep=1` lines while the browser stays in use; the line appears
+  once per true close (door=destroy) — and the trim storm no longer
+  sleeps the four most-recent tabs (the `tabSleep … policy=idle10m-
+  recent4` line names the policy).
 - (carried, v1.4.31) The real passkey ceremony: a live passkey login
-  still works end to end through the ≤3 KB bootstrap (the ceremony
-  parks, the full layer loads once via Bolt.passkeyLoad and adopts); a
-  real GitHub/Google login is the acceptance test — and a bridge-free
-  context (incognito / a popup child) now settles fast instead of
-  spinning (the v1.4.32 retry bound).
+  still works end to end through the ≤3 KB bootstrap; a bridge-free
+  context (incognito / a popup child) settles fast instead of spinning.
 - (carried, v1.4.31) The Web context: with the Web chip ON, "add apple
   and orange to the table" AFTER a banana question answers with a
-  banana+apple+orange table and cited [n] sources — the banana corpse
-  closed on the device.
-- (carried) The Imgur return leg: the real Google consent on a test
-  account ends ON imgur (opener reloaded), the child closes itself or
-  via the watchdog, `popup return door=…` shows the path. Never paste
-  cookies, account details, codes, states or tokens into any report.
+  banana+apple+orange table and cited [n] sources.
 - (carried) The Web citations: with the Web chip ON, a current-events
-  question returns a cited answer (Gemini: the Sources tail; other
-  providers: the SOURCES-block [n] markers), and the confirm appears
-  exactly once per run; incognito never asks.
+  question returns a cited answer, and the confirm appears exactly once
+  per run; incognito never asks.
 - (carried) The wide-table read-back on a phone; the popup prompt and
   always-allow pref exercises.
 

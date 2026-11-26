@@ -310,7 +310,12 @@ else:
     else:
         node_check(kotlin_chunks(fhkt[a:b + len(tail)]),
                    "FrameHooks.HOOK_JS",
-                   ["if(window.__boltFH)return;window.__boltFH=1;",
+                   # v1.4.33 re-point (2026-11-27): the once-per-document
+                   # guard grew the LAW name __boltFhArmed (the
+                   # repeated-injection guard's once-per-document flag;
+                   # __boltFH rides for the standing refs)
+                   ["if(window.__boltFhArmed||window.__boltFH)return;",
+                    "window.__boltFhArmed=1;window.__boltFH=1;",
                     "window.__boltBlobs={}",
                     "URL.createObjectURL=function(b){",
                     # v1.3.86 — EVERY blob type is held (text/CSV/PDF/zip

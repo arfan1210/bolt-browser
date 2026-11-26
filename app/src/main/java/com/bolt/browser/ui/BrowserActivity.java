@@ -553,6 +553,24 @@ public class BrowserActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_browser);
         prefs = Prefs.get(this);
+        // v1.4.33 — THE CHOOSER-IS-NOT-CONSENT MIGRATION (dated 2026-11-27):
+        // the popup destination law FLIPPED the same-site default — a
+        // classified popup whose first navigation carries NO OAuth shape
+        // and NO IdP consent path now opens a NEW TAB (the Google account
+        // chooser rode the overlay only because its host sat on the IdP
+        // base list). A stored popupNewTab equal to the OLD default
+        // (false = the overlay for everything) is reset by REMOVING the
+        // key — the new default takes over; an explicit override (true —
+        // the user asked for tabs everywhere) survives untouched.
+        try {
+            if (prefs.has("popupNewTab") && !prefs.b("popupNewTab", false)) {
+                prefs.remove("popupNewTab");
+                try {
+                    com.bolt.browser.util.Diag.log(this,
+                            "popup pref migrated chooser=newtab (v1.4.33)");
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
         prefs.setUiMode(getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK);
         tm = TabManager.get(this);
@@ -1195,7 +1213,7 @@ public class BrowserActivity extends AppCompatActivity {
         // onStop), so a floating video keeps its caches; a truly-closed
         // browser does not.
         // v1.4.31 — THE EXIT-SWEEP CADENCE LAW (the tab-hist storm corpse):
-        // onStop NO LONGER sweeps. It arms the 5-minute delayed close-out
+        // onStop NO LONGER sweeps. It arms the delayed close-out
         // (cacheBgSweep, door=delayed) — cancelled by onResume when the
         // user comes back — and that is the ONLY onStop door. A real exit
         // still sweeps: onDestroy (door=destroy) or the user's own exit
@@ -1203,14 +1221,21 @@ public class BrowserActivity extends AppCompatActivity {
         // seconds") is retired as a cadence bug: it fired the full
         // close-out + deep diet on EVERY backgrounding (15× in 90 min on
         // the field device), racing the user's own tab switches. A kill
-        // that lands inside the 5-minute window is EXACTLY what the
+        // that lands inside the delayed window is EXACTLY what the
         // .boltexit-start/.boltexit-done marker pair + the next cold
         // start's pending-exit finisher exist for (v1.3.79's own
         // mechanism) — the ~20 MB promise still holds at true close.
+        // v1.4.33 — 5 min -> 10 min, and the delayed door runs the
+        // CACHE-SUBTREE SWEEP ONLY (deep=0, the CacheGuard door/deep
+        // matrix): the field corpse read "door=delayed deep=1 freed=16mb"
+        // after 1-2 minutes in recents — merely switching apps wiped
+        // logins-adjacent stores. A 1-2 minute recents round-trip now
+        // cancels the runnable untouched; the diet itself waits for a
+        // TRUE close (destroy isFinishing-gated / user / update).
         try {
             ui.removeCallbacks(cacheAuditTick);
             ui.removeCallbacks(cacheBgSweep);
-            ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L);
+            ui.postDelayed(cacheBgSweep, 10 * 60 * 1000L);
         } catch (Throwable ignored) {}
         // v1.3.79 — prefs flush: the debounced writer's window closes here
         // (synchronous, small — the one lifecycle moment disk waits for us)
@@ -4681,9 +4706,15 @@ public class BrowserActivity extends AppCompatActivity {
         // trimSleepDecision table (probe-pinned):
         //   level >= 60 (MODERATE) is the trigger;
         //   NEVER the active tab, the shown tab, or a media tab;
-        //   NEVER the two most recently used background tabs (recency
-        //     rank 0/1 by lastVisitedAt);
-        //   ONLY background tabs idle MORE than 3 minutes;
+        //   NEVER the four most recently used background tabs (recency
+        //     rank 0/1/2/3 by lastVisitedAt — v1.4.33: the field diag
+        //     still showed cold restores on ordinary switches; the
+        //     two-tab exemption slept the third-newest tab the user
+        //     was about to come back to);
+        //   ONLY background tabs idle MORE than 10 minutes (v1.4.33:
+        //     3 -> 10, same read-back — an ordinary app switch is back
+        //     inside a minute; 3 minutes swept tabs that were merely
+        //     parked while the user checked another app);
         //   thumbnails are dropped FIRST (the pass above, which fires at
         //     lower levels too), the sleep captures saveState warm (the
         //     wake restores the back/forward list) and the cold blob is
@@ -4693,8 +4724,10 @@ public class BrowserActivity extends AppCompatActivity {
             List<Tab> sleepSnap;
             synchronized (tm.tabs) { sleepSnap = new ArrayList<>(tm.tabs); }
             // recency ranks among the background tabs — the most recent
-            // two are exempt (the storm corpse: sleeping them is what
-            // made every tab switch pay "tab hist restore … cold")
+            // FOUR are exempt (the storm corpse: sleeping them is what
+            // made every tab switch pay "tab hist restore … cold";
+            // v1.4.33 grew the exemption 2 -> 4 on the cold-restore
+            // read-back)
             List<long[]> bg = new ArrayList<>();
             for (int i = 0; i < sleepSnap.size(); i++) {
                 Tab t = sleepSnap.get(i);
@@ -4724,7 +4757,7 @@ public class BrowserActivity extends AppCompatActivity {
             try {
                 com.bolt.browser.util.Diag.log(this, "tabSleep level=" + level
                         + " tabs=" + slept + " bg=" + activityBackground
-                        + " policy=idle3m-recent2");
+                        + " policy=idle10m-recent4");
             } catch (Throwable ignored) {}
             tm.scheduleSave();
         }
@@ -4751,12 +4784,17 @@ public class BrowserActivity extends AppCompatActivity {
      *  (trim level × role × recency rank × idle) -> sleep/keep.
      *  level: the onTrimMemory level; role: active|shown|media|bg;
      *  rank: the tab's recency rank among background tabs (0 = most
-     *  recent, -1 = not background); idleMs: time since last use. */
+     *  recent, -1 = not background); idleMs: time since last use.
+     *  v1.4.33 — THE SOFTER STORM (the cold-restore read-back): the
+     *  recency exemption grew 2 -> 4 (rank 0-3 never sleep) and the
+     *  idle threshold grew 3 -> 10 minutes — the field diag still
+     *  showed cold restores on ordinary app switches, which means the
+     *  old table was sleeping tabs the user was seconds away from. */
     static boolean trimSleepDecision(int level, String role, int rank, long idleMs) {
         if (level < android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) return false;
         if (!"bg".equals(role)) return false;              // active/shown/media NEVER
-        if (rank >= 0 && rank < 2) return false;           // never the recent two
-        return idleMs > 3L * 60L * 1000L;                  // idle > 3 min only
+        if (rank >= 0 && rank < 4) return false;           // never the recent four
+        return idleMs > 10L * 60L * 1000L;                 // idle > 10 min only
     }
 
     /** v1.3.27 — destroy a sleeping tab's WebView but KEEP the tab (it
@@ -5158,9 +5196,70 @@ public class BrowserActivity extends AppCompatActivity {
     protected ImageView blurTop, blurBottom;
     private long lastBlurSnap;
     private boolean blurRetryPosted;
+    // v1.4.33 — THE STALE-BACKDROP LAW (the bottom-flash corpse, leg b):
+    // the glass strip (perf blur w=180 h=17) showed STALE page colour
+    // while the scroll had already moved the content — the snapshot was
+    // up to 400ms behind, and behind it sat the transparent window (the
+    // black/white strip the field reported). blurStale[0/1] mark the
+    // top/bottom backdrops stale; while stale they paint the SOLID theme
+    // bar colour (Fx.barSolidColor) instead of the old snapshot, and the
+    // first snapshot after the scroll idles restores the glass. The
+    // hidden-chrome skip (barsShown) is unchanged.
+    private final boolean[] blurStale = new boolean[2];
+    /** v1.4.33 — the last scroll event (uptimeMillis): the scroll-active
+     *  detector — snapshots pause while the content is actively moving
+     *  (they would be stale on arrival) and resume ~120ms after it idles. */
+    protected long lastScrollAt = 0;
+
+    /** v1.4.33 — mark both backdrops stale and paint the SOLID theme bar
+     *  colour until the next snapshot lands (a scroll moved the content;
+     *  the blurred copy of the OLD content is exactly the corpse). */
+    protected void markBackdropStale() {
+        try {
+            if (blurTop == null && blurBottom == null) return;
+            if (!blurStale[0] && blurTop != null) {
+                blurStale[0] = true;
+                blurTop.setImageDrawable(null);
+                blurTop.setBackgroundColor(Fx.barSolidColor(this));
+            }
+            if (!blurStale[1] && blurBottom != null) {
+                blurStale[1] = true;
+                blurBottom.setImageDrawable(null);
+                blurBottom.setBackgroundColor(Fx.barSolidColor(this));
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.33 — a fresh snapshot landed: clear the stale mark and the
+     *  solid fill (the glass shows the new snapshot again). */
+    protected void clearBackdropStale(int edge) {
+        try {
+            if (edge < 0 || edge > 1) return;
+            if (!blurStale[edge]) return;
+            blurStale[edge] = false;
+            ImageView iv = edge == 0 ? blurTop : blurBottom;
+            if (iv != null) iv.setBackgroundColor(0x00000000);
+        } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.33 — PURE (gate-pinned): the glass backdrop state machine —
+     *  what the backdrop SHOWS for (scrollActive, stale, freshSnapshot).
+     *  scroll active -> "solid" (never the stale snapshot); stale + no
+     *  fresh snapshot yet -> "solid"; a fresh snapshot while stale ->
+     *  "glass" (the snapshot clears the mark). Idle + fresh -> "glass". */
+    static String backdropState(boolean scrollActive, boolean stale,
+            boolean freshSnapshot) {
+        if (scrollActive) return "solid";
+        if (freshSnapshot) return "glass";
+        return stale ? "solid" : "glass";
+    }
 
     protected void setupGlassBlur() {
         try {
+            // v1.4.33 — fresh layers start fresh (a teardown/rebuild never
+            // inherits a stale mark)
+            blurStale[0] = false;
+            blurStale[1] = false;
             // v1.3.40: the API-31 gate is GONE (that teardown is what killed
             // glass sampling on pre-12 devices — the whole adaptive-glass
             // field bug). Below 31 the backdrop bitmap gets StackBlur'd
@@ -5216,20 +5315,34 @@ public class BrowserActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
-    /** refresh the blurred backdrops (throttled ~120ms; called from scroll
-     *  + bar-show + page-finish). v1.3.40: the glass tint keeps updating
-     *  even when the blur views are absent — sampleGlass() is independent. */
+    /** refresh the blurred backdrops (throttled; called from scroll +
+     *  bar-show + page-finish). v1.3.40: the glass tint keeps updating
+     *  even when the blur views are absent — sampleGlass() is independent.
+     *  v1.4.33 — THE STALE-BACKDROP CADENCE: while the content is actively
+     *  scrolling (an event inside ~160ms) no snapshot is taken — it would
+     *  be stale on arrival; the backdrops show the SOLID bar colour. After
+     *  the scroll idles the first snapshot runs on the ~120ms cadence (the
+     *  glass returns promptly), then the standing 400ms throttle resumes.
+     *  The hidden-chrome skip is unchanged. */
     protected void updateBlurSnapshots() {
         try {
             if (blurTop == null && blurBottom == null) { sampleGlass(); return; }
             if (!barsShown) return;
             long now = android.os.SystemClock.uptimeMillis();
+            boolean scrollActive = now - lastScrollAt < 160;
+            if (scrollActive) {
+                markBackdropStale();
+                return;   // no snapshot mid-scroll: it would land stale
+            }
             // v1.3.79: 120 -> 400 ms — at 120 ms the glass pass ran two
             // PixelCopy GPU readbacks (+ StackBlur on <31) ~8x/second for
             // the whole scroll ("consumes battery faster than other light
             // browsers"); 400 ms keeps the glass honestly adaptive at a
-            // quarter of the cost
-            if (now - lastBlurSnap < 400) return;
+            // quarter of the cost. v1.4.33 — a STALE backdrop (just
+            // scrolled) restores on the ~120ms cadence; the standing
+            // throttle applies to the steady state.
+            long gap = (blurStale[0] || blurStale[1]) ? 120 : 400;
+            if (now - lastBlurSnap < gap) return;
             lastBlurSnap = now;
             // v1.3.36: the snapshot side follows the bar's actual placement
             snapBlur(blurTop, !urlBarAtBottom());
@@ -5316,6 +5429,9 @@ public class BrowserActivity extends AppCompatActivity {
                                 try {
                                     noteGlassLum(top, lum);
                                     fiv.setImageBitmap(show);
+                                    // v1.4.33 — the fresh snapshot clears the
+                                    // stale mark + the solid fill (glass back)
+                                    clearBackdropStale(top ? 0 : 1);
                                 } catch (Throwable ignored2) {}
                             });
                         } catch (Throwable ignored) {
@@ -5675,6 +5791,13 @@ public class BrowserActivity extends AppCompatActivity {
 
     protected void onContentScrolled(int delta, int scrollY) {
         try {
+            // v1.4.33 — THE STALE-BACKDROP MARK: every scroll event marks
+            // the glass backdrops stale FIRST (the snapshot of the OLD
+            // content is the bottom-flash corpse) — the solid bar colour
+            // paints until the first post-idle snapshot lands. Cheap: two
+            // flag checks once painted.
+            lastScrollAt = android.os.SystemClock.uptimeMillis();
+            if (barsShown) markBackdropStale();
             Tab t = activeTab();
             if (t == null || t.isHome) { ensureBarsShown(); return; }
             if (customView != null) return;
@@ -6672,7 +6795,17 @@ public class BrowserActivity extends AppCompatActivity {
                 // scan pins .__boltNI on every element whose computed
                 // background-image carries a url() so class-set photos stop
                 // coming out negative.
-                view.evaluateJavascript(MediaHook.cssInjectOnce("bolt-adcss", css), null);
+                // v1.4.33 — THE FINISH-PATH RE-EVALUATION IS GONE: this spot
+                // used to evaluate the SAME bolt-adcss payload UNCONDITIONALLY
+                // on every finish (a leftover from the pre-1.4.31 pass shape —
+                // uncounted by evalInj, invisible to the perf nav line), a
+                // second full CSS injection per document the commit-marker
+                // backstop above already covers. The cosmetic CSS keeps its
+                // commit-marker backstop ONLY (the !committed evalInj above);
+                // the dark chain's finish leg keeps its own run-token guard
+                // below. The repeated-injection corpse (inj=17 bytes=250441
+                // on m.youtube.com) died on several legs at once — this one
+                // included.
                 // v1.3.91 — ONE ENGINE: the CSS inversion + the smart probe
                 // now run on EVERY API level and BOTH app themes (the old
                 // carve-out handed 33+ app-dark pages to Chromium's
@@ -7488,6 +7621,69 @@ public class BrowserActivity extends AppCompatActivity {
         return w;
     }
 
+    /** v1.4.33 — THE CHOOSER-IS-NOT-CONSENT LAW (PURE, gate-compiled): an
+     *  IdP consent/authorize PATH — the URL shape a REAL consent flow
+     *  rides. The Google account CHOOSER (accounts.google.com/AddSession,
+     *  /AccountChooser) carries no OAuth shape and no consent path — it
+     *  only ever matched because its HOST sat on the IdP base list, and
+     *  the overlay child it opened was the account-switch corpse (the
+     *  user wants the switched account in a NEW TAB). A known IdP host
+     *  whose PATH is an authorize/consent/sign-in leg (oauth/authorize/
+     *  consent/signin/auth/token/challenge) keeps the overlay — those
+     *  are the flows that need window.opener/postMessage. http(s) only;
+     *  the path is matched lowercase, substring-shaped (a path segment
+     *  carrying the marker qualifies — /o/oauth2/auth, /login/oauth/
+     *  authorize, /dialog/oauth, /auth/authorize, /Consent). */
+    static boolean isIdpConsentPath(String url) {
+        try {
+            if (url == null) return false;
+            if (!(url.startsWith("https://") || url.startsWith("http://"))) return false;
+            String base = Fx.baseDomain(Fx.hostOf(url));
+            if (base.equals("google.com") || base.equals("googleusercontent.com")
+                    || base.equals("apple.com") || base.equals("github.com")
+                    || base.equals("facebook.com")) {
+                String path = Fx.pathOf(url).toLowerCase(java.util.Locale.US);
+                return path.contains("/oauth") || path.contains("/authorize")
+                        || path.contains("/consent") || path.contains("/signin")
+                        || path.contains("/auth/") || path.contains("/token")
+                        || path.contains("/challenge");
+            }
+            return false;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** v1.4.33 — THE POPUP DESTINATION DECISION (PURE, gate-compiled):
+     *  where a CLASSIFIED popup's first navigation goes.
+     *    OAuth shape (Tab.isAuthRequestUrl/isAuthResponseUrl — the
+     *      shared auth-hold classifiers)            -> "overlay"
+     *    an IdP consent path (isIdpConsentPath)     -> "overlay"
+     *    everything else classified (the Google
+     *    account chooser, a same-base first-party
+     *    chain with no consent shape)               -> "newtab"
+     *  THE LAW: the overlay child exists ONLY for flows that need
+     *  window.opener/postMessage (consent); the chooser-is-not-consent.
+     *  The popupNewTab pref stays the user's override ON TOP of the
+     *  consent legs (a user who prefers tabs sends consent flows to a
+     *  tab too); the non-consent default is the new tab and the pref
+     *  cannot re-overlay it. The return-leg watchdog rides the overlay
+     *  rows only. */
+    static String popupDestination(String popupUrl, boolean prefNewTab) {
+        try {
+            if (popupUrl == null) return "newtab";
+            if (!(popupUrl.startsWith("https://") || popupUrl.startsWith("http://")))
+                return "newtab";
+            boolean consent = Tab.isAuthRequestUrl(popupUrl)
+                    || Tab.isAuthResponseUrl(popupUrl)
+                    || isIdpConsentPath(popupUrl);
+            if (consent) return prefNewTab ? "newtab" : "overlay";
+            return "newtab";
+        } catch (Throwable t) {
+            return "newtab";
+        }
+    }
+
     /** the child's navigation policy + classifier. */
     private class PopupChildClient extends WebViewClient {
         @Override
@@ -7504,16 +7700,32 @@ public class BrowserActivity extends AppCompatActivity {
             if (url.startsWith("about:")) return false;
             // the classification point (the popup's first real navigation)
             if (isPopupOAuthUrl(popupOpenerUrl, url)) {
-                // v1.4.30 — THE SAME-SITE POPUP DESTINATION (default
-                // overlay): a user who prefers TABS sends the classified
-                // popup into a new tab at the FIRST classified navigation
-                // (openNewTab — the shared cookie jar rides) and the child
-                // retires. Overlay stays the default on purpose:
-                // postMessage/window.opener flows (the Imgur consent) die
-                // in a tab; mid-flow hops (a visible child) always ride
-                // the child as v1.4.29 shipped.
-                if (prefs.b("popupNewTab", false) && !popupChildVisible) {
+                // v1.4.30 — THE SAME-SITE POPUP DESTINATION: a user who
+                // prefers TABS sends the classified popup into a new tab
+                // at the FIRST classified navigation (openNewTab — the
+                // shared cookie jar rides) and the child retires. Mid-flow
+                // hops (a visible child) always ride the child as v1.4.29
+                // shipped.
+                // v1.4.33 — THE CHOOSER-IS-NOT-CONSENT LAW: the DEFAULT
+                // flipped. popupDestination (PURE, gate-compiled) decides:
+                // an OAuth-shape or IdP-consent-path first navigation
+                // keeps the overlay child (the postMessage/window.opener
+                // flows need it; the return-leg watchdog rides) unless the
+                // user's popupNewTab override says tabs; EVERY other
+                // classified popup — the Google account chooser (no OAuth
+                // shape, matched only by its IdP host), an ordinary
+                // same-base chain — opens a NEW TAB now. The overlay is
+                // consent's tool, not the default.
+                String dest = popupDestination(url,
+                        prefs.b("popupNewTab", false));
+                if (dest.equals("newtab") && !popupChildVisible) {
                     String pu = url;
+                    try {
+                        Diag.log(BrowserActivity.this, "popup child tab dest="
+                                + (Tab.isAuthRequestUrl(pu)
+                                        || Tab.isAuthResponseUrl(pu)
+                                        || isIdpConsentPath(pu) ? "consent" : "chooser"));
+                    } catch (Throwable ignored) {}
                     closePopupChild();
                     openNewTab(pu);
                     return true;
@@ -7545,7 +7757,13 @@ public class BrowserActivity extends AppCompatActivity {
                     popupNavigated = true;
                     ui.removeCallbacks(popupTimeoutR);
                 }
-                if (!popupChildVisible && isPopupOAuthUrl(popupOpenerUrl, url)) {
+                if (!popupChildVisible && isPopupOAuthUrl(popupOpenerUrl, url)
+                        && popupDestination(url, prefs.b("popupNewTab", false))
+                                .equals("overlay")) {
+                    // v1.4.33 — the belt-and-braces shows the child ONLY for
+                    // a consent-shaped destination; a chooser-classified
+                    // navigation is the new-tab path's business (the
+                    // override hook already sent it there)
                     ensurePopupChildVisible();
                 }
                 if (url == null || !url.startsWith("http")) return;

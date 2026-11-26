@@ -305,6 +305,22 @@ public class Fx {
     }
 
     /**
+     * v1.4.33 — THE STALE-BACKDROP SOLID: the OPAQUE end colour of the
+     * bar treatment — what the glass blur backdrops paint while their
+     * snapshot is STALE (mid-scroll, before the next snapshot lands).
+     * Glass dark = the smoke end (0xF00E0E1A), glass light = the frost
+     * end (0xE6F4F5FB), every other skin = the flat surface colour —
+     * always the colour the bar itself settles on, never a stale strip
+     * of the page that scrolled away. */
+    public static int barSolidColor(Context c) {
+        if (skinStyle(c) == 1) {
+            return com.bolt.browser.util.Prefs.get(c).isDark()
+                    ? 0xF00E0E1A : 0xE6F4F5FB;
+        }
+        return bg(c);
+    }
+
+    /**
      * Skin-aware card treatment for programmatic surfaces: Aura gets the
      * translucent glass fill + hairline rim (dark smoke or bright frost per
      * lightness), Origins the soft outlined surface, Mono flat, classic the

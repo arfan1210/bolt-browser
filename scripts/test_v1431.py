@@ -90,8 +90,8 @@ sia = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.java")
 lg = read("app/src/main/java/com/bolt/browser/util/LauncherGuard.kt")
 
 print("A — version pins")
-need("versionCode 146" in gradle and 'versionName "1.4.32"' in gradle,
-     "build.gradle pins 146 / 1.4.32")
+need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
+     "build.gradle pins 147 / 1.4.33")
 need('<item>1.4.31|' in strings,
      "the About changelog carries the 1.4.31 line at [0] (newest first)")
 i31 = strings.find("<item>1.4.31|")
@@ -112,9 +112,18 @@ need("static final String[] COVER_UNDO_MODELS = { \"RMX2020\" };" in qsa,
 # destroyed the device default, and landscape was never seeded (the field
 # needed a manual +90 tap EVERY session). The base and the user offset are
 # separate now.
-need("static int baseAngleFor" in qsa and '(270 + display) % 360' in qsa,
-     "the device base: RMX2020 (sensor=90) -> (270 + display) % 360 "
-     "(field-proven: 0->270, 90->0, 180->90, 270->180), immutable by any button")
+# v1.4.33 re-point (2026-11-27): THE PORTRAIT-ONLY LAW — the scanner
+# activity is LOCKED portrait in the manifest (QR decoding is orientation-
+# independent; the landscape preview path was pure liability). The table
+# keeps ONLY the portrait entry (RMX2020 sensor=90 display=0 -> 270, the
+# field-proven row); the v1.4.32 (270 + display) % 360 family for display
+# 90/180/270 is retired with the landscape path — diag display= is always
+# 0 now. test_v1433.py pins the portrait table compiled from the REAL Java.
+need("static int baseAngleFor" in qsa and
+     '"RMX2020".equals(model) && sensor == 90 && display == 0' in qsa,
+     "the device base: the PORTRAIT entry RMX2020 (sensor=90, display=0) "
+     "-> 270, immutable by any button (the landscape rows retired with "
+     "the landscape path — v1.4.33)")
 # the measured session gate: calibrate after configure, before repeating
 need("if (armCalibration()) return;" in qsa,
      "the session gate: onConfigured calibrates FIRST (no repeating "
@@ -135,8 +144,10 @@ need("undoSx = 1f / calibIx;" in qsa and
      in qsa,
      "the measured undo is the exact inverse affine [1/i, 0, -t/i; ...]")
 need('"table".equals(undoMode)' in qsa and
-     "Math.max(viewW / bw, viewH / bh)" in qsa,
-     "the table undo: uniform cover 1/k, centered")
+     "Math.max(viewW / (float) aw, viewH / (float) ah)" in qsa,
+     "the table undo: uniform cover 1/k, centered (v1.4.33 re-point: k "
+     "rides the ACTIVE scene dims — the buffer's stride padding is never "
+     "scene)")
 need("undoSx = bw / viewW;" in qsa and
      "// undo the implicit buffer->view stretch (FILL)" in qsa,
      "the fill undo rides as the fallback (the historical default)")
@@ -145,9 +156,18 @@ need("undoSx = bw / viewW;" in qsa and
 # only the undo's own x/y ratio and could not see the corpse's stretch
 # (fill-undo on a uniform-cover device composed to 3.784 while net= read 1.0
 # once the table leg fired). mode= rides unchanged.
-need('" mode=" + undoMode' in qsa and '" net=" ' in qsa,
-     "the diag line grew mode= and net= (v1.4.32: net= is the compound "
-     "anisotropy, 1.000 = square pixels)")
+# v1.4.33 re-point (2026-11-27): THE HONEST NET — the v1.4.32 net= composed
+# each mode with its OWN undo (a tautology: table/fill read 1.000 by
+# construction, and the padding corpse rode in invisible at mode=table
+# net=1.000). net= now appears ONLY on a measured solve (the compound of
+# the measured implicit vs the APPLIED undo, padding compensation
+# included); every other mode emits agree=unknown — never a fake 1.000.
+# The padding law itself is pinned in test_v1433.py section C.
+need('" mode=" + undoMode' in qsa and '"agree=unknown"' in qsa and
+     '"net=" + String.format(java.util.Locale.US, "%.3f", net)' in qsa,
+     "the diag line grew mode= and net= (v1.4.32: the compound anisotropy; "
+     "v1.4.33: net= only on a measured solve, agree=unknown otherwise — "
+     "the honest net)")
 # the v1.4.30 laws ride unchanged
 # v1.4.32 re-point (2026-11-26): the theta formula now carries the immutable
 # device base + the user offset as ONE additive pair (the base-angle law);
@@ -262,21 +282,27 @@ if m_tbl and m_seed and m_cnt and m_pos and m_scan and m_solve and javac:
         return null;
     }
     public static void main(String[] args) {
-        // ---- the device table + the base angle (v1.4.32 re-point) ----
+        // ---- the device table + the base angle ----
+        // v1.4.33 re-point (2026-11-27): the PORTRAIT-ONLY LAW — the table
+        // keeps ONLY the portrait entry; the v1.4.32 display-scoped rows
+        // (90 -> 0, 180 -> 90, 270 -> 180, 45 -> 315) are retired with the
+        // landscape path: every non-portrait answer is 0 now.
         eq("table RMX2020", Probe.undoModeFor("RMX2020").equals("table"));
         eq("table exact-match only",
                 Probe.undoModeFor("RMX2020N").equals("fill")
                 && Probe.undoModeFor("Pixel 8").equals("fill")
                 && Probe.undoModeFor(null).equals("fill"));
-        eq("base display 0", Probe.baseAngleFor("RMX2020", 90, 0) == 270);
-        eq("base display 90", Probe.baseAngleFor("RMX2020", 90, 90) == 0);
-        eq("base display 180", Probe.baseAngleFor("RMX2020", 90, 180) == 90);
-        eq("base display 270", Probe.baseAngleFor("RMX2020", 90, 270) == 180);
+        eq("base display 0 (the portrait entry)",
+                Probe.baseAngleFor("RMX2020", 90, 0) == 270);
+        eq("base landscape rows retired",
+                Probe.baseAngleFor("RMX2020", 90, 90) == 0
+                && Probe.baseAngleFor("RMX2020", 90, 180) == 0
+                && Probe.baseAngleFor("RMX2020", 90, 270) == 0);
         eq("base scoped (unknown models / sensors)",
                 Probe.baseAngleFor("Pixel 8", 90, 0) == 0
                 && Probe.baseAngleFor(null, 90, 0) == 0
                 && Probe.baseAngleFor("RMX2020", 180, 0) == 0
-                && Probe.baseAngleFor("RMX2020", 90, 45) == 315);
+                && Probe.baseAngleFor("RMX2020", 90, 45) == 0);
         // ---- the solver over fill / cover / fit synthetic rasters ----
         // the CORPSE dims: portrait view 1080x2298, landscape buffer
         int[] cases = {
@@ -408,9 +434,13 @@ need('CacheGuard.exit(app, "update")' in lg,
 # onStop arms ONLY the delayed sweep — no immediate exit anywhere
 onstop = ba[ba.find("protected void onStop()"):]
 onstop = onstop[:onstop.find("\n    }")]
-need("ui.postDelayed(cacheBgSweep, 5 * 60 * 1000L);" in onstop
+# v1.4.33 re-point (2026-11-27): the delayed door waits 10 minutes (the
+# recents-wipe corpse) and runs the CACHE-SUBTREE SWEEP ONLY (deep=0 —
+# the door/deep matrix, pinned in test_v1433.py).
+need("ui.postDelayed(cacheBgSweep, 10 * 60 * 1000L);" in onstop
      and 'CacheGuard.exit' not in onstop,
-     "onStop arms ONLY the 5-minute delayed sweep (no immediate exit)")
+     "onStop arms ONLY the delayed sweep (no immediate exit) — 10 "
+     "minutes since v1.4.33 (the 5-minute row re-pointed)")
 need("ui.removeCallbacks(cacheBgSweep);" in ba[
     ba.find("protected void onResume()"):ba.find("protected void onResume()") + 4000],
      "onResume cancels the delayed sweep (the v1.3.77 cadence)")
@@ -431,9 +461,14 @@ need("static boolean trimSleepDecision(int level, String role, int rank, "
 need("rank.put((int) bg.get(r)[0], r);" in ba and
      "bg.sort((x, y) -> Long.compare(y[1], x[1]));" in ba,
      "the recency ranks: background tabs sorted by lastVisitedAt")
+# v1.4.33 re-point (2026-11-27): the policy grew softer — the recency
+# exemption 2 -> 4 tabs and the idle threshold 3 -> 10 minutes (the field
+# diag still showed cold restores on ordinary switches); the label rides
+# the policy name.
 need('com.bolt.browser.util.Diag.log(this, "tabSleep level=" + level'
-     in ba and 'policy=idle3m-recent2' in ba,
-     "the tabSleep diag line names the policy")
+     in ba and 'policy=idle10m-recent4' in ba,
+     "the tabSleep diag line names the policy (idle10m-recent4 — the "
+     "v1.4.31 idle3m-recent2 rows re-pointed with dated notes)")
 need("if (!incognito && (ev != null || pendingBoOffer || boNagDue))" in ba,
      "the boOffer resume path rides unchanged")
 need("private static volatile boolean offeredThisProcess = false;" in bs
@@ -467,14 +502,25 @@ if m_dec and javac:
                  !trimSleepDecision(COMP, "active", -1, 4 * 3600_000L)
                  && !trimSleepDecision(COMP, "shown", -1, 4 * 3600_000L)
                  && !trimSleepDecision(COMP, "media", 5, 4 * 3600_000L));
-        // the recent two are exempt (rank 0/1)
-        bad += P("the recent two are exempt",
+        // the recent FOUR are exempt (rank 0-3) — v1.4.33 re-point
+        // (2026-11-27): the recency exemption grew 2 -> 4 on the field
+        // read-back (the diag still showed cold restores on ordinary
+        // switches; the two-tab exemption slept the third-newest tab the
+        // user was about to come back to)
+        bad += P("the recent four are exempt",
                  !trimSleepDecision(COMP, "bg", 0, 4 * 3600_000L)
-                 && !trimSleepDecision(COMP, "bg", 1, 4 * 3600_000L));
-        // idle > 3 min only
-        bad += P("3m01s bg rank5 sleeps", trimSleepDecision(COMP, "bg", 5, 3 * 60_000L + 1));
-        bad += P("exactly 3min keeps", !trimSleepDecision(COMP, "bg", 5, 3 * 60_000L));
-        bad += P("2m59s keeps", !trimSleepDecision(COMP, "bg", 5, 179_000L));
+                 && !trimSleepDecision(COMP, "bg", 1, 4 * 3600_000L)
+                 && !trimSleepDecision(COMP, "bg", 2, 4 * 3600_000L)
+                 && !trimSleepDecision(COMP, "bg", 3, 4 * 3600_000L));
+        // idle > 10 min only — v1.4.33 re-point (2026-11-27): 3 -> 10
+        // minutes (the same read-back; an ordinary app switch is back
+        // inside a minute, and 3 minutes swept tabs that were merely
+        // parked while the user checked another app)
+        bad += P("10m01s bg rank5 sleeps", trimSleepDecision(COMP, "bg", 5, 10 * 60_000L + 1));
+        bad += P("exactly 10min keeps", !trimSleepDecision(COMP, "bg", 5, 10 * 60_000L));
+        bad += P("9m59s keeps", !trimSleepDecision(COMP, "bg", 5, 599_000L));
+        bad += P("3m01s keeps now (the v1.4.31 row re-pointed)",
+                 !trimSleepDecision(COMP, "bg", 5, 181_000L));
         bad += P("fresh tab (idle 0) keeps", !trimSleepDecision(MOD, "bg", 5, 0));
         // the storm case from the corpse: level=80, an old idle bg tab
         bad += P("the corpse case sleeps (old bg tab under a level-80 storm)",
@@ -685,8 +731,15 @@ need('StackBlur.blur(small, 12)' in ba and
      "names its input dims")
 need("show = fb;   // RenderEffect is 31+ — the full bitmap stays" in ba,
      "31+ keeps the full bitmap (RenderEffect owns the blur)")
-need("now - lastBlurSnap < 400" in ba,
-     "the 400ms debounce rides unchanged (>=250ms law, dated)")
+# v1.4.33 re-point (2026-11-27): THE STALE-BACKDROP LAW — the debounce
+# is conditional now: no snapshot MID-SCROLL (it would land stale; the
+# backdrops paint the solid bar colour instead) and a STALE backdrop
+# restores on the ~120ms cadence after the scroll idles; the standing
+# 400ms throttle applies to the steady state.
+need("boolean scrollActive = now - lastScrollAt < 160;" in ba and
+     "long gap = (blurStale[0] || blurStale[1]) ? 120 : 400;" in ba,
+     "the scroll-aware debounce rides (>=250ms steady-state law, dated "
+     "2000-era; v1.4.33: mid-scroll skip + 120ms post-idle restore)")
 need("if (!barsShown) return;" in ba and
      "if (blurTop == null && blurBottom == null)" in ba,
      "the hidden-chrome / non-glass skips ride unchanged")

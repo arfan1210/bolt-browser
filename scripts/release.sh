@@ -744,6 +744,38 @@ python3 scripts/test_v1431.py
 # the dot/wavy fixtures decode through the ladder; the budget order pin),
 # and the node probe for the bootstrap retry bound
 python3 scripts/test_v1432.py
+
+# ---- 1z-33. v1.4.33 gate: THE FIELD ROUND (seven fixes off the v1.4.32
+# diagnostics, no feature work: THE PORTRAIT-ONLY LAW — the scanner
+# activity locked portrait in the manifest, baseAngleFor keeps ONLY the
+# portrait entry (RMX2020 sensor=90 display=0 -> 270) and the landscape
+# display rows are deleted (display= is always 0); THE ACTIVE-ARRAY
+# PADDING LAW — the stride-aligned buffer (1920x1088 carries a 1920x1080
+# ACTIVE image) no longer feeds the cover/undo math: postScale(buf/
+# active) compensates after the undo ops, ACTIVE dims ride uw/uh/cover/
+# the chain prior, and net= became HONEST (measured-vs-applied when a
+# solve exists, agree=unknown otherwise — never a fake 1.000); THE
+# DOT-CLOSING LEG — close3x3/dilate3x3 joined QrCore, decodeLuma/decodeMulti/
+# decodeRobust gained the closing legs (the live failure leg dilate-only
+# at half res; a hue-flat chroma plane max spread < 8 is skipped); THE
+# CHOOSER-IS-NOT-CONSENT LAW — popupDestination flips the non-consent
+# classified popup to a NEW TAB (the Google account chooser rode the
+# overlay only by host), consent keeps the overlay + the return leg, the
+# popupNewTab old-default migration; THE BOTTOM-FLASH KILL —
+# OVER_SCROLL_NEVER + setOffscreenPreRaster (API 26+) and the glass
+# backdrop marks stale on scroll and paints the SOLID bar colour until
+# the post-idle ~120ms snapshot; THE DOOR/DEEP MATRIX — the delayed exit
+# door deep=0 after 10 minutes (the deep diet rides destroy/user/update
+# only) and the trim table idles 10m-recent4; THE REPEATED-INJECTION
+# GUARD — the per-hook fallback diag (name= armed= feature=), the
+# __boltCoreArmed/__boltFhArmed/__boltShrArmed guards, the finish-time
+# unconditional bolt-adcss evaluate REMOVED) — probes: the compiled REAL
+# base/pad/compound fixtures (1088/1080: 1.007 uncompensated, 1.000
+# compensated), the compiled REAL dot-module QR (50% duty, solid finders,
+# centre logo) MISSES the pre-1.4.33 ladder and HITS the closing leg,
+# the compiled REAL popupDestination + backdropState + trimSleepDecision
+# decision tables, and the source pins for the whole round
+python3 scripts/test_v1433.py
 mark gates
 fi
 

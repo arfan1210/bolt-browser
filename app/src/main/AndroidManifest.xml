@@ -452,8 +452,16 @@
         <activity android:name=".ui.AppearanceActivity" android:exported="false" />
         <!-- v1.3.37 — live QR scanner (camera2 + the existing ZXing core).
              Runs in the caller's task; no process attr so both the normal and
-             the incognito browser can start it and get the text back. -->
+             the incognito browser can start it and get the text back.
+             v1.4.33 — THE PORTRAIT-ONLY LAW: QR decoding is orientation-
+             independent (ZXing infers rotation from the finder patterns) and
+             the landscape preview path was pure liability (a second base-
+             angle table branch, a second offset key, a second failure
+             surface). The activity is LOCKED portrait: rotating the phone
+             while scanning never changes the preview, display= is always 0,
+             and the base table keeps ONE portrait entry. -->
         <activity android:name=".ui.QrScanActivity" android:exported="false"
+            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
         <activity android:name=".ui.BackupActivity" android:exported="false" />
         <activity android:name=".scripts.UserscriptsActivity" android:exported="false" />

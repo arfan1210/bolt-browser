@@ -75,8 +75,16 @@ public class MediaHook {
 
     /** v1.4.31 — the ONE evaluateJavascript fallback per document for
      *  WebViews without DOCUMENT_START_SCRIPT support (the commit-time
-     *  twin is gone; the script's own __boltCore guard keeps re-runs
-     *  harmless). No-op when the registration succeeded. */
+     *  twin is gone; the script's own __boltCoreArmed guard keeps re-runs
+     *  harmless). No-op when the registration succeeded.
+     *  v1.4.33 — THE FALLBACK DIAG (the repeated-injection corpse: inj=17
+     *  bytes=250441 on m.youtube.com — something re-evaluated per SPA
+     *  event and nothing said WHICH hook or WHY). Every fallback that
+     *  actually fires now names itself: `hook fallback name=core
+     *  armed=<bool> feature=<bool>` — armed = the document-start
+     *  registration landed on this WebView, feature = the WebView
+     *  supports DOCUMENT_START_SCRIPT at all. No URL, no host, nothing
+     *  page-derived rides the line (the no-secret-diag law). */
     public static void injectCore(android.webkit.WebView w, Prefs p) {
         if (w == null) return;
         boolean armed;
@@ -85,7 +93,24 @@ public class MediaHook {
         String js = core(p);
         evalCount++;
         evalBytes += js.length();
+        try {
+            com.bolt.browser.util.Diag.log(w.getContext(),
+                    "hook fallback name=core armed=" + armed + " feature="
+                            + featureSupported());
+        } catch (Throwable ignored) {}
         try { w.evaluateJavascript(js, null); } catch (Throwable ignored) {}
+    }
+
+    /** v1.4.33 — the DOCUMENT_START_SCRIPT capability (the fallback
+     *  diag's feature= input; also the arm() gate). PUBLIC: the FrameHooks/
+     *  ShadowGate fallback diags read it from the util package. */
+    public static boolean featureSupported() {
+        try {
+            return androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** Core script injected at onPageStarted (v1.4.31: one fallback per
@@ -102,7 +127,13 @@ public class MediaHook {
                 // earlier posture (onPageStarted was main-frame only)
                 // restored inside the registered script itself.
                 + "if(window!==window.top)return;\n"
-                + "if(window.__boltCore)return; window.__boltCore=1;\n"
+                // v1.4.33 — the once-per-document guard grew the LAW name:
+                // __boltCoreArmed is the flag the repeated-injection probe
+                // pins (any stray evaluateJavascript of this script is a
+                // cheap no-op inside the page); __boltCore rides for the
+                // standing references.
+                + "if(window.__boltCoreArmed||window.__boltCore)return;"
+                + "window.__boltCoreArmed=1;window.__boltCore=1;\n"
                 + "var SET=" + settings + ";\n"
                 + "var chains=new WeakMap();\n"
                 // foreign audio-claim tracking: patch createMediaElementSource BEFORE

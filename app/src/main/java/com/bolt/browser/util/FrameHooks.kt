@@ -146,8 +146,13 @@ object FrameHooks {
      * fragments).
      */
     internal const val HOOK_JS = "(function(){try{" +
-            // idempotency: one install per frame, ever
-            "if(window.__boltFH)return;window.__boltFH=1;" +
+            // idempotency: one install per frame, ever. v1.4.33 — the
+            // once-per-document guard carries the LAW name __boltFhArmed
+            // (the repeated-injection probe pins it; any stray evaluate
+            // is a cheap no-op inside the page); __boltFH rides for the
+            // standing references.
+            "if(window.__boltFhArmed||window.__boltFH)return;" +
+            "window.__boltFhArmed=1;window.__boltFH=1;" +
             // ---- 1. blob capture: hold the Blob OBJECT in the frame that
             // mints it (a Blob stays FileReader-readable even after
             // revokeObjectURL; the bytes of a blob:null URL are reachable
@@ -470,12 +475,15 @@ object FrameHooks {
      * posts to the WebView's UI thread). Belt-and-braces beside the
      * document-start registration — covers WebViews without
      * DOCUMENT_START_SCRIPT support and documents that predate arm().
-     * Idempotent: the __boltFH guard makes re-runs no-ops. This replaces
-     * v1.3.57's ClipboardWrite.injectNow at the call moments
+     * Idempotent: the __boltFhArmed guard makes re-runs no-ops. This
+     * replaces v1.3.57's ClipboardWrite.injectNow at the call moments
      * (onPageStarted — v1.4.31 keeps ONE fallback per document).
      * v1.4.31 — THE SINGLE-INJECTION LAW: a WebView whose registration
      * succeeded never re-evaluates the script here — the twin was a
      * per-document JS parse that the registration already covers.
+     * v1.4.33 — THE FALLBACK DIAG: fires name=fh armed= feature= (see
+     * MediaHook.injectCore — the repeated-injection corpse wants the
+     * WHICH and the WHY on every fallback that actually runs).
      */
     @JvmStatic
     fun injectNow(web: WebView?) {
@@ -483,6 +491,11 @@ object FrameHooks {
         if (docStartArmed(web)) return
         evalCount++
         evalBytes += HOOK_JS.length
+        try {
+            com.bolt.browser.util.Diag.log(web.context.applicationContext,
+                    "hook fallback name=fh armed=" + docStartArmed(web)
+                            + " feature=" + com.bolt.browser.media.MediaHook.featureSupported())
+        } catch (_: Throwable) {}
         try {
             web.post {
                 try { web.evaluateJavascript(HOOK_JS, null) } catch (ignored: Throwable) {}
