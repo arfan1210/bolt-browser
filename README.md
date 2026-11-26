@@ -144,6 +144,7 @@ maintainer's workspace + offline backup.
 | v1.4.29 | 3,158,499 B | the reachability round; sha256 `7f5e150c…3576f`; release ids 456367850 (source) / 456367966 (releases); /latest serves 143/1.4.29 |
 | v1.4.30 | 3,165,467 B | the field round (+6,968 B: the QR producer probe + the rotate button + the return leg + the AI web legs + popup hardening + the table re-fill); sha256 `2449f992…1784c`; release ids 456744685 (source) / 456744818 (releases); /latest serves 144/1.4.30 |
 | v1.4.31 | 3,177,569 B | the performance-and-quiet round (+12,102 B: the stripe calibration + the device table/seed, the three-door exit sweep, the trim-storm table, the single-injection rework, the passkey bootstrap + lazy full layer, the glass diet, the perf diag lines); sha256 `2b205f34…72cde`; release ids 457274128 (source) / 457274328 (releases); /latest serves 145/1.4.31 |
+| v1.4.32 | 3,180,301 B | the orientation round (+2,732 B: the base-angle table + the user-offset split, the compound-anisotropy acceptance, the chroma + dual-binarizer ladder, the quiet pack); sha256 `6418f6c5…36281`; release ids 459465030 (source) / 459465230 (releases); /latest serves 146/1.4.32 |
 
 Every release's signature verifies against the pinned cert above; every
 release is md5/sha-verified on the download-back of BOTH repos and the
@@ -532,6 +533,23 @@ Six fixes from the maintainer's Realme read-backs on v1.4.29:
    summaries instead of per-version narratives; the laws, numbers,
    lessons, wipe story and open read-backs kept; the mechanics live
    in the gates.
+
+**v1.4.32 post-release: the known-good numbers.** APK 3,180,301 B
+(+2,732 B over v1.4.31's 3,177,569 B — the base-angle table + the user-
+offset split + the compound-anisotropy acceptance + the chroma and dual-
+binarizer ladder + the quiet pack); the FULL verification ran in this
+environment (the complete gates ladder incl. test_v1432 — 86/86 green,
+the full testDebugUnitTest Robolectric suite incl. the launch law — the
+grafted JDK21 rebuilt via setup_toolchain.sh after the sandbox recycle),
+the signed build cert-verified against the pinned fingerprint, the
+6,000,000 B size law held, dual-published in the mandated order (SOURCE
+first release id 459465030, RELEASES last release id 459465230), md5-
+verified on both download-backs AND an anonymous re-download (sha256
+`6418f6c5d8d54845…36281`), and both checkers' /latest endpoints serve
+v1.4.32. The field checks (the zero-tap orientation in both
+orientations, the tap-then-long-press return home, the compound net=
+line, the stylized chess.com-style scan live and from gallery) remain
+open — claimed nowhere.
 
 **v1.4.31 post-release: the known-good numbers.** APK 3,177,569 B
 (+12,102 B over v1.4.30's 3,165,467 B — the stripe calibration + the
