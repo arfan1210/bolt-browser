@@ -145,6 +145,7 @@ maintainer's workspace + offline backup.
 | v1.4.30 | 3,165,467 B | the field round (+6,968 B: the QR producer probe + the rotate button + the return leg + the AI web legs + popup hardening + the table re-fill); sha256 `2449f992…1784c`; release ids 456744685 (source) / 456744818 (releases); /latest serves 144/1.4.30 |
 | v1.4.31 | 3,177,569 B | the performance-and-quiet round (+12,102 B: the stripe calibration + the device table/seed, the three-door exit sweep, the trim-storm table, the single-injection rework, the passkey bootstrap + lazy full layer, the glass diet, the perf diag lines); sha256 `2b205f34…72cde`; release ids 457274128 (source) / 457274328 (releases); /latest serves 145/1.4.31 |
 | v1.4.32 | 3,180,301 B | the orientation round (+2,732 B: the base-angle table + the user-offset split, the compound-anisotropy acceptance, the chroma + dual-binarizer ladder, the quiet pack); sha256 `6418f6c5…36281`; release ids 459465030 (source) / 459465230 (releases); /latest serves 146/1.4.32 |
+| v1.4.33 | 3,184,821 B | the field round (+4,520 B: the portrait lock + the active-array read/pad compensation + the dot-closing legs + the chooser-is-not-consent decision + the stale-backdrop pair + the door/deep matrix + the per-hook fallback diag); sha256 `acd51a8f…ff652`; release ids 459763340 (source) / 459763480 (releases); /latest serves 147/1.4.33 |
 
 Every release's signature verifies against the pinned cert above; every
 release is md5/sha-verified on the download-back of BOTH repos and the
@@ -654,6 +655,28 @@ Six fixes from the maintainer's Realme read-backs on v1.4.29:
    summaries instead of per-version narratives; the laws, numbers,
    lessons, wipe story and open read-backs kept; the mechanics live
    in the gates.
+
+**v1.4.33 post-release: the known-good numbers.** APK 3,184,821 B
+(+4,520 B over v1.4.32's 3,180,301 B — the portrait lock + the
+active-array read and the pad compensation + the dot-closing legs +
+the chooser-is-not-consent decision + the stale-backdrop pair + the
+door/deep matrix + the per-hook fallback diag); the FULL verification
+ran in this environment (the complete gates ladder incl. test_v1433 —
+87/87 green via run_gates.py AND green again inside release.sh's own
+rung, the full testDebugUnitTest Robolectric suite green — 13 tests incl.
+the launch law; the grafted JDK21 + Gradle 8.9 + SDK 34 rebuilt via
+setup_toolchain.sh after the sandbox recycle, and the stale
+GRADLE_USER_HOME workerMain lock was the suite's corpse this time),
+the signed build cert-verified against the pinned fingerprint
+(`bcd57eb4…8AE4`), the 6,000,000 B size law held, dual-published in the
+mandated order (SOURCE first release id 459763340, RELEASES last release
+id 459763480), md5-verified on both download-backs AND anonymous
+re-downloads on BOTH repos (sha256
+`acd51a8f9440c0152b363feceef03f5195d13e40b655349e32c318f8613ff652`), and
+both checkers' /latest endpoints serve 147/1.4.33. The field checks (the
+portrait lock, the active=/pad= line, the chess.com scan, the chooser
+new-tab, the scroll flash, the door matrix, the perf inj) remain open —
+claimed nowhere.
 
 **v1.4.32 post-release: the known-good numbers.** APK 3,180,301 B
 (+2,732 B over v1.4.31's 3,177,569 B — the base-angle table + the user-
