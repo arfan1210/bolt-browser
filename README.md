@@ -741,6 +741,27 @@ Six fixes from the maintainer's Realme read-backs on v1.4.29:
    lessons, wipe story and open read-backs kept; the mechanics live
    in the gates.
 
+**v1.4.34 post-release: the known-good numbers.** APK 3,187,393 B
+(+2,572 B over v1.4.33's 3,184,821 B — the 4:3 stream law + the
+letterbox recipe + the dual-prior acceptance + the convergence retry +
+the swap leg + the quarter-scale closing leg); the FULL verification
+ran in this environment (the complete gates ladder — 88/88 green via
+run_gates.py AND green again inside release.sh's own rung incl.
+test_v1434, the full testDebugUnitTest Robolectric suite green — 13
+tests incl. the launch law; the grafted JDK21 + Gradle 8.9 + SDK 34
+rebuilt via setup_toolchain.sh after the sandbox recycle, and the
+android-all i6 jar re-fetched from the aliyun mirror into the
+machine-local robolectric cache), the signed build cert-verified
+against the pinned fingerprint (`bcd57eb4…8AE4`), the 6,000,000 B size
+law held, dual-published in the mandated order (SOURCE first release
+id 460190062, RELEASES last release id 460190162), md5-verified on
+both download-backs AND anonymous re-downloads on BOTH repos (sha256
+`a29f865df789d34fdcb32090d1a9ec396e5227aa8a6e678be3e83e933f407427`),
+and both checkers' /latest endpoints serve 148/1.4.34. The field
+checks (the 4:3 stream, the letterbox, the dual-prior verdict, the
+convergence retry, the swap line, the quarter leg) remain open —
+claimed nowhere.
+
 **v1.4.33 post-release: the known-good numbers.** APK 3,184,821 B
 (+4,520 B over v1.4.32's 3,180,301 B — the portrait lock + the
 active-array read and the pad compensation + the dot-closing legs +
