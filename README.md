@@ -381,6 +381,91 @@ backup, rebuilt the toolchain with one script, and re-ran the FULL
 verification (gates + suite + signed build + cert check + size law)
 before publishing.
 
+**v1.4.34 — THE SCANNER FIELD-OF-VIEW ROUND** (the twenty-seventh
+session, 2026-11-27). Six scanner fixes off the session summary's
+field concepts (the detailed field reports rode the recycled sandbox;
+the laws below are the recovered root causes, each re-derived against
+the v1.4.33 source), no feature work:
+
+1. *QR — THE 4:3 STREAM LAW.* The corpse: the stream pick was the
+   largest size under the 1920 cap with no aspect preference — the
+   16:9 1920x1080 pair on real devices; a code held at chest height
+   fell OUT of the decode plane entirely. pickStream prefers the
+   aspect-4:3 candidates under the same cap for BOTH streams (the YUV
+   analysis plane AND the preview buffer — the letterbox law then
+   frames the preview exactly like the decode plane); isFourThree is
+   the 0.02-tight landscape test; the active-array stride fallback
+   grew the 4:3 leg (1440x1088 carries 1440x1080) with the 16:9 leg
+   first. pickLargest is retired from the live path (kept for
+   reference/tests, like pickSize).
+2. *QR — THE LETTERBOX LAW.* The corpse: the recipe cover-scaled —
+   the preview showed a CROP of the scene the decode plane fully
+   carries (a code at the preview's edge could decode while
+   invisible). The scale is min() + centered now: every pixel the
+   sensor delivers, aspect-true, uniform bars on the overflow axis;
+   the v1.4.27 fills assertion inverted to the fits assertion (the
+   one-shot re-pin ladder + the MISMATCH mark ride); the undo chain
+   (measured → table → fill) is untouched. On a buffer/view aspect
+   match it degenerates to the exact cover numbers.
+3. *QR — THE DUAL-PRIOR ACCEPTANCE.* The corpse: the v1.4.32 gate
+   compared the measured solve against the CHAIN PRIOR's model only —
+   an honest cover-implicit solve on a device outside the one-device
+   table read off-window against the fill prior, was rejected as
+   contaminated, and the stretch shipped via the fill undo (the 3.784x
+   corpse class, still live). The gate is the DUAL-PRIOR VERDICT now:
+   accept when the solve sits in-window against EITHER model (the fill
+   scales or the uniform-cover k, both on the ACTIVE dims); a
+   contaminated capture still reads off-window against EVERY model.
+   Diag: calib ok … verdict=fill|cover; the fail line names the nearer
+   prior (near=) — the table-growth evidence.
+4. *QR — THE CALIBRATION CONVERGENCE RETRY.* The corpse: the stripe
+   calibration was ONE shot — a single blurred/missed pattern frame
+   killed the measured leg for the whole session. One bounded re-arm
+   rides the failure path now (stripeWidthFor: span/128 → span/48, the
+   2.7x wider pattern survives blur); the 900ms timeout still caps the
+   round; the retry never loops (calibAttempts, reset per open).
+5. *QR — THE SWAP LEG.* The corpse: on a HAL that bakes a rotation
+   into the producer transform the pattern arrives TURNED — the
+   standard row/column scans look on the wrong axis and the
+   calibration can never converge, silently. One swapped-axis scan
+   rides the failure path; a swapped solve is never APPLIED (the
+   per-axis undo cannot express a cross-axis map) but it is LOGGED
+   (`qr calib swap red=cols green=rows ix=… iy=…`) — the device
+   nominates itself for the table with a rotation note.
+6. *QR — THE QUARTER-SCALE CLOSING LEG.* The corpse (measured with a
+   tuner grid this session): on a dot-module code under a whole-frame
+   glare gradient + sensor noise, HybridBinarizer's 16px adaptive
+   blocks split MODULE INTERIORS on the full and half planes (a 16px
+   block sees one gradient slice of a big module) and the full-res
+   closing cannot fix a gradient — every pre-1.4.34 leg misses. The
+   final failure leg is the quarter-scale closed plane (halfLuma twice
+   + close3x3 + the dual-binarizer core) in BOTH the live ladder
+   (decodeLuma leg d) and the gallery ladder (decodeMulti's final
+   block): the quarter plane aligns the blocks with the module scale
+   (2 modules per block), averages the noise 4x, and the closing's 3x3
+   reach spans 12 full-res pixels. Failure path only — plain QRs still
+   exit on leg one; the v1.4.33 dot corpse still rides its closing
+   family (the regression pin is the same || form the v1.4.33 gate
+   pinned).
+
+Gates: test_v1434.py pins all of the above (the compiled REAL
+isFourThree + the transcribed pickStream probe + the fallback-leg
+fixtures; the letterbox hull fixtures + the fits ladder; the compiled
+REAL measuredVerdict decision table — the corpse configuration ACCEPTS
+via the cover prior, the contaminated fixtures still reject; the
+compiled REAL stripeWidthFor + calibRetryEligible + the rotated-raster
+swap fixture (standard null, swapped solves); the compiled REAL
+dense-dot fixture — the pre-1.4.34 ladder misses, the quarter leg
+decodes — plus the v1.4.33 dot-corpse regression pin); the dated
+re-points by hand: v1388's cover-scale pin (the letterbox law),
+v1426's preview hull fixtures (the letterbox bars), v1427's fills pin
++ the D3 cover/ladder transcription (the fits law), v1429's residual
+format pin (MISMATCH rides fits), v1430's diag pin + the ORDER pin
+(undo → pad → center → rotate → letterbox → center), v1432's
+acceptance-gate pins (the dual-prior verdict). DOCS: CHANGELOG
+[1.4.34], About entries slide (1.4.34 at [0]), this narrative + the
+open read-backs.
+
 **v1.4.33 — THE FIELD ROUND** (the twenty-sixth session, 2026-11-27).
 Seven fixes off the v1.4.32 field diagnostics, no feature work:
 
@@ -724,6 +809,29 @@ them. v1.4.31 builds on the same diagnostics; none of its fixes are
 field-verified yet either.
 
 **Open field read-backs (the acceptance list).**
+- The 4:3 stream read-back (v1.4.34): `qr active 1600x1200 …` at open
+  (the 4:3 pick; pad=1.000 when the 4:3 dims are stride-clean), the
+  preview line's buf= riding the same aspect, and a code held at chest
+  height decoding without re-aiming (the 16:9 corpse).
+- The letterbox read-back (v1.4.34): the scanner shows the WHOLE
+  camera scene, aspect-true, centered — bars top/bottom on a tall
+  view, nothing cropped; the preview line's content= never exceeds the
+  view and MISMATCH stays absent on a healthy open.
+- The dual-prior read-back (v1.4.34): on a cover-style device outside
+  the table, `qr calib ok mode=measured … verdict=cover` (the honest
+  solve accepted); on the Realme the portrait entry rides
+  (verdict=fill|cover per the measured shape); a contaminated capture
+  still reads `qr calib fail … near=fill|cover|none`.
+- The convergence read-back (v1.4.34): a first-fail session logs
+  `qr calib retry attempt=2 width=…` and either lands
+  `qr calib ok mode=measured` on the wider pattern or falls down the
+  chain after the bounded timeout — never a silent one-shot death.
+- The swap read-back (v1.4.34): a rotated-implicit device (if one
+  exists) logs `qr calib swap red=cols green=rows …` once — the
+  nomination line; send it in and the table grows.
+- The quarter-leg read-back (v1.4.34): the densest dot-module codes
+  (chess.com-style at arm's length) decode where the half-scale
+  closing still speckled; plain QR latency unchanged.
 - The portrait-lock read-back (v1.4.33): rotating the phone while the
   scanner is open NEVER changes the preview; portrait opens upright
   zero-tap (the v1.4.32 base-angle law rides); diag display= reads 0.

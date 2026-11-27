@@ -76,8 +76,8 @@ readme = read("README.md")
 boot_js = read("app/src/main/assets/webauthn_bootstrap.js")
 
 print("A — version pins")
-need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
-     "build.gradle pins 147 / 1.4.33")
+need("versionCode 148" in gradle and 'versionName "1.4.34"' in gradle,
+     "build.gradle pins 148 / 1.4.34")
 need('<item>1.4.32|' in strings,
      "the About changelog carries the 1.4.32 line at [0] (newest first)")
 i32 = strings.find("<item>1.4.32|")
@@ -270,18 +270,29 @@ timeout = arm[arm.find("postDelayed"):] if arm else ""
 need(timeout and "reapplyTransform();" in timeout,
      "the 900ms timeout path restores the REAL transform too")
 # the acceptance gate lives in finishCalibration
-need(fin and "measuredAcceptable(sx[0], sy[0], priorX, priorY)" in fin
+# v1.4.34 re-point (2026-11-27): THE DUAL-PRIOR VERDICT — the single-prior
+# call (measuredAcceptable(sx[0], sy[0], priorX, priorY)) became
+# measuredVerdict(sx[0], sy[0], fillX, fillY, coverK, coverK): the solve
+# is accepted when it sits in-window against EITHER candidate implicit
+# model (the honest cover-implicit solve on a non-table device no longer
+# reads "off-window" against the fill prior and dies into the fill undo —
+# the 3.784x corpse class); a contaminated capture still reads off-window
+# against EVERY model and falls down the chain (measured -> table -> fill).
+# measuredAcceptable itself is UNCHANGED (the window law, compiled probes
+# below still pin it).
+need(fin and "measuredVerdict(sx[0], sy[0]," in fin
      and "undoMode = chainMode;" in fin,
-     "the solve is accepted ONLY in the compound window — else it falls "
-     "down the chain (measured -> table -> fill)")
-need('"table".equals(chainMode)' in fin and
-     # v1.4.33 re-point (2026-11-27): the chain prior rides the ACTIVE
-     # (scene) dims via awPrior()/ahPrior() — the buffer's stride padding
-     # (1088 for a 1080-row scene) is never scene, and k on the padded
-     # span carried the 0.74% error into the acceptance window too
-     "Math.max(vw / (float) awPrior()," in fin,
-     "the chain prior implicit: table = uniform cover k, fill = anisotropic "
-     "(v1.4.33 re-point: the prior rides the ACTIVE dims)")
+     "the solve is accepted ONLY through the dual-prior verdict — else it "
+     "falls down the chain (measured -> table -> fill)")
+# v1.4.34 re-point (2026-11-27): the chain prior implicit rides in the
+# DUAL-PRIOR form — both candidate models compose on the ACTIVE (scene)
+# dims via awPrior()/ahPrior() (the fill scales AND the uniform-cover k);
+# the rejection still falls to chainMode (the buffer's stride padding is
+# never scene — the v1.4.33 active-array law rides in both priors).
+need("awPrior()" in fin and "ahPrior()" in fin
+     and "Math.max(vw / (float) awPrior()," in fin,
+     "the dual prior implicit: fill = anisotropic scales, cover = uniform "
+     "k — both on the ACTIVE dims (v1.4.34 re-point)")
 # the contamination fixture: a synthetic raster captured under a
 # non-identity start transform — the solve must reject or correct
 if m_base and javac and node is not None:

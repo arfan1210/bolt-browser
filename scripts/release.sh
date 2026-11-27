@@ -776,6 +776,30 @@ python3 scripts/test_v1432.py
 # the compiled REAL popupDestination + backdropState + trimSleepDecision
 # decision tables, and the source pins for the whole round
 python3 scripts/test_v1433.py
+# v1.4.34 rung — THE SCANNER FIELD-OF-VIEW ROUND (the six scanner fixes:
+# THE 4:3 STREAM LAW — pickStream prefers the aspect-4:3 candidates under
+# the 1920 cap for BOTH streams (the YUV plane AND the preview buffer; the
+# stride fallback grew the 4:3 leg); THE LETTERBOX LAW — the recipe's
+# final scale is min() + centered (nothing cropped, the preview and the
+# decode plane frame the scene identically; the fills assertion inverted
+# to fits); THE DUAL-PRIOR ACCEPTANCE — the measured solve is accepted
+# against EITHER candidate implicit model (the fill scales or the
+# uniform-cover k, both on the ACTIVE dims — the 3.784x corpse class
+# device outside the table no longer dies into the fill undo) and the
+# diag names the verdict / the nearer prior; THE CALIBRATION CONVERGENCE
+# RETRY — one bounded re-arm with 2.7x wider stripes; THE SWAP LEG — the
+# rotated-implicit evidence line (a swapped solve is never applied);
+# THE QUARTER-SCALE CLOSING LEG — the final failure geometry in both
+# ladders) — probes: the compiled REAL isFourThree + the transcribed
+# pickStream + the fallback fixtures, the letterbox hull fixtures (equal
+# bars, the aspect-match degenerate), the compiled REAL measuredVerdict
+# decision table (the corpse configuration ACCEPTS via the cover prior;
+# the contaminated fixtures still reject), the compiled REAL
+# stripeWidthFor + calibRetryEligible + the rotated-raster swap fixture
+# (standard null, swapped solves), the compiled REAL dense-dot fixture
+# (the glare-gradient corpse: the pre-1.4.34 ladder MISSES, the quarter
+# leg DECODES) + the v1.4.33 dot-corpse regression pin
+python3 scripts/test_v1434.py
 mark gates
 fi
 

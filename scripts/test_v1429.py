@@ -65,8 +65,8 @@ chlog = read("CHANGELOG.md")
 rels = read("scripts/release.sh")
 
 print("A — version pins")
-need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
-     "build.gradle pins 147 / 1.4.33")
+need("versionCode 148" in gradle and 'versionName "1.4.34"' in gradle,
+     "build.gradle pins 148 / 1.4.34")
 need('<item>1.4.29|' in strings,
      "the About changelog carries the 1.4.29 line at [0] (newest first)")
 i29 = strings.find("<item>1.4.29|")
@@ -167,16 +167,21 @@ need("setTransform() transforms the" in qsa or
      "TextureView.setTransform() transforms" in qsa,
      "the corpse is named: the old matrix reasoned about raw buffer dims")
 # the diag: the field-verify format with sensor/display/content
+# v1.4.34 re-point (2026-11-27): the MISMATCH mark rides the FITS
+# assertion (the letterbox law — cover's fills inverted); the format
+# fields are unchanged.
 need('"qr preview view="' in qsa and '" sensor=" + sensorOrientation' in qsa
      and '" display=" + degrees' in qsa and '" theta=" + theta' in qsa
      and '" content=" + Math.round(uw * s) + "x" + Math.round(uh * s)' in qsa
-     and '" scale="' in qsa and '(fills ? "" : " MISMATCH")' in qsa,
+     and '" scale="' in qsa and '(fits ? "" : " MISMATCH")' in qsa,
      "the readable residual: view= buf= sensor= display= theta= content= "
-     "scale= (+ MISMATCH only on a real cover failure)")
+     "scale= (+ MISMATCH only on a real fits failure)")
 # the v1.4.27 laws ride unchanged
-need("fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f" in qsa,
-     "the fills-both-axes assertion rides unchanged (same computation, "
-     "now actually honored by the applied matrix)")
+# v1.4.34 re-point (2026-11-27): the assertion is the fits law now
+# (cover's fills inverted) — same one-shot re-pin structure.
+need("fits = uw * s <= viewW + 1f && uh * s <= viewH + 1f" in qsa,
+     "the fits-within-axes assertion rides (the letterbox law, "
+     "honored by the applied matrix)")
 need("firstFrameSeen" in qsa and "onSurfaceTextureUpdated" in qsa
      and "applyPreviewTransform(tvPreview.getWidth(), tvPreview.getHeight())" in qsa,
      "the first-delivered-frame re-derive rides unchanged")

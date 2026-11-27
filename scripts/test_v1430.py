@@ -85,8 +85,8 @@ settings = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.jav
 readme = read("README.md")
 
 print("A — version pins")
-need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
-     "build.gradle pins 147 / 1.4.33")
+need("versionCode 148" in gradle and 'versionName "1.4.34"' in gradle,
+     "build.gradle pins 148 / 1.4.34")
 need('<item>1.4.30|' in strings,
      "the About changelog carries the 1.4.30 line at [0] (newest first)")
 i30 = strings.find("<item>1.4.30|")
@@ -149,10 +149,12 @@ need("rotBadge.setText(\"+\" + userOffset + \"°\")" in qsa
 need("R.drawable.ic_reload" in qsa and '"Rotate preview"' in qsa,
      "the rotate button rides an existing drawable + a content description")
 # the diag: producer= offset= joined the readable residual
+# v1.4.34 re-point (2026-11-27): the MISMATCH mark rides the FITS
+# assertion (the letterbox law — cover's fills inverted).
 need('" producer=" + producerRot + " offset=" + userOffset' in qsa
-     and '" theta=" + theta' in qsa and '(fills ? "" : " MISMATCH")' in qsa,
+     and '" theta=" + theta' in qsa and '(fits ? "" : " MISMATCH")' in qsa,
      "the diag carries producer= offset= theta= (MISMATCH still marks ONLY "
-     "a real cover failure)")
+     "a real fits failure)")
 # the v1.4.29 view-space laws ride unchanged
 # v1.4.31 re-point (2026-11-25): the v1.4.29 ORDER law rides, with the
 # undo now the measured/table/fill three-mode form (the law: the undo
@@ -168,10 +170,12 @@ need(qsa.find("matrix.postScale(undoSx, undoSy);") >= 0
      qsa.find("matrix.postScale(s, s);") <
      qsa.find("matrix.postTranslate(cx, cy);"),
      "the v1.4.29 view-space matrix ORDER rides unchanged (undo the "
-     "implicit mapping -> pad compensation -> center -> rotate -> cover "
-     "-> center)")
-need("fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f" in qsa,
-     "the v1.4.27 fills-both-axes assertion rides unchanged")
+     "implicit mapping -> pad compensation -> center -> rotate -> "
+     "letterbox -> center)")
+# v1.4.34 re-point (2026-11-27): the assertion is the fits law now
+# (the letterbox law — cover's fills inverted).
+need("fits = uw * s <= viewW + 1f && uh * s <= viewH + 1f" in qsa,
+     "the v1.4.27 fits-within-axes assertion rides (the letterbox law)")
 need("st.setDefaultBufferSize(bufW, bufH);" in qsa,
      "the v1.4.26 buffer pin rides unchanged")
 

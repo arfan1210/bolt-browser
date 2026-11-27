@@ -340,7 +340,12 @@ need("static byte[] stretchLuma(byte[] y, int width, int height)" in qc_raw
 # matrix) is DEMONSTRATED leaving black regions in test_v1429.py.
 def preview_matrix(bufw, bufh, vieww, viewh, theta):
     uw, uh = (bufw, bufh) if theta % 180 == 0 else (bufh, bufw)
-    s = max(vieww / uw, viewh / uh)
+    # v1.4.34 re-point (2026-11-27): THE LETTERBOX LAW — the recipe's
+    # final scale is the LETTERBOX scale (min, fit + centered), not the
+    # cover scale (max): the whole upright scene is visible, aspect-true,
+    # nothing cropped (the preview and the decode plane frame the scene
+    # identically). The undo/rotate/center ops are unchanged.
+    s = min(vieww / uw, viewh / uh)
 
     def m(p):
         x, y = p[0] * bufw / vieww, p[1] * bufh / viewh   # undo the stretch
@@ -362,19 +367,25 @@ def hull(pts):
 
 
 # portrait phone, landscape sensor buffer, 90-degree recipe (the Realme case)
+# v1.4.34 re-point (2026-11-27): the letterbox expectations — the width
+# fits EXACTLY (the limiting axis), the height is CENTERED with equal
+# bars (210 top / 210 bottom), nothing cropped, aspect-true.
 s, pts = preview_matrix(1920, 1080, 1080, 2340, 90)
 x0, x1, y0, y1 = hull(pts)
-need(abs(y0) < 1e-6 and abs(y1 - 2340) < 1e-6 and x0 <= 0 and x1 >= 1080,
-     "the portrait transform: the upright height fills the view EXACTLY, "
-     "the width covers (no half-screen), corners on the hull")
-need(abs(s - 2340 / 1920.0) < 1e-9,
-     "the cover scale is aspect-true (2340/1920 for the 90-degree portrait case)")
+need(abs(x0) < 1e-6 and abs(x1 - 1080) < 1e-6
+     and abs(y0 - 210) < 1e-6 and abs(y1 - 2130) < 1e-6,
+     "the portrait transform: the width fits EXACTLY, the height is "
+     "letterboxed centered (equal 210px bars), nothing cropped")
+need(abs(s - 1.0) < 1e-9,
+     "the letterbox scale is aspect-true (1.0 for the 90-degree portrait "
+     "case — the width is the limiting axis)")
 # landscape
 s2, pts2 = preview_matrix(1920, 1080, 2340, 1080, 0)
 x0, x1, y0, y1 = hull(pts2)
-need(abs(x0) < 1e-6 and abs(x1 - 2340) < 1e-6 and y0 <= 0 and y1 >= 1080
-     and abs(s2 - 2340 / 1920.0) < 1e-9,
-     "the landscape case: same recipe, cover + aspect-true (width fills exactly)")
+need(abs(x0 - 210) < 1e-6 and abs(x1 - 2130) < 1e-6 and abs(y0) < 1e-6
+     and abs(y1 - 1080) < 1e-6 and abs(s2 - 1.0) < 1e-9,
+     "the landscape case: same recipe, the height fits exactly, the width "
+     "is letterboxed centered (equal bars)")
 # the placeholder case: the transform APPLIES (never the old early return)
 s3, pts3 = preview_matrix(640, 480, 1080, 2340, 90)
 need(pts3 is not None and len(pts3) == 4,
@@ -863,8 +874,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 140/1.4.26 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1426.py")),
      "the v1.4.26 sweep script is checked in (provenance)")
-need('versionName "1.4.33"' in open(BG, encoding="utf8").read()
-     and "versionCode 147" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.34"' in open(BG, encoding="utf8").read()
+     and "versionCode 148" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
      # v1.4.27 re-point (2026-11-22): the build pin + its label moved to
      # 141/1.4.27 (the picture-stack + merged-pipeline round)

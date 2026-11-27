@@ -4,6 +4,128 @@ Notes for releases published from this repository. Versions before v1.4.10
 were released from the maintainer's earlier private repository — their full
 notes live on the [releases page](https://github.com/arfan1210/bolt-browser-releases/releases).
 
+## [1.4.34] — 2026-11-27
+
+**The scanner field-of-view round: the decode plane and the preview
+finally frame the scene the same way. The camera streams go 4:3 (more
+scene per decode), the preview stops cropping (letterbox, centered),
+the measured implicit is trusted against BOTH device models instead of
+one guess, a failed calibration gets a second, wider chance instead of
+dying for the session, a rotated-implicit device names itself in the
+log instead of silently never converging, and the densest dot-module
+codes get a quarter-scale closing leg.**
+
+### 1. QR — THE 4:3 STREAM LAW (more scene per decode)
+- Corpse: the stream pick was the largest size under the 1920 cap with
+  no aspect preference — on real devices that is the 16:9 1920x1080
+  pair. A QR held at chest height (below the 16:9 frame's center band)
+  fell OUT of the decode plane entirely: the decoder never saw pixels
+  the phone was pointed at.
+- Law: both the YUV analysis stream and the preview buffer prefer the
+  aspect-4:3 sizes under the same 1920 cap (pickStream; the 4:3 test is
+  0.02-tight on the landscape orientation). A 4:3 plane carries ~33%
+  more vertical scene at the same long edge, and the preview buffer
+  joins the same aspect — the letterbox preview now frames EXACTLY what
+  the decoder sees. The stride-alignment fallback of the active-array
+  law grew the 4:3 leg (a 1440x1088 buffer carries a 1440x1080 scene
+  the same way 1920x1088 carried 1920x1080); the 16:9 leg rides first,
+  unchanged.
+- Gate: the compiled REAL isFourThree decision table, the transcribed
+  pickStream probe (4:3 wins, the 16:9 fallback, the cap fallback, the
+  degenerate guards), the two-caller pins, the fallback-leg fixtures.
+
+### 2. QR — THE LETTERBOX LAW (nothing cropped, centered)
+- Corpse: the preview recipe cover-scaled (max) — on a tall view it
+  cropped the upright scene's overflow axis. The preview showed a CROP
+  of the scene the decode plane fully carries, so a code at the
+  preview's edge could decode while invisible (the preview and the
+  decoder disagreed about what is on screen), and the crop amount
+  differed per device aspect.
+- Law: the letterbox scale (min) + centered — every pixel the sensor
+  delivers is visible, aspect-true, with uniform bars on the overflow
+  axis. On a buffer/view aspect match it degenerates to the exact
+  cover numbers. The v1.4.27 assertion inverted with it: the scaled
+  content must FIT WITHIN both axes (fits), the one-shot re-pin ladder
+  and the MISMATCH mark ride unchanged. The undo chain (measured →
+  table → fill) is untouched — it maps view → scene and never cared
+  how the recipe scales the scene back onto the view.
+- Gate: the letterbox hull fixtures (the width-limited portrait case:
+  equal 210px bars; the landscape case; the aspect-match degenerate),
+  the fits assertion + re-pin ladder pins, the ORDER pin (undo → pad →
+  center → rotate → letterbox → center).
+
+### 3. QR — THE DUAL-PRIOR ACCEPTANCE (the implicit-map verdict)
+- Corpse: the v1.4.32 acceptance gate compared the measured solve
+  against the CHAIN PRIOR's model only. An honest cover-implicit solve
+  on a device the table does not name read off-window against the fill
+  prior, was rejected as "contaminated", and the stretch shipped via
+  the fill undo — the exact 3.784x corpse class, still live on every
+  cover-style device outside the one-device table.
+- Law: the solve is the MEASURED implicit; the gate exists to reject
+  CONTAMINATED captures, not to enforce a model guess. The solve is
+  accepted when its compound anisotropy sits in the [0.98, 1.02]
+  window against EITHER candidate model — the fill scales or the
+  uniform-cover k (both on the ACTIVE dims). A contaminated capture
+  still reads off-window against EVERY model and falls down the chain.
+  The diag grew the verdict (calib ok … verdict=fill|cover) and the
+  fail line names the NEARER prior (near=fill|cover|none) — the
+  table-growth evidence, per the house rule that the table grows only
+  from field read-backs.
+- Gate: the compiled REAL measuredVerdict decision table (the corpse
+  configuration now ACCEPTS via the cover prior; the contaminated
+  fixtures still reject), the nearerPrior/priorDistance probes, the
+  dual-prior source pins.
+
+### 4. QR — THE CALIBRATION CONVERGENCE ROUND (retry + swap)
+- Corpse: the stripe calibration was ONE shot — a single blurred or
+  missed pattern frame killed the measured leg for the WHOLE session
+  (the field's calib-fail line with no second chance). And on a device
+  whose HAL bakes a rotation into the producer transform the pattern
+  arrives TURNED: the standard row/column scans look for the stripes
+  on the wrong axis, find nothing, and the calibration can never
+  converge — silently, forever.
+- Law: (a) THE CONVERGENCE RETRY — one bounded re-arm with 2.7x wider
+  stripes (stripeWidthFor: span/128 → span/48) when the first capture
+  produces no solvable pair or a rejected solve; the 900ms timeout
+  still caps the round, the retry never loops. (b) THE SWAP LEG — one
+  swapped-axis scan on the failure path; a swapped solve is never
+  applied (the per-axis undo cannot express a cross-axis map) but it
+  is LOGGED (qr calib swap red=cols green=rows …) — the device
+  nominates itself for the table with a rotation note instead of
+  failing silently.
+- Gate: the compiled REAL stripeWidthFor + calibRetryEligible probes,
+  the compiled REAL rotated-raster fixture (the standard scan null,
+  the swapped scan solves), the retry/swap source pins.
+
+### 5. QR — THE QUARTER-SCALE CLOSING LEG (the densest dots)
+- Corpse (measured with a tuner grid this session): on a dot-module
+  code under a whole-frame glare gradient + sensor noise, the adaptive
+  16px block grid splits MODULE INTERIORS on the full and half planes
+  (a block sees one gradient slice of a big module) and the full-res
+  closing cannot fix a gradient — every pre-1.4.34 leg misses.
+- Law: the final failure leg is the QUARTER-scale closed plane —
+  halfLuma twice, the closing morphology, the dual-binarizer core —
+  in BOTH the live ladder (decodeLuma leg d) and the gallery ladder
+  (decodeMulti's final block, after the half-scale closed pass): the
+  quarter plane aligns the binarizer blocks with the module scale,
+  averages the noise 4x, and its closing reach spans 12 full-res
+  pixels. Failure path only (the budget law holds); plain QRs still
+  exit on the first leg; the v1.4.33 dot corpse still rides its
+  closing family.
+- Gate: the compiled REAL dense-dot fixture (the pre-1.4.34 ladder —
+  plain/invert, stretch, half, close-full, chroma — MISSES; the
+  quarter leg DECODES), the v1.4.33 dot-corpse regression pin (it
+  still rides the full-res closing leg), the ladder-order pins.
+
+### 6. THE PIPELINE (unchanged shape)
+- release.sh keeps the mandated order: every gate → the launch smoke →
+  the signed build (cert-pinned) → the 6,000,000 B size law → SOURCE
+  first, RELEASES last → the anonymous download-backs verified. The
+  gates ladder gained the test_v1434 rung; the prior gates ride with
+  dated re-points where this round changed pinned behavior (the
+  letterbox re-points in test_v1388/1426/1427/1429/1430, the
+  dual-prior re-point in test_v1432).
+
 ## [1.4.33] — 2026-11-27
 
 **The field round, off the v1.4.32 diagnostics: the scanner goes

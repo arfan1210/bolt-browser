@@ -90,8 +90,8 @@ sia = read("app/src/main/java/com/bolt/browser/ui/SettingsItemsActivity.java")
 lg = read("app/src/main/java/com/bolt/browser/util/LauncherGuard.kt")
 
 print("A — version pins")
-need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
-     "build.gradle pins 147 / 1.4.33")
+need("versionCode 148" in gradle and 'versionName "1.4.34"' in gradle,
+     "build.gradle pins 148 / 1.4.34")
 need('<item>1.4.31|' in strings,
      "the About changelog carries the 1.4.31 line at [0] (newest first)")
 i31 = strings.find("<item>1.4.31|")

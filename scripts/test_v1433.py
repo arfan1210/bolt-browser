@@ -89,8 +89,8 @@ readme = read("README.md")
 manifest = read("app/src/main/AndroidManifest.xml")
 
 print("A — version pins")
-need("versionCode 147" in gradle and 'versionName "1.4.33"' in gradle,
-     "build.gradle pins 147 / 1.4.33")
+need("versionCode 148" in gradle and 'versionName "1.4.34"' in gradle,
+     "build.gradle pins 148 / 1.4.34")
 need('<item>1.4.33|' in strings,
      "the About changelog carries the 1.4.33 line at [0] (newest first)")
 i33 = strings.find("<item>1.4.33|")

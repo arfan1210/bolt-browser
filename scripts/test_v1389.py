@@ -97,9 +97,13 @@ need("int hole = Math.min(Fx.dp(this, 340), (int) (shortEdge * 0.78f));" in qr,
      "the viewfinder hole is ~78% of the short edge (cap 340dp, was 250dp)")
 need("private Size pickLargest(List<Size> sizes, int cap)" in qr,
      "the best-quality picker exists")
-need("pickLargest(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920)" in qr
-     and "pickLargest(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920)" in qr,
-     "preview AND analysis take the largest <= 1920 stream")
+# v1.4.34 re-point (2026-11-27): THE 4:3 STREAM LAW — both streams ride
+# pickStream now (the aspect-4:3 candidates win under the same 1920 cap;
+# the preview and the decode plane frame the scene identically with the
+# letterbox law). pickLargest stays in the source for reference/tests.
+need("pickStream(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920)" in qr
+     and "pickStream(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920)" in qr,
+     "preview AND analysis take the 4:3-preferred <= 1920 stream")
 need("CONTROL_AF_MODE_CONTINUOUS_PICTURE" in qr,
      "continuous-picture autofocus is requested")
 need("private static byte[] yBuf = null;" in qr
@@ -157,8 +161,8 @@ need("var hid=false;try{hid=isReallyHidden();}catch(x){}" in mhk,
 print("V1 — version pin")
 m = re.search(r"versionCode\s+(\d+)", gradle)
 m2 = re.search(r'versionName\s+"([^"]+)"', gradle)
-need(m and m.group(1) == "147" and m2 and m2.group(1) == "1.4.33",  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
-     "build.gradle pins 147 / 1.4.33 (got %s / %s)" % (  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+need(m and m.group(1) == "148" and m2 and m2.group(1) == "1.4.34",  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
+     "build.gradle pins 148 / 1.4.34 (got %s / %s)" % (  # v1.4.11 re-point (2026-11-18): 124/1.4.10 -> 125/1.4.11 (the stability four-pack)  # v1.4.12 re-point (2026-11-18): 125/1.4.11 -> 126/1.4.12 (the usability five-pack)  # v1.4.13 re-point (2026-11-18): 126/1.4.12 -> 127/1.4.13 (the performance five-pack)  # v1.4.14 re-point (2026-11-18): 127/1.4.13 -> 128/1.4.14 (the interaction six-pack)  # v1.4.15 re-point (2026-11-18): 128/1.4.14 -> 129/1.4.15 (the responsiveness four-pack)  # v1.4.16 re-point (2026-11-18): 129/1.4.15 -> 130/1.4.16 (the reliability nine-pack)  # v1.4.17 re-point (2026-11-18): 130/1.4.16 -> 131/1.4.17 (the polish seven-pack)  # v1.4.18 re-point (2026-11-19): 131/1.4.17 -> 132/1.4.18 (the field-cure six-pack)  # v1.4.19 re-point (2026-11-19): 132/1.4.18 -> 133/1.4.19 (the root-cure ten-pack)  # v1.4.20 re-point (2026-11-20): 133/1.4.19 -> 134/1.4.20 (the evidence-pack)
          m.group(1) if m else "?", m2.group(1) if m2 else "?"))
 
 print()

@@ -123,8 +123,12 @@ android {
         // v1.4.33 (147): the portrait-only + active-array + dot-closing
         // QR round, the chooser-is-not-consent law, the bottom-flash
         // kill, the door/deep matrix + the repeated-injection guard.
-        versionCode 147
-        versionName "1.4.33"
+        // v1.4.34 (148): the scanner field-of-view round — the 4:3
+        // stream law, the letterbox preview, the dual-prior acceptance,
+        // the calibration convergence retry + the swap leg, the
+        // quarter-scale closing decode leg.
+        versionCode 148
+        versionName "1.4.34"
         // v1.3.73 — THE SIZE LAW (user-set): the base APK must stay super
         // light (≤ 5-6 MB). v1.3.72 shipped ML Kit's bundled OCR models and
         // hit 23.4 MB — that is out of budget. OCR is now on-demand

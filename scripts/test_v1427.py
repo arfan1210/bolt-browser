@@ -434,13 +434,16 @@ need("firstFrameSeen" in qsa_raw
      and "onSurfaceTextureUpdated" in qsa_raw
      and "applyPreviewTransform(tvPreview.getWidth(), tvPreview.getHeight())" in qsa_raw,
      "the transform re-derives on the FIRST delivered frame")
-need("fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f" in qsa_raw
+# v1.4.34 re-point (2026-11-27): THE LETTERBOX LAW — the assertion
+# inverted: the scaled content FITS WITHIN both axes (cover's
+# fills-both-axes inverted); the one-shot re-pin ladder is unchanged.
+need("fits = uw * s <= viewW + 1f && uh * s <= viewH + 1f" in qsa_raw
      and "pinRetried = true" in qsa_raw
      and "try { pinBuffer(); } catch (Throwable ignored) {}" in qsa_raw,
-     "the fills-both-axes assertion with the one-shot re-pin ladder")
+     "the fits-within-axes assertion with the one-shot re-pin ladder")
 need('"qr preview view="' in qsa_raw and " theta=" in qsa_raw
      and " scale=" in qsa_raw,
-     "the readable Diag line: view dims, buffer dims, theta, cover scale")
+     "the readable Diag line: view dims, buffer dims, theta, letterbox scale")
 need("root.addView(tvPreview, new FrameLayout.LayoutParams(-1, -1))" in qsa_raw,
      "the TextureView stays full-screen (MATCH_PARENT both axes)")
 
@@ -555,45 +558,50 @@ public class ProbeQr1427 {
              "part of a 1600x1200 photo decodes (full-res + crops + "
              "stretch); the pure rotate/crop/luma passes pinned")
 
-# ---- D3. PURE: the fills-both-axes law + the re-pin ladder ----
-def cover(view_w, view_h, bw, bh, theta):
+# ---- D3. PURE: the fits-within-axes law + the re-pin ladder ----
+# v1.4.34 re-point (2026-11-27): THE LETTERBOX LAW — the recipe's final
+# scale is the LETTERBOX scale (min, fit + centered) and the assertion
+# inverted to fits-within-axes; the ladder shape (one-shot re-pin) is
+# unchanged.
+def letterbox(view_w, view_h, bw, bh, theta):
     uw, uh = (bw, bh) if theta % 180 == 0 else (bh, bw)
-    s = max(view_w / uw, view_h / uh) if uw > 0 and uh > 0 else float("inf")
-    fills = (uw * s >= view_w - 1) and (uh * s >= view_h - 1)
-    return s, fills
+    s = min(view_w / uw, view_h / uh) if uw > 0 and uh > 0 else float("inf")
+    fits = (uw * s <= view_w + 1) and (uh * s <= view_h + 1)
+    return s, fits
 
 
-s1, f1 = cover(720, 1600, 640, 480, 90)
-need(abs(s1 - 2.5) < 1e-6 and f1,
-     "portrait 720x1600 with a 640x480 buffer: cover scale 2.5 FILLS "
-     "both axes (480*2.5=1200 >= 720, 640*2.5=1600 >= 1600)")
-s2, f2 = cover(720, 1600, 1280, 720, 90)
-need(abs(s2 - 1.25) < 1e-6 and f2,
-     "portrait 720x1600 with a 1280x720 buffer: cover scale 1.25 FILLS "
-     "both axes (720*1.25=900 >= 720, 1280*1.25=1600 >= 1600)")
-s3, f3 = cover(720, 1600, 1280, 720, 0)
+s1, f1 = letterbox(720, 1600, 640, 480, 90)
+need(abs(s1 - 1.5) < 1e-6 and f1,
+     "portrait 720x1600 with a 640x480 buffer: letterbox scale 1.5 FITS "
+     "both axes (480*1.5=720 <= 720, 640*1.5=960 <= 1600) — the whole "
+     "scene visible, centered")
+s2, f2 = letterbox(720, 1600, 1280, 720, 90)
+need(abs(s2 - 1.0) < 1e-6 and f2,
+     "portrait 720x1600 with a 1280x720 buffer: letterbox scale 1.0 FITS "
+     "both axes (720*1.0=720 <= 720, 1280*1.0=1280 <= 1600)")
+s3, f3 = letterbox(720, 1600, 1280, 720, 0)
 need(f3,
-     "the upright-buffer case (theta 0) also fills both axes (the "
-     "general cover invariant)")
+     "the upright-buffer case (theta 0) also fits both axes (the "
+     "general letterbox invariant)")
 
 
 def ladder(view_w, view_h, stale_bw, stale_bh, real_bw, real_bh, theta=90):
-    """the re-pin ladder: compute with the stale dims; a fills failure
+    """the re-pin ladder: compute with the stale dims; a fits failure
     re-pins once and recomputes with the real dims"""
-    s, fills = cover(view_w, view_h, stale_bw, stale_bh, theta)
+    s, fits = letterbox(view_w, view_h, stale_bw, stale_bh, theta)
     repinned = False
-    if not fills:
+    if not fits:
         repinned = True
-        s, fills = cover(view_w, view_h, real_bw, real_bh, theta)
-    return repinned, s, fills
+        s, fits = letterbox(view_w, view_h, real_bw, real_bh, theta)
+    return repinned, s, fits
 
 
-repinned, s, fills = ladder(720, 1600, 0, 0, 1280, 720)
-need(repinned and fills,
+repinned, s, fits = ladder(720, 1600, 0, 0, 1280, 720)
+need(repinned and fits,
      "the re-pin ladder: degenerate/stale buffer dims fail the assert, "
-     "re-pin once, recompute -> fills (the bottom-half-black self-heal)")
-repinned2, _, fills2 = ladder(720, 1600, 640, 480, 1280, 720)
-need(not repinned2 and fills2,
+     "re-pin once, recompute -> fits (the bottom-half-black self-heal)")
+repinned2, _, fits2 = ladder(720, 1600, 640, 480, 1280, 720)
+need(not repinned2 and fits2,
      "a healthy buffer never re-pins (the ladder is one-shot)")
 
 print()
@@ -827,8 +835,8 @@ need(sweep == 0, "the standing sweep repinned every gate to 141/1.4.27 "
      f"({sweep} stragglers)")
 need(os.path.isfile(os.path.join(ROOT, "scripts/repin_gates_1427.py")),
      "the v1.4.27 sweep script is checked in (provenance)")
-need('versionName "1.4.33"' in open(BG, encoding="utf8").read()
-     and "versionCode 147" in open(BG, encoding="utf8").read(),
+need('versionName "1.4.34"' in open(BG, encoding="utf8").read()
+     and "versionCode 148" in open(BG, encoding="utf8").read(),
      "the build carries versionName 1.4.28 / versionCode 142")
 
 print()

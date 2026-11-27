@@ -149,6 +149,17 @@ public class QrScanActivity extends AppCompatActivity {
     private String undoMode = null;      // "measured" | "table" | "fill"
     private boolean calibArmed = false, calibDone = false;
     private float calibIx = -1f, calibIy = -1f, calibTx = Float.NaN, calibTy = Float.NaN;
+    // v1.4.34 — THE CONVERGENCE RETRY (the one-shot corpse: a single
+    // blurred/missed pattern frame killed the measured leg for the WHOLE
+    // session — the field's calib-fail line with no second chance).
+    // calibAttempts counts the ARMS of this session; the first failed solve
+    // re-arms ONCE with 2.7x wider stripes (stripeWidthFor). The bounded
+    // 900ms timeout still caps the whole round.
+    private int calibAttempts = 0;
+    // v1.4.34 — THE DUAL-PRIOR VERDICT (the diag): which implicit model the
+    // accepted solve agreed with ("fill" | "cover"), or "reject"; the fail
+    // line names the NEARER prior (the table-growth evidence).
+    private String calibVerdict = null;
     private ImageButton btnTorch;
     private View scanLine;
     private TextView tvHint;
@@ -599,8 +610,11 @@ public class QrScanActivity extends AppCompatActivity {
     private void openCamera() {
         if (done || denied || cameraFailed || camera != null || camHandler == null) return;
         // v1.4.31 — every camera open is a fresh measurement session
+        // v1.4.34 — the retry budget is per-session too
         calibDone = false;
         calibArmed = false;
+        calibAttempts = 0;
+        calibVerdict = null;
         // v1.4.32 — the chain prior (the leg below measured) is fixed at
         // open; the calibration may promote undoMode to measured but never
         // demotes the prior
@@ -636,8 +650,14 @@ public class QrScanActivity extends AppCompatActivity {
             StreamConfigurationMap map =
                     ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             if (map == null) { cameraFailure(); return; }
-            previewSize = pickLargest(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920);
-            Size yuv = pickLargest(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920);
+            // v1.4.34 — THE 4:3 STREAM LAW: both streams prefer the
+            // aspect-4:3 sizes under the 1920 cap — the decode plane
+            // carries ~33% more vertical scene than the 16:9 pick at the
+            // same long edge, and the preview and the decode plane now
+            // frame the scene IDENTICALLY (the letterbox law makes the
+            // preview show exactly what the decoder sees).
+            previewSize = pickStream(Arrays.asList(map.getOutputSizes(SurfaceTexture.class)), 1920);
+            Size yuv = pickStream(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), 1920);
             if (previewSize == null || yuv == null) { cameraFailure(); return; }
             // v1.4.33 — THE ACTIVE-ARRAY READ (the padding-compensation
             // input): the ACTIVE (scene) dims the buffer carries. The
@@ -658,12 +678,23 @@ public class QrScanActivity extends AppCompatActivity {
                     activeH = Math.min(aa.height(), previewSize.getHeight());
                 }
             } catch (Throwable ignored) {}
+            // v1.4.34 — the stride-alignment fallback grew the 4:3 leg (the
+            // stream law serves 4:3 buffers now): a 1440x1088 buffer
+            // carries a 1440x1080 scene the same way the 1920x1088 buffer
+            // carried 1920x1080. The 16:9 leg rides first (unchanged), the
+            // 4:3 leg second; both guards are stride-overhang shaped.
             int nine = Math.round(previewSize.getWidth() * 9f / 16f);
-            if (activeH >= previewSize.getHeight()
-                    && previewSize.getHeight() > nine
-                    && previewSize.getHeight() - nine
-                            <= Math.max(16, previewSize.getHeight() / 32)) {
-                activeH = nine;
+            int four = Math.round(previewSize.getWidth() * 3f / 4f);
+            if (activeH >= previewSize.getHeight()) {
+                int over = Math.max(16, previewSize.getHeight() / 32);
+                if (previewSize.getHeight() > nine
+                        && previewSize.getHeight() - nine <= over) {
+                    activeH = nine;
+                } else if (previewSize.getHeight() > four
+                        && four >= 64
+                        && previewSize.getHeight() - four <= over) {
+                    activeH = four;
+                }
             }
             if (activeW <= 0 || activeH <= 0
                     || activeW > previewSize.getWidth()
@@ -727,7 +758,10 @@ public class QrScanActivity extends AppCompatActivity {
      *  opaque formats). If every candidate exceeds the cap the SMALLEST
      *  wins (a 4K-only exotic beats a crash). Replaces the v1.3.37
      *  smallest-≥-target pick that ran 640-1280 lines: dense/small codes
-     *  at arm's length were mush. */
+     *  at arm's length were mush.
+     *  v1.4.34 — RETIRED from the live path by the 4:3 stream law
+     *  (pickStream below), kept for reference/tests exactly like
+     *  pickSize above. */
     private Size pickLargest(List<Size> sizes, int cap) {
         try {
             Size best = null;
@@ -746,6 +780,67 @@ public class QrScanActivity extends AppCompatActivity {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): the 4:3 aspect test. LANDSCAPE-
+     *  orientation agnostic (the larger over the smaller); true when the
+     *  long/short ratio sits within 0.02 of 4/3 — the sensor-native photo
+     *  aspect every consumer sensor exposes in several sizes. */
+    static boolean isFourThree(int w, int h) {
+        try {
+            if (w <= 0 || h <= 0) return false;
+            int lw = Math.max(w, h), lh = Math.min(w, h);
+            double aspect = lw / (double) lh;
+            return Math.abs(aspect - 4.0 / 3.0) <= 0.02;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** v1.4.34 — THE 4:3 STREAM LAW (the stream pick). Among the sizes
+     *  whose long edge is ≤ cap, the aspect-4:3 candidates win (largest
+     *  first): the decode plane carries ~33% more vertical scene than the
+     *  16:9 pick at the same cap — a code held at chest height (below the
+     *  16:9 frame's center band) lands IN the plane instead of under it —
+     *  and the preview buffer joins the same aspect, so the letterbox law
+     *  frames the preview EXACTLY like the decode plane. No 4:3 candidate
+     *  (exotic sensors) → the old largest-≤cap pick; nothing ≤ the cap →
+     *  the smallest overall (a 4K-only exotic beats a crash). */
+    private Size pickStream(List<Size> sizes, int cap) {
+        try {
+            Size best43 = null, best = null;
+            for (Size s : sizes) {
+                int longE = Math.max(s.getWidth(), s.getHeight());
+                if (longE > cap) continue;
+                if (best == null || longE > Math.max(best.getWidth(), best.getHeight())) best = s;
+                if (isFourThree(s.getWidth(), s.getHeight())
+                        && (best43 == null
+                                || longE > Math.max(best43.getWidth(), best43.getHeight()))) {
+                    best43 = s;
+                }
+            }
+            if (best43 != null) return best43;
+            if (best != null) return best;
+            Size smallest = null;
+            for (Size s : sizes) {
+                int longE = Math.max(s.getWidth(), s.getHeight());
+                if (smallest == null || longE < Math.max(smallest.getWidth(), smallest.getHeight())) {
+                    smallest = s;
+                }
+            }
+            return smallest;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): the stripe half-width of a calibration
+     *  arm. Attempt 1 keeps the v1.4.31 geometry (span/128); attempt 2 (the
+     *  convergence retry) draws 2.7x wider stripes — a soft scaler or a
+     *  busy compositor merges the thin stripes into mush, the wide pattern
+     *  survives blur. */
+    static int stripeWidthFor(int span, int attempt) {
+        return Math.max(2, span / (attempt >= 2 ? 48 : 128));
     }
 
     private void createSession() {
@@ -814,14 +909,18 @@ public class QrScanActivity extends AppCompatActivity {
                 c.drawColor(0xFF000000);
                 android.graphics.Paint red = new android.graphics.Paint();
                 red.setColor(0xFFFF2222);
-                int sw = Math.max(2, bufW / 128);
+                // v1.4.34 — the convergence retry: attempt 2 draws the
+                // stripes 2.7x wider (a soft scaler or a busy compositor
+                // merges the thin stripes into mush; the wide pattern
+                // survives blur)
+                int sw = stripeWidthFor(bufW, calibAttempts + 1);
                 for (int j = 1; j <= stripeCount(); j++) {
                     int x = stripePos(bufW, j);
                     c.drawRect(x - sw / 2f, 0, x + sw / 2f, bufH, red);
                 }
                 android.graphics.Paint green = new android.graphics.Paint();
                 green.setColor(0xFF22DD22);
-                int sh = Math.max(2, bufH / 128);
+                int sh = stripeWidthFor(bufH, calibAttempts + 1);
                 // green paints AFTER red — intersections read green, so a
                 // scan line that happens to ride a red stripe still finds
                 // the green bands crossing it
@@ -835,6 +934,8 @@ public class QrScanActivity extends AppCompatActivity {
             calibArmed = true;
             try {
                 Diag.log(this, "qr calib arm buf=" + bufW + "x" + bufH
+                        + " attempt=" + (calibAttempts + 1)
+                        + " width=" + stripeWidthFor(bufW, calibAttempts + 1)
                         + " mode=" + undoMode);
             } catch (Throwable ignored) {}
             // bounded fallback: if the pattern frame never lands (compositor
@@ -863,8 +964,14 @@ public class QrScanActivity extends AppCompatActivity {
 
     /** the calibration frame arrived: read the view bitmap, locate the
      *  stripe runs, solve the implicit affine. UI thread (getBitmap).
-     *  Returns true when the measured undo was stored. */
+     *  Returns true when the measured undo was stored.
+     *  v1.4.34 — the convergence round: ONE swapped-axis scan rides the
+     *  failure path (the producer-rotation evidence), the acceptance is
+     *  the DUAL-PRIOR verdict, and one wider-stripe re-arm follows a
+     *  failed solve. */
     private boolean finishCalibration() {
+        float[] sx = null, sy = null;
+        boolean solvable = false;
         try {
             int vw = tvPreview.getWidth(), vh = tvPreview.getHeight();
             if (vw <= 0 || vh <= 0) return false;
@@ -879,51 +986,54 @@ public class QrScanActivity extends AppCompatActivity {
             try {
                 int[] px = new int[vw * vh];
                 b.getPixels(px, 0, vw, 0, 0, vw, vh);
-                // scan lines at 7/16, 9/16, 8/16 of the view: 7/16 and 9/16
-                // fall BETWEEN the stripes under every center-anchored
-                // mapping (fill/cover/fit), 8/16 rides the center stripe —
-                // the first line that yields runs wins
-                int[] rx = null;
-                int[] rows = {7 * vh / 16, 9 * vh / 16, 8 * vh / 16};
-                for (int ry : rows) {
-                    if (rx != null && rx.length >= 2) break;
-                    if (ry < 0 || ry >= vh) continue;
-                    int[] row = rowPixels(px, vw, vh, ry);
-                    int[] r = scanRunsArgb(row, vw, 1, true, 1);
-                    if (r != null && r.length >= 2) rx = r;
-                }
-                int[] gy = null;
-                int[] cols = {7 * vw / 16, 9 * vw / 16, 8 * vw / 16};
-                for (int cx : cols) {
-                    if (gy != null && gy.length >= 2) break;
-                    if (cx < 0 || cx >= vw) continue;
-                    int[] col = colPixels(px, vw, vh, cx);
-                    int[] g = scanRunsArgb(col, 1, vh, false, 2);
-                    if (g != null && g.length >= 2) gy = g;
-                }
-                float[] sx = rx != null ? solveAxis(rx, bufW, vw) : null;
-                float[] sy = gy != null ? solveAxis(gy, bufH, vh) : null;
-                // v1.4.32 — THE ACCEPTANCE GATE: the solve is applied ONLY
-                // when the whole-pattern bijection passed (solveAxis non-null)
-                // AND the compound anisotropy of the solved undo against the
-                // chain prior's implicit sits within [0.98, 1.02] — a solve
-                // captured under a stale non-identity transform reads off-
-                // window and is REJECTED down the chain (measured -> table
-                // -> fill), never applied.
-                if (sx != null && sy != null) {
-                    float priorX, priorY;
-                    if ("table".equals(chainMode)) {
-                        // v1.4.33 — the prior rides the ACTIVE (scene) dims
-                        // (the padding law: k on the padded 1088 carried the
-                        // 0.74% error into the acceptance window too)
-                        float k = Math.max(vw / (float) awPrior(),
-                                vh / (float) ahPrior());
-                        priorX = k; priorY = k;
-                    } else {
-                        priorX = vw / (float) awPrior();
-                        priorY = vh / (float) ahPrior();
+                // v1.4.34 — THE SWAP LEG: the standard scan looks for the
+                // red verticals on ROWS and the green horizontals on
+                // COLUMNS (the honest FILL/COVER implicit maps never
+                // rotate). A HAL that bakes a rotation into the PRODUCER
+                // transform shows the pattern TURNED — the standard scan
+                // finds nothing and the calibration never converged on
+                // such a device (the "strip 校准不收敛" corpse class). One
+                // swapped-axis scan rides the failure path: a swapped
+                // solve is never APPLIED (the per-axis undo cannot express
+                // a cross-axis map) but it is LOGGED — the device
+                // nominates itself for the table with a rotation note.
+                int[] rx = findRunsRows(px, vw, vh, 1);
+                int[] gy = findRunsCols(px, vw, vh, 2);
+                if (rx == null || gy == null) {
+                    int[] rx2 = findRunsCols(px, vw, vh, 1);
+                    int[] gy2 = findRunsRows(px, vw, vh, 2);
+                    if (rx2 != null && gy2 != null) {
+                        float[] six = solveAxis(rx2, bufW, vh);
+                        float[] siy = solveAxis(gy2, bufH, vw);
+                        try {
+                            Diag.log(this, "qr calib swap red=cols green=rows"
+                                    + " ix=" + (six != null ? fmt(six[0]) : "-")
+                                    + " iy=" + (siy != null ? fmt(siy[0]) : "-"));
+                        } catch (Throwable ignored) {}
                     }
-                    if (measuredAcceptable(sx[0], sy[0], priorX, priorY)) {
+                }
+                sx = rx != null ? solveAxis(rx, bufW, vw) : null;
+                sy = gy != null ? solveAxis(gy, bufH, vh) : null;
+                // v1.4.32 — THE ACCEPTANCE GATE, v1.4.34 — THE DUAL-PRIOR
+                // VERDICT: the solve is the MEASURED implicit; the gate
+                // exists to reject CONTAMINATED captures, not to enforce
+                // the chain prior's model. The solve is accepted when its
+                // compound anisotropy sits in-window against EITHER
+                // candidate model — the fill scales or the uniform-cover k
+                // (both on the ACTIVE dims). The v1.4.32 single-prior gate
+                // REJECTED an honest cover-implicit solve on every device
+                // the table does not name (the 3.784x corpse class: the
+                // solve read off-window against the fill prior and the
+                // stretch shipped via the fill undo).
+                if (sx != null && sy != null) {
+                    solvable = true;
+                    float fillX = vw / (float) awPrior();
+                    float fillY = vh / (float) ahPrior();
+                    float coverK = Math.max(vw / (float) awPrior(),
+                                vh / (float) ahPrior());
+                    calibVerdict = measuredVerdict(sx[0], sy[0],
+                            fillX, fillY, coverK, coverK);
+                    if (!"reject".equals(calibVerdict)) {
                         calibIx = sx[0]; calibTx = sx[1];
                         calibIy = sy[0]; calibTy = sy[1];
                         undoMode = "measured";
@@ -939,12 +1049,103 @@ public class QrScanActivity extends AppCompatActivity {
             try {
                 Diag.log(this, ok
                         ? "qr calib ok mode=measured ix=" + fmt(calibIx) + " iy=" + fmt(calibIy)
-                        : "qr calib fail mode=" + chainMode);
+                                + " verdict=" + calibVerdict
+                        : "qr calib fail mode=" + chainMode
+                                + " near=" + (solvable
+                                        ? nearerPrior(sx[0], sy[0],
+                                              vw / (float) awPrior(), vh / (float) ahPrior(),
+                                              Math.max(vw / (float) awPrior(),
+                                                      vh / (float) ahPrior()))
+                                        : "none"));
             } catch (Throwable ignored) {}
+            // v1.4.34 — THE CONVERGENCE RETRY: one re-arm with 2.7x wider
+            // stripes when the first capture produced no solvable pair (or
+            // a solve the acceptance rejected). The bounded 900ms timeout
+            // still caps the round — the retry only re-posts the pattern;
+            // if its frame lands after the timeout fired, the chain has
+            // already taken over (the bounded-fallback structure is
+            // unchanged).
+            if (!ok && calibAttempts < 1 && calibRetryEligible(solvable, calibVerdict)) {
+                calibAttempts++;
+                try {
+                    Diag.log(this, "qr calib retry attempt=" + (calibAttempts + 1)
+                            + " width=" + stripeWidthFor(bufW, calibAttempts + 1));
+                } catch (Throwable ignored) {}
+                armCalibration();
+            }
             return ok;
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** v1.4.34 — the standard stripe-run scan: red verticals along the
+     *  view rows (test 1) / green horizontals along the view columns
+     *  (test 2), lines at 7/16, 9/16, 8/16 — the first line with ≥ 2 runs
+     *  wins (the center-anchored-mapping geometry the v1.4.31 gate
+     *  pins). */
+    private static int[] findRunsRows(int[] px, int vw, int vh, int test) {
+        int[] rows = {7 * vh / 16, 9 * vh / 16, 8 * vh / 16};
+        for (int ry : rows) {
+            if (ry < 0 || ry >= vh) continue;
+            int[] r = scanRunsArgb(rowPixels(px, vw, vh, ry), vw, 1, true, test);
+            if (r != null && r.length >= 2) return r;
+        }
+        return null;
+    }
+
+    private static int[] findRunsCols(int[] px, int vw, int vh, int test) {
+        int[] cols = {7 * vw / 16, 9 * vw / 16, 8 * vw / 16};
+        for (int cx : cols) {
+            if (cx < 0 || cx >= vw) continue;
+            int[] g = scanRunsArgb(colPixels(px, vw, vh, cx), 1, vh, false, test);
+            if (g != null && g.length >= 2) return g;
+        }
+        return null;
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): THE DUAL-PRIOR VERDICT. The measured
+     *  solve is accepted when its compound anisotropy sits in the [0.98,
+     *  1.02] window against EITHER candidate implicit model — the
+     *  anisotropic fill scales or the uniform-cover k (measuredAcceptable
+     *  carries the window). Returns the model the solve agreed with
+     *  ("fill" | "cover"), or "reject" (a contaminated capture reads
+     *  off-window against EVERY model). */
+    static String measuredVerdict(float ix, float iy, float fillX, float fillY,
+            float coverX, float coverY) {
+        if (measuredAcceptable(ix, iy, fillX, fillY)) return "fill";
+        if (measuredAcceptable(ix, iy, coverX, coverY)) return "cover";
+        return "reject";
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): the distance of a solve to one prior
+     *  model — the compound anisotropy of the per-axis ratios; 1.000 =
+     *  the solve agrees with the model, larger = further. */
+    static float priorDistance(float ix, float iy, float px, float py) {
+        try {
+            if (!(px > 0f) || !(py > 0f)) return Float.MAX_VALUE;
+            return compoundAnisotropy(ix / px, iy / py, 1f, 1f);
+        } catch (Throwable t) {
+            return Float.MAX_VALUE;
+        }
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): the NEARER prior of a REJECTED solve
+     *  — the diag's near= field, the evidence that names which model the
+     *  device's implicit resembles (the table-growth read-back; the cover
+     *  model is uniform, one k). */
+    static String nearerPrior(float ix, float iy, float fillX, float fillY, float coverK) {
+        float df = priorDistance(ix, iy, fillX, fillY);
+        float dc = priorDistance(ix, iy, coverK, coverK);
+        return dc < df ? "cover" : "fill";
+    }
+
+    /** v1.4.34 — PURE (gate-pinned): the retry is eligible when the
+     *  capture was CONVERGENCE-shaped: no solvable pair, or a solve the
+     *  acceptance rejected. A missing bitmap (a destroyed surface) is
+     *  not — nothing was measured. */
+    static boolean calibRetryEligible(boolean solvable, String verdict) {
+        return !solvable || "reject".equals(verdict);
     }
 
     /** one row of the raster as a fresh array (the scanner walks it as a
@@ -1302,7 +1503,16 @@ public class QrScanActivity extends AppCompatActivity {
      *    M = T(viewCenter) · S(cover) · R(theta) · T(-bufCenter) · S(bw/vw, bh/vh)
      *  — undo the implicit stretch (view coords -> buffer coords), run the
      *  cover recipe in buffer coords, center in the view. Uniform scale
-     *  only (never squish), both axes covered, content centered. */
+     *  only (never squish), both axes covered, content centered.
+     *
+     *  v1.4.34 — THE LETTERBOX LAW: the recipe's final scale is the
+     *  LETTERBOX scale (min, fit + centered) — the whole upright scene is
+     *  visible, aspect-true, nothing cropped; the preview and the decode
+     *  plane frame the scene identically (the 4:3 stream law feeds both
+     *  the same aspect). The fills assertion inverted to the fits
+     *  assertion; the undo chain (measured -> table -> fill) is untouched
+     *  — it maps view -> scene and never cared how the recipe scales the
+     *  scene back onto the view. */
     private void applyPreviewTransform(int viewW, int viewH) {
         if (viewW == 0 || viewH == 0) return;
         try {
@@ -1342,18 +1552,24 @@ public class QrScanActivity extends AppCompatActivity {
             // upright content dimensions after the rotation (ACTIVE dims)
             float uw = (theta % 180 == 0) ? aw : ah;
             float uh = (theta % 180 == 0) ? ah : aw;
-            // cover scale: fill the view, keep the aspect, crop the overflow
-            float s = Math.max(viewW / uw, viewH / uh);
-            // v1.4.27 — THE FILLS-BOTH-AXES ASSERTION (the bottom-half-black
-            // corpse): the cover recipe's own invariant is that the scaled
-            // upright content is >= the view on BOTH axes (that is what
-            // "cover" means — a stale/mismatched buffer dims pair breaks it
-            // and a half-black panel is exactly the symptom). When the
-            // assertion fails, the surface's buffer is re-pinned to the
-            // camera preview size (a surface resized after the pin) and the
-            // matrix recomputed once — bounded by the one-shot pinRetried.
-            boolean fills = uw * s >= viewW - 1f && uh * s >= viewH - 1f;
-            if (!fills && !pinRetried) {
+            // v1.4.34 — THE LETTERBOX LAW: the letterbox scale — fit the
+            // view, keep the aspect, CENTER the whole upright scene
+            // (uniform bars on the overflow axis). The cover crop (the
+            // v1.3.88 recipe) hid the overflow axis: the preview showed a
+            // CROP of the scene the YUV plane fully carries, so a code at
+            // the preview's edge could decode while invisible — the
+            // preview and the decode plane disagreed about what is on
+            // screen. min() shows every pixel the sensor delivers,
+            // aspect-true, centered — and on a buffer/view aspect match it
+            // degenerates to the exact cover numbers.
+            float s = Math.min(viewW / uw, viewH / uh);
+            // v1.4.27 — the re-pin ladder. v1.4.34 — THE LETTERBOX
+            // ASSERTION: the scaled content FITS WITHIN both axes (cover's
+            // fills-both-axes inverted — a stale/mismatched buffer dims
+            // pair breaks it the same way, and the one-shot re-pin + the
+            // MISMATCH mark keep naming it).
+            boolean fits = uw * s <= viewW + 1f && uh * s <= viewH + 1f;
+            if (!fits && !pinRetried) {
                 pinRetried = true;
                 try { pinBuffer(); } catch (Throwable ignored) {}
                 try { Diag.log(this, "qr preview re-pin view=" + viewW + "x" + viewH +
@@ -1478,7 +1694,7 @@ public class QrScanActivity extends AppCompatActivity {
                         " scale=" + String.format(java.util.Locale.US, "%.3f", s) +
                         " mode=" + undoMode +
                         " " + agree +
-                        (fills ? "" : " MISMATCH"));
+                        (fits ? "" : " MISMATCH"));
             } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
     }

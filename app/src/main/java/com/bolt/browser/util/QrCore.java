@@ -144,6 +144,31 @@ public final class QrCore {
                 if (r != null) return r;
             }
         } catch (Throwable ignored) {}
+        // (d) v1.4.34 — THE QUARTER-SCALE CLOSING LEG: halfLuma twice, the
+        // closing morphology, then the dual-binarizer core. The dense-dot
+        // class (chess.com-style grids photographed at arm's length)
+        // blurs at full AND half scale — the quarter plane sharpens the
+        // module edges twice more and the closing merges what remains
+        // into solid blobs the binarizers segment. Failure path only
+        // (the budget law); the 128-edge keeps the quarter plane >= 64
+        // (the ZXing detector floor the half leg carries).
+        try {
+            int hw = width / 2, hh = height / 2;
+            if (hw >= 128 && hh >= 128) {
+                byte[] hs = halfLuma(y, width, height);
+                int qw = hw / 2, qh = hh / 2;
+                if (hs != null && qw >= 64 && qh >= 64) {
+                    byte[] qs = halfLuma(hs, hw, hh);
+                    if (qs != null) {
+                        byte[] cl = close3x3(qs, qw, qh);
+                        if (cl != null) {
+                            r = decodeLuma2(cl, qw, qh);
+                            if (r != null) return r;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 
@@ -444,6 +469,9 @@ public final class QrCore {
         // luma plane: closing merges the dots AND the half-scale
         // sharpens module edges, the pair that cracks chess.com-style
         // dot grids at photo resolution. Rides the failure path only.
+        // v1.4.34 — the leg grew the QUARTER-scale closed pass (the
+        // dense-dot class blurs through full AND half; the quarter plane
+        // is the final geometry that still carries the finder runs).
         try {
             int hw = width / 2, hh = height / 2;
             if (fullLuma != null && hw >= 64 && hh >= 64) {
@@ -453,6 +481,17 @@ public final class QrCore {
                     if (cl != null) {
                         r = decodeLuma2(cl, hw, hh);
                         if (r != null) return r;
+                    }
+                    int qw = hw / 2, qh = hh / 2;
+                    if (qw >= 64 && qh >= 64) {
+                        byte[] qs = halfLuma(hs, hw, hh);
+                        if (qs != null) {
+                            byte[] cl2 = close3x3(qs, qw, qh);
+                            if (cl2 != null) {
+                                r = decodeLuma2(cl2, qw, qh);
+                                if (r != null) return r;
+                            }
+                        }
                     }
                 }
             }
